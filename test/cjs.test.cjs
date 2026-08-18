@@ -22,5 +22,8 @@ describe('CJS public surface', () => {
         assert.equal(sdk.PendingRequests, undefined);
         assert.equal(sdk.ProtocolDispatcher, undefined);
         assert.equal(sdk.CommandError, undefined);
+        assert.equal(sdk.encryptPayload, undefined);
+        assert.equal(sdk.EcdheHandshake, undefined);
+        assert.equal(sdk.deriveEncryptionKey, undefined);
     });
 });

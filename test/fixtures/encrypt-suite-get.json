@@ -1,0 +1,13 @@
+{
+  "header": {
+    "messageId": "e41c0fd0cb56bf9e1004f58718290c4a",
+    "payloadVersion": 1,
+    "namespace": "Appliance.Encrypt.Suite",
+    "method": "GET",
+    "triggerSrc": "APP",
+    "timestamp": 1673925168,
+    "from": "/app/123-12345678876543211234567887654321/subscribe",
+    "sign": "1e1ace716ed31010aa3438081289594f"
+  },
+  "payload": {}
+}

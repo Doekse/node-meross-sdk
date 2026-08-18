@@ -31,3 +31,16 @@ export type {
     ToggleXGetOptions,
     ToggleXSetOptions
 } from './codecs/togglex';
+export {
+    ENCRYPT_ECDHE_NAMESPACE,
+    ENCRYPT_SUITE_NAMESPACE,
+    EcdheHandshake,
+    decodeEncryptEcdheSetAck,
+    decodeEncryptSuiteGetAck,
+    decryptPayload,
+    deriveEncryptionKey,
+    encodeEncryptEcdheSet,
+    encryptPayload,
+    supportsLanEncryption
+} from './encryption';
+export type { EncryptEcdhe, EncryptSuite } from './encryption';

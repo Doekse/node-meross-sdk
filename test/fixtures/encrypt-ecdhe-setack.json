@@ -1,0 +1,17 @@
+{
+  "header": {
+    "messageId": "e040b5bbe7714cd102b525685713ce51",
+    "namespace": "Appliance.Encrypt.ECDHE",
+    "method": "SETACK",
+    "payloadVersion": 1,
+    "from": "/appliance/2210203581812954060448e1e9ac4f87/publish",
+    "timestamp": 1673934143,
+    "sign": "b777f1ecea4ffd9d5c48bc3c629342ab"
+  },
+  "payload": {
+    "ecdhe": {
+      "step": 2,
+      "pubkey": "273A6A98B87C9CD123456789AF273A6A98B87C9CD123456789AF273ABCD1234"
+    }
+  }
+}

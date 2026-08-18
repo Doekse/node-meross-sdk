@@ -1,0 +1,18 @@
+{
+  "header": {
+    "messageId": "91a936cd22f48cb18b210c649e42b5b3",
+    "payloadVersion": 1,
+    "namespace": "Appliance.Encrypt.ECDHE",
+    "method": "SET",
+    "triggerSrc": "APP",
+    "timestamp": 1673927162,
+    "from": "/app/123-12345678876543211234567887654321/subscribe",
+    "sign": "eecc5b61073679c907f51aec8c75364d"
+  },
+  "payload": {
+    "ecdhe": {
+      "step": 1,
+      "pubkey": "273A6A98B87C9CD123456789AF273A6A98B87C9CD123456789AF273ABCD1234"
+    }
+  }
+}
