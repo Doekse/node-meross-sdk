@@ -1,0 +1,25 @@
+{
+  "header": {
+    "messageId": "744fef0a44905740da51692e6cbd22e4",
+    "namespace": "Appliance.Control.Multiple",
+    "triggerSrc": "AndroidLocal",
+    "method": "SETACK",
+    "payloadVersion": 1,
+    "from": "/appliance/2102018403567500014134298f1f2c48/publish",
+    "uuid": "2102018403567500014134298f1f2c48",
+    "timestamp": 1647336042,
+    "timestampMs": 278,
+    "sign": "b92b7340969a715fe85e16ebaf95d351"
+  },
+  "payload": {
+    "multiple": [
+      {
+        "header": {
+          "namespace": "Appliance.Control.ToggleX",
+          "method": "SETACK"
+        },
+        "payload": {}
+      }
+    ]
+  }
+}

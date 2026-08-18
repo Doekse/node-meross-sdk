@@ -56,7 +56,7 @@ export interface MqttRequestOptions {
 /**
  * Cloud MQTT: signed GET/SET on `/appliance/{uuid}/subscribe`, ACK on the
  * app response topic, PUSH on the user topic. Pending matching lives in
- * {@link ProtocolDispatcher} so LAN can share the same registry later.
+ * {@link ProtocolDispatcher} so LAN HTTP can share the same registry.
  */
 export class MqttTransport {
     readonly appId: string;

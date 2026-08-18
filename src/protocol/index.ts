@@ -32,6 +32,15 @@ export type {
     ToggleXSetOptions
 } from './codecs/togglex';
 export {
+    HUB_TOGGLEX_NAMESPACE,
+    MULTIPLE_NAMESPACE,
+    SYSTEM_ALL_NAMESPACE,
+    canPackInMultiple,
+    decodeMultipleAck,
+    encodeMultipleSet
+} from './codecs/multiple';
+export type { MultipleSubCommand } from './codecs/multiple';
+export {
     ENCRYPT_ECDHE_NAMESPACE,
     ENCRYPT_SUITE_NAMESPACE,
     EcdheHandshake,
