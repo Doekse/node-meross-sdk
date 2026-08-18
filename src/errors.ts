@@ -30,3 +30,14 @@ export class ProtocolError extends MerossError {
         this.name = 'ProtocolError';
     }
 }
+
+/**
+ * Command timeout, device ERROR method, or a cancelled pending request.
+ * Not a public export until Session surfaces command failures to hosts.
+ */
+export class CommandError extends MerossError {
+    constructor(message: string, code = 'COMMAND_FAILED') {
+        super(message, code);
+        this.name = 'CommandError';
+    }
+}

@@ -18,5 +18,8 @@ describe('CJS public surface', () => {
         assert.equal(sdk.Transport, undefined);
         assert.equal(sdk.Device, undefined);
         assert.equal(sdk.namespaces, undefined);
+        assert.equal(sdk.PendingRequests, undefined);
+        assert.equal(sdk.ProtocolDispatcher, undefined);
+        assert.equal(sdk.CommandError, undefined);
     });
 });

@@ -15,3 +15,6 @@ export type {
     MerossMessage,
     MerossPayload
 } from './message';
+export { DEFAULT_COMMAND_TIMEOUT_MS, PendingRequests } from './pending';
+export { ProtocolDispatcher } from './dispatcher';
+export type { DispatchResult } from './dispatcher';
