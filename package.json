@@ -1,0 +1,61 @@
+{
+  "name": "node-meross-sdk",
+  "version": "0.0.0",
+  "description": "Control Meross devices from Node.js using a Homey-shaped Session/Endpoint/Trait API",
+  "author": "Abe Haverkamp",
+  "license": "MIT",
+  "keywords": [
+    "meross",
+    "iot",
+    "smart-home",
+    "home-automation",
+    "mqtt",
+    "smart-plug",
+    "smart-switch",
+    "smart-light",
+    "thermostat",
+    "homey",
+    "nodejs"
+  ],
+  "homepage": "https://github.com/Doekse/node-meross-sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Doekse/node-meross-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Doekse/node-meross-sdk/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "clean": "rm -rf dist",
+    "test": "npm run build && node scripts/run-tests.cjs",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^22.15.3",
+    "eslint": "^9.39.1",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.32.0"
+  }
+}

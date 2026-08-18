@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+
+# Node.js runtime files
+.npm
+.node_repl_history
+.pnp
+.pnp.js
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE/Editor files
+.vscode/
+.cursor/
+.idea/
+*.swp
+*.swo
+*~
+.sublime-*
+.vim/
+*.sublime-project
+*.sublime-workspace
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+out/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Docs
+docs/
