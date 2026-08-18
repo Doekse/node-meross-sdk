@@ -18,3 +18,16 @@ export type {
 export { DEFAULT_COMMAND_TIMEOUT_MS, PendingRequests } from './pending';
 export { ProtocolDispatcher } from './dispatcher';
 export type { DispatchResult } from './dispatcher';
+export {
+    TOGGLEX_ALL_CHANNELS,
+    TOGGLEX_NAMESPACE,
+    decodeToggleXGetAck,
+    decodeToggleXPush,
+    encodeToggleXGet,
+    encodeToggleXSet
+} from './codecs/togglex';
+export type {
+    ToggleXChannel,
+    ToggleXGetOptions,
+    ToggleXSetOptions
+} from './codecs/togglex';
