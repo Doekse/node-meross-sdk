@@ -28,5 +28,7 @@ describe('CJS public surface', () => {
         assert.equal(sdk.CloudClient, undefined);
         assert.equal(sdk.AuthError, undefined);
         assert.equal(sdk.CloudError, undefined);
+        assert.equal(sdk.MqttTransport, undefined);
+        assert.equal(sdk.TransportError, undefined);
     });
 });

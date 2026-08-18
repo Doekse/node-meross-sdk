@@ -84,3 +84,14 @@ export class CloudError extends MerossError {
         this.mqttDomain = extras.mqttDomain;
     }
 }
+
+/**
+ * MQTT or LAN HTTP connect/publish failure. Not a public export until Session
+ * surfaces transport failures to hosts.
+ */
+export class TransportError extends MerossError {
+    constructor(message: string, code = 'TRANSPORT_ERROR') {
+        super(message, code);
+        this.name = 'TransportError';
+    }
+}
