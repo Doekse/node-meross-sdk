@@ -20,3 +20,13 @@ export class NotImplementedError extends MerossError {
         this.name = 'NotImplementedError';
     }
 }
+
+/**
+ * Malformed envelope or signature mismatch. Not a public export yet.
+ */
+export class ProtocolError extends MerossError {
+    constructor(message: string, code = 'PROTOCOL_ERROR') {
+        super(message, code);
+        this.name = 'ProtocolError';
+    }
+}

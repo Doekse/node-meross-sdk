@@ -1,0 +1,13 @@
+{
+  "header": {
+    "messageId": "e040b5bbe7714cd102b525685713ce51",
+    "namespace": "Appliance.Control.ToggleX",
+    "method": "SETACK",
+    "payloadVersion": 1,
+    "from": "/appliance/2210203581812954060448e1e9ac4f87/publish",
+    "timestamp": 1673934143,
+    "timestampMs": 218,
+    "sign": "b777f1ecea4ffd9d5c48bc3c629342ab"
+  },
+  "payload": {}
+}

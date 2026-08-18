@@ -1,0 +1,23 @@
+{
+  "header": {
+    "messageId": "f612fb49845bee6191ea05e1548aa7a2",
+    "namespace": "Appliance.Control.ToggleX",
+    "triggerSrc": "CloudAlexa",
+    "method": "GETACK",
+    "payloadVersion": 1,
+    "from": "/appliance/2201208098807451860148e1e986b2fb/publish",
+    "uuid": "2201208098807451860148e1e986b2fb",
+    "timestamp": 1673925167,
+    "timestampMs": 749,
+    "sign": "2e4375b4631d573499dd0b0585cee295"
+  },
+  "payload": {
+    "channel": 0,
+    "togglex": {
+      "entity": 1,
+      "channel": 0,
+      "onoff": 1,
+      "lmTime": 1673911325
+    }
+  }
+}

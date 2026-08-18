@@ -1,0 +1,19 @@
+{
+  "header": {
+    "messageId": "91a936cd22f48cb18b210c649e42b5b3",
+    "payloadVersion": 1,
+    "namespace": "Appliance.Control.ToggleX",
+    "method": "SET",
+    "triggerSrc": "CloudAlexa",
+    "timestamp": 1673927162,
+    "from": "cloud/sub/3i10l1s5jpxNynwI/ae2b38ee8de54f58",
+    "sign": "eecc5b61073679c907f51aec8c75364d"
+  },
+  "payload": {
+    "togglex": {
+      "onoff": 0,
+      "channel": 0,
+      "entity": 1
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "header": {
+    "messageId": "a5db0685d553a00da610754feb6e2660",
+    "namespace": "Appliance.Control.ToggleX",
+    "method": "GETACK",
+    "payloadVersion": 1,
+    "from": "/appliance/1802115453481929080434298f152e00/publish",
+    "timestamp": 1673855155,
+    "timestampMs": 192,
+    "sign": "581d21cd1da01878c280be76d37c47a7"
+  },
+  "payload": {
+    "channel": 65535,
+    "togglex": [
+      {
+        "channel": 0,
+        "onoff": 1,
+        "lmTime": 1673855028
+      },
+      {
+        "channel": 1,
+        "onoff": 1,
+        "lmTime": 1673855028
+      },
+      {
+        "channel": 2,
+        "onoff": 1,
+        "lmTime": 1673855028
+      },
+      {
+        "channel": 3,
+        "onoff": 1,
+        "lmTime": 1673855028
+      },
+      {
+        "channel": 4,
+        "onoff": 1,
+        "lmTime": 1673855028
+      }
+    ]
+  }
+}

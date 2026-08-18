@@ -1,0 +1,22 @@
+{
+  "header": {
+    "timestampMs": 900,
+    "timestamp": 1673934346,
+    "sign": "72aadac5e614ac6bab63ddf12fd69a9b",
+    "payloadVersion": 1,
+    "namespace": "Appliance.Control.ToggleX",
+    "method": "PUSH",
+    "messageId": "5b92447d33bf7dbf8866789fc2bf90be",
+    "from": "/appliance/1906017373338625184434298f1ed9bd/publish"
+  },
+  "payload": {
+    "togglex": [
+      {
+        "onoff": 1,
+        "lmTime": 1673934346,
+        "channel": 0,
+        "entity": 1
+      }
+    ]
+  }
+}
