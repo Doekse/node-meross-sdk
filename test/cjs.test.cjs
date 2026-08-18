@@ -25,5 +25,8 @@ describe('CJS public surface', () => {
         assert.equal(sdk.encryptPayload, undefined);
         assert.equal(sdk.EcdheHandshake, undefined);
         assert.equal(sdk.deriveEncryptionKey, undefined);
+        assert.equal(sdk.CloudClient, undefined);
+        assert.equal(sdk.AuthError, undefined);
+        assert.equal(sdk.CloudError, undefined);
     });
 });

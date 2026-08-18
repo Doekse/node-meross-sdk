@@ -41,3 +41,46 @@ export class CommandError extends MerossError {
         this.name = 'CommandError';
     }
 }
+
+/**
+ * Wrong credentials, MFA, or an expired/incomplete token from the cloud HTTP API.
+ * Not a public export until Session.login surfaces auth failures.
+ */
+export class AuthError extends MerossError {
+    readonly apiStatus?: number;
+
+    constructor(message: string, code = 'AUTHENTICATION', apiStatus?: number) {
+        super(message, code);
+        this.name = 'AuthError';
+        this.apiStatus = apiStatus;
+    }
+}
+
+/**
+ * Cloud HTTP transport failure, region redirect exhaustion, or a non-auth apiStatus.
+ * Not a public export until Session surfaces cloud failures to hosts.
+ */
+export class CloudError extends MerossError {
+    readonly apiStatus?: number;
+    readonly httpStatus?: number;
+    readonly domain?: string;
+    readonly mqttDomain?: string;
+
+    constructor(
+        message: string,
+        code = 'CLOUD_ERROR',
+        extras: {
+            apiStatus?: number;
+            httpStatus?: number;
+            domain?: string;
+            mqttDomain?: string;
+        } = {}
+    ) {
+        super(message, code);
+        this.name = 'CloudError';
+        this.apiStatus = extras.apiStatus;
+        this.httpStatus = extras.httpStatus;
+        this.domain = extras.domain;
+        this.mqttDomain = extras.mqttDomain;
+    }
+}
