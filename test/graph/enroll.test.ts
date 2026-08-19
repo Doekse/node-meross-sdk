@@ -170,6 +170,27 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(device.endpoints[1]?.on, false);
     });
 
+    it('enrolls multi-channel roller shutter from digest.rollerShutter', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.RollerShutter.Position': {},
+                    'Appliance.RollerShutter.State': {},
+                    'Appliance.Control.Multiple': { maxCmdNum: 5 }
+                }
+            },
+            allPayload: systemAllWithDigest({
+                rollerShutter: [{ channel: 0 }, { channel: 1 }]
+            })
+        });
+
+        assert.equal(device.endpoints.length, 2);
+        assert.equal(device.endpoints[0]?.classHint, 'cover');
+        assert.deepEqual(device.endpoints[0]?.traits, ['cover']);
+        assert.equal(device.endpoints[0]?.channel, 0);
+        assert.equal(device.endpoints[1]?.channel, 1);
+    });
+
     it('sets classHint light when Control.Light is in Ability', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: {

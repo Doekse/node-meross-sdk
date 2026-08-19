@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 
+import type { CoverTrait } from './traits/cover';
 import type { EnergyTrait } from './traits/energy';
 import type { LightTrait } from './traits/light';
 import type { SwitchTrait } from './traits/switch';
@@ -17,6 +18,7 @@ export interface EndpointOptions {
     switch?: SwitchTrait;
     energy?: EnergyTrait;
     light?: LightTrait;
+    cover?: CoverTrait;
     initialOnline?: boolean;
 }
 
@@ -35,6 +37,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     readonly switch?: SwitchTrait;
     readonly energy?: EnergyTrait;
     readonly light?: LightTrait;
+    readonly cover?: CoverTrait;
 
     private online: boolean;
 
@@ -45,6 +48,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         this.switch = options.switch;
         this.energy = options.energy;
         this.light = options.light;
+        this.cover = options.cover;
         this.online = options.initialOnline ?? true;
     }
 

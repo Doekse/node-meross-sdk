@@ -28,6 +28,7 @@ import {
     type MqttConnectFn,
     type RoutedRequestOptions
 } from './transport';
+import { CoverTrait } from './traits/cover';
 import { EnergyTrait } from './traits/energy';
 import { LightTrait } from './traits/light';
 import { SwitchTrait } from './traits/switch';
@@ -196,6 +197,7 @@ export class Session {
             endpoint.switch?.handlePush(message);
             endpoint.energy?.handlePush(message);
             endpoint.light?.handlePush(message);
+            endpoint.cover?.handlePush(message);
         }
     }
 
@@ -281,6 +283,7 @@ export class Session {
         let switchTrait: SwitchTrait | undefined;
         let energyTrait: EnergyTrait | undefined;
         let lightTrait: LightTrait | undefined;
+        let coverTrait: CoverTrait | undefined;
         if (graphEndpoint.traits.includes('switch')) {
             switchTrait = new SwitchTrait({
                 uuid: physical.uuid,
@@ -333,16 +336,33 @@ export class Session {
                 })
             });
         }
+        if (graphEndpoint.traits.includes('cover')) {
+            const kind: 'garage' | 'shutter' = 'Appliance.RollerShutter.State' in physical.ability
+                ? 'shutter'
+                : 'garage';
+            coverTrait = new CoverTrait({
+                uuid: physical.uuid,
+                channel,
+                kind,
+                request,
+                emitChange: (values) => endpoint.emit('change', {
+                    trait: 'cover',
+                    values: { ...values }
+                })
+            });
+        }
         endpoint = new Endpoint({
             id: graphEndpoint.id,
             traits: graphEndpoint.traits,
             switch: switchTrait,
             energy: energyTrait,
             light: lightTrait,
+            cover: coverTrait,
             initialOnline: graphEndpoint.online
         });
         energyTrait?.start();
         lightTrait?.start();
+        coverTrait?.start();
         return endpoint;
     }
 

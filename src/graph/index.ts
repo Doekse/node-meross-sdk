@@ -174,7 +174,9 @@ function enrollBoard(
 
     const coverChannels = all.digest.garageDoor.length > 0
         ? all.digest.garageDoor
-        : ('Appliance.GarageDoor.State' in ability || 'Appliance.RollerShutter.State' in ability ? [0] : []);
+        : all.digest.rollerShutter.length > 0
+            ? all.digest.rollerShutter
+            : ('Appliance.GarageDoor.State' in ability || 'Appliance.RollerShutter.State' in ability ? [0] : []);
     for (const channel of coverChannels) {
         add(channel, 'cover', ['cover']);
     }

@@ -67,6 +67,28 @@ export {
 } from './codecs/consumptionx';
 export type { ConsumptionXDay } from './codecs/consumptionx';
 export {
+    GARAGE_STATE_NAMESPACE,
+    SHUTTER_POSITION_NAMESPACE,
+    SHUTTER_STATE_NAMESPACE,
+    decodeGarageGetAck,
+    decodeGaragePush,
+    decodeShutterPositionGetAck,
+    decodeShutterPositionPush,
+    decodeShutterStatePush,
+    encodeGarageGet,
+    encodeGarageSet,
+    encodeShutterPositionGet,
+    encodeShutterPositionSet
+} from './codecs/cover';
+export type {
+    GarageChannelState,
+    GarageGetOptions,
+    GarageSetOptions,
+    ShutterMoveState,
+    ShutterPositionSetOptions,
+    ShutterPositionState
+} from './codecs/cover';
+export {
     HUB_TOGGLEX_NAMESPACE,
     MULTIPLE_NAMESPACE,
     SYSTEM_ALL_NAMESPACE,

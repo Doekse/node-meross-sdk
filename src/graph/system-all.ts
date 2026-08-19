@@ -25,6 +25,7 @@ export interface SystemAll {
         togglex: DigestToggle[];
         light: number[];
         garageDoor: number[];
+        rollerShutter: number[];
         hub?: { subdevice: Array<{ id: string; status?: number; model?: string }> };
         thermostat?: unknown;
     };
@@ -80,6 +81,7 @@ export function decodeSystemAllGetAck(payload: MerossPayload): SystemAll {
             togglex: digestTogglex(d.togglex),
             light: channelList(d.light, 'light'),
             garageDoor: channelList(d.garageDoor, 'garageDoor'),
+            rollerShutter: channelList(d.rollerShutter, 'rollerShutter'),
             hub: d.hub !== undefined ? decodeHub(d.hub) : undefined,
             thermostat: d.thermostat && typeof d.thermostat === 'object' ? d.thermostat : undefined
         }
