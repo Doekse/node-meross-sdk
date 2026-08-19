@@ -1,16 +1,19 @@
 import {
+    HUB_TOGGLEX_NAMESPACE,
     TOGGLEX_NAMESPACE,
+    decodeHubToggleXPush,
     decodeToggleXPush,
+    encodeHubToggleXSet,
     encodeToggleXSet,
     type MerossMessage
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
 
 /**
- * Transport + channel bind for one switch endpoint. Session supplies this;
- * trait tests inject a fake request/emit pair.
+ * Board bind: one Toggle/ToggleX channel on the physical device.
  */
-export interface SwitchTraitBind {
+export interface SwitchTraitBoardBind {
+    kind: 'board';
     uuid: string;
     channel: number;
     namespace: typeof TOGGLEX_NAMESPACE | 'Appliance.Control.Toggle';
@@ -21,8 +24,23 @@ export interface SwitchTraitBind {
 }
 
 /**
- * On/off control for one enrolled endpoint. Channel is bound at enrollment so
- * callers never pass it; Toggle vs ToggleX stays in codecs.
+ * Hub bind: one subdevice row driven by Hub.ToggleX (digest `onoff` without a known model).
+ */
+export interface SwitchTraitHubBind {
+    kind: 'hub';
+    uuid: string;
+    subDeviceId: string;
+    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    emitChange: (on: boolean) => void;
+    /** Hub digest `onoff` so Homey can read the tile before the first PUSH. */
+    initialOn?: boolean;
+}
+
+export type SwitchTraitBind = SwitchTraitBoardBind | SwitchTraitHubBind;
+
+/**
+ * On/off control for one enrolled endpoint. Channel or subdevice id is bound at
+ * enrollment so callers never pass it; Toggle vs ToggleX vs Hub.ToggleX stays in codecs.
  */
 export class SwitchTrait {
     private readonly bind: SwitchTraitBind;
@@ -41,14 +59,19 @@ export class SwitchTrait {
     }
 
     /**
-     * Turns the bound channel on or off.
+     * Turns the bound channel or hub subdevice on or off.
      */
     async setOn(on: boolean): Promise<{ on: boolean }> {
-        const payload = this.bind.namespace === TOGGLEX_NAMESPACE
-            ? encodeToggleXSet({ channel: this.bind.channel, on })
-            : { toggle: { onoff: on ? 1 : 0 } };
+        const payload = this.bind.kind === 'hub'
+            ? encodeHubToggleXSet({ id: this.bind.subDeviceId, on })
+            : this.bind.namespace === TOGGLEX_NAMESPACE
+                ? encodeToggleXSet({ channel: this.bind.channel, on })
+                : { toggle: { onoff: on ? 1 : 0 } };
+        const namespace = this.bind.kind === 'hub'
+            ? HUB_TOGGLEX_NAMESPACE
+            : this.bind.namespace;
         await this.bind.request({
-            namespace: this.bind.namespace,
+            namespace,
             method: 'SET',
             payload
         });
@@ -57,12 +80,26 @@ export class SwitchTrait {
     }
 
     /**
-     * Applies a firmware PUSH for this endpoint's namespace and channel.
+     * Applies a firmware PUSH for this endpoint's namespace and channel or subdevice id.
      */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
-        if (!uuid || uuid !== this.bind.uuid || message.header.namespace !== this.bind.namespace) {
+        if (!uuid || uuid !== this.bind.uuid) {
+            return;
+        }
+        if (this.bind.kind === 'hub') {
+            if (message.header.namespace !== HUB_TOGGLEX_NAMESPACE) {
+                return;
+            }
+            for (const entry of decodeHubToggleXPush(message.payload)) {
+                if (entry.id === this.bind.subDeviceId) {
+                    this.applyState(entry.on);
+                }
+            }
+            return;
+        }
+        if (message.header.namespace !== this.bind.namespace) {
             return;
         }
         if (this.bind.namespace === TOGGLEX_NAMESPACE) {

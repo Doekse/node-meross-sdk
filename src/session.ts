@@ -296,16 +296,28 @@ export class Session {
         let presenceTrait: PresenceTrait | undefined;
         let sprinklerTrait: SprinklerTrait | undefined;
         if (graphEndpoint.traits.includes('switch')) {
-            switchTrait = new SwitchTrait({
-                uuid: physical.uuid,
-                channel,
-                namespace: 'Appliance.Control.Toggle' in physical.ability && !(TOGGLEX_NAMESPACE in physical.ability)
-                    ? 'Appliance.Control.Toggle'
-                    : TOGGLEX_NAMESPACE,
-                initialOn: graphEndpoint.on,
-                request,
-                emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
-            });
+            if (graphEndpoint.subDeviceId) {
+                switchTrait = new SwitchTrait({
+                    kind: 'hub',
+                    uuid: physical.uuid,
+                    subDeviceId: graphEndpoint.subDeviceId,
+                    initialOn: graphEndpoint.on,
+                    request,
+                    emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
+                });
+            } else {
+                switchTrait = new SwitchTrait({
+                    kind: 'board',
+                    uuid: physical.uuid,
+                    channel,
+                    namespace: 'Appliance.Control.Toggle' in physical.ability && !(TOGGLEX_NAMESPACE in physical.ability)
+                        ? 'Appliance.Control.Toggle'
+                        : TOGGLEX_NAMESPACE,
+                    initialOn: graphEndpoint.on,
+                    request,
+                    emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
+                });
+            }
         }
         if (graphEndpoint.traits.includes('energy')) {
             const hasElectricity = ELECTRICITY_NAMESPACE in physical.ability;

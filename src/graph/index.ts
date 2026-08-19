@@ -297,9 +297,9 @@ function enrollHub(
         online
     }];
 
-    const byId = new Map<string, { model?: string; name?: string; online: boolean }>();
+    const byId = new Map<string, { model?: string; name?: string; online: boolean; on?: boolean }>();
     for (const sub of all.digest.hub?.subdevice ?? []) {
-        byId.set(sub.id, { model: sub.model, online: sub.status === 1 });
+        byId.set(sub.id, { model: sub.model, online: sub.status === 1, on: sub.on });
     }
     for (const sub of cloudSubs) {
         const existing = byId.get(sub.subDeviceId);
@@ -317,7 +317,21 @@ function enrollHub(
 
     for (const [subDeviceId, sub] of byId) {
         const child = classifyHubChild(sub.model);
-        if (!child) {
+        if (child) {
+            endpoints.push({
+                id: `${uuid}#${subDeviceId}`,
+                uuid,
+                subDeviceId,
+                parentId: uuid,
+                name: sub.name || child.model,
+                model: child.model,
+                classHint: child.classHint,
+                traits: child.traits,
+                online: sub.online
+            });
+            continue;
+        }
+        if (sub.on === undefined) {
             continue;
         }
         endpoints.push({
@@ -325,11 +339,12 @@ function enrollHub(
             uuid,
             subDeviceId,
             parentId: uuid,
-            name: sub.name || child.model,
-            model: child.model,
-            classHint: child.classHint,
-            traits: child.traits,
-            online: sub.online
+            name: sub.name || subDeviceId,
+            model: sub.model || subDeviceId,
+            classHint: 'socket',
+            traits: ['switch'],
+            online: sub.online,
+            on: sub.on
         });
     }
     return endpoints;

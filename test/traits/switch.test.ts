@@ -6,8 +6,10 @@ import { describe, it } from 'node:test';
 import { Endpoint } from '../../src/endpoint';
 import { CommandError } from '../../src/errors';
 import {
+    HUB_TOGGLEX_NAMESPACE,
     TOGGLEX_NAMESPACE,
     decodeMessage,
+    encodeHubToggleXSet,
     encodeMessage,
     encodeToggleXSet,
     type MerossMessage
@@ -18,6 +20,7 @@ const fixturesDir = join(process.cwd(), 'test/fixtures');
 const KEY = 'stub-key';
 const UUID = '2206138957096651080248e1e99705a4';
 const CHANNEL = 2;
+const SUB_DEVICE_ID = '0000dead';
 
 function loadFixture(name: string): MerossMessage {
     return decodeMessage(JSON.parse(readFileSync(join(fixturesDir, name), 'utf8')) as unknown);
@@ -34,6 +37,7 @@ function createSwitchHarness(channel = CHANNEL): {
         traits: ['switch']
     });
     const trait = new SwitchTrait({
+        kind: 'board',
         uuid: UUID,
         channel,
         namespace: TOGGLEX_NAMESPACE,
@@ -60,6 +64,53 @@ function createSwitchHarness(channel = CHANNEL): {
         emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
     });
     return { endpoint, trait, requests };
+}
+
+function createHubSwitchHarness(): {
+    endpoint: Endpoint;
+    trait: SwitchTrait;
+    requests: MerossMessage[];
+} {
+    const requests: MerossMessage[] = [];
+    const endpoint = new Endpoint({ id: `${UUID}#${SUB_DEVICE_ID}`, traits: ['switch'] });
+    const trait = new SwitchTrait({
+        kind: 'hub',
+        uuid: UUID,
+        subDeviceId: SUB_DEVICE_ID,
+        request: async (options) => {
+            const message = encodeMessage({
+                namespace: options.namespace,
+                method: options.method,
+                key: KEY,
+                from: '/app/test/subscribe',
+                payload: options.payload,
+                uuid: UUID
+            });
+            requests.push(message);
+            return encodeMessage({
+                namespace: options.namespace,
+                method: 'SETACK',
+                key: KEY,
+                from: `/appliance/${UUID}/publish`,
+                messageId: message.header.messageId,
+                uuid: UUID,
+                payload: {}
+            });
+        },
+        emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
+    });
+    return { endpoint, trait, requests };
+}
+
+function hubPush(payload: Record<string, unknown>): MerossMessage {
+    return encodeMessage({
+        namespace: HUB_TOGGLEX_NAMESPACE,
+        method: 'PUSH',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload
+    });
 }
 
 describe('SwitchTrait.setOn', () => {
@@ -99,6 +150,7 @@ describe('SwitchTrait.setOn', () => {
     it('throws CommandError when the device replies with ERROR', async () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'] });
         const trait = new SwitchTrait({
+            kind: 'board',
             uuid: UUID,
             channel: 0,
             namespace: TOGGLEX_NAMESPACE,
@@ -162,6 +214,7 @@ describe('SwitchTrait initial state', () => {
     it('exposes digest onoff without emitting change', () => {
         const { endpoint } = createSwitchHarness();
         const withDigest = new SwitchTrait({
+            kind: 'board',
             uuid: UUID,
             channel: CHANNEL,
             namespace: TOGGLEX_NAMESPACE,
@@ -180,6 +233,42 @@ describe('SwitchTrait initial state', () => {
         endpoint.on('change', (change) => changes.push(change));
 
         assert.equal(withDigest.isOn(), true);
+        assert.deepEqual(changes, []);
+    });
+});
+
+describe('SwitchTrait hub bind', () => {
+    it('setOn sends Hub.ToggleX SET with subDeviceId not channel', async () => {
+        const { trait, requests } = createHubSwitchHarness();
+
+        await trait.setOn(true);
+
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.header.namespace, HUB_TOGGLEX_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(
+            requests[0]?.payload,
+            encodeHubToggleXSet({ id: SUB_DEVICE_ID, on: true })
+        );
+    });
+
+    it('handlePush applies Hub.ToggleX PUSH for matching subDeviceId', () => {
+        const { endpoint, trait } = createHubSwitchHarness();
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        trait.handlePush(hubPush({ togglex: [{ id: SUB_DEVICE_ID, onoff: 1 }] }));
+
+        assert.deepEqual(changes, [{ trait: 'switch', values: { on: true } }]);
+    });
+
+    it('ignores Hub.ToggleX PUSH for a different subDeviceId', () => {
+        const { endpoint, trait } = createHubSwitchHarness();
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        trait.handlePush(hubPush({ togglex: [{ id: 'other-device', onoff: 1 }] }));
+
         assert.deepEqual(changes, []);
     });
 });

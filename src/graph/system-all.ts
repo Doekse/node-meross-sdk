@@ -29,7 +29,7 @@ export interface SystemAll {
         spray: number[];
         fan: number[];
         diffuser?: { light: number[]; spray: number[] };
-        hub?: { subdevice: Array<{ id: string; status?: number; model?: string }> };
+        hub?: { subdevice: Array<{ id: string; status?: number; model?: string; on?: boolean }> };
         thermostat?: unknown;
     };
 }
@@ -141,7 +141,9 @@ function decodeDiffuser(raw: unknown): { light: number[]; spray: number[] } {
     };
 }
 
-function decodeHub(raw: unknown): { subdevice: Array<{ id: string; status?: number; model?: string }> } {
+function decodeHub(raw: unknown): {
+    subdevice: Array<{ id: string; status?: number; model?: string; on?: boolean }>;
+} {
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
         throw new ProtocolError('System.All digest.hub must be an object');
     }
@@ -155,7 +157,7 @@ function decodeHub(raw: unknown): { subdevice: Array<{ id: string; status?: numb
     return { subdevice: subdevice.map(decodeHubSubdevice) };
 }
 
-function decodeHubSubdevice(raw: unknown): { id: string; status?: number; model?: string } {
+function decodeHubSubdevice(raw: unknown): { id: string; status?: number; model?: string; on?: boolean } {
     if (typeof raw !== 'object' || raw === null) {
         throw new ProtocolError('System.All hub subdevice must be an object');
     }
@@ -163,9 +165,12 @@ function decodeHubSubdevice(raw: unknown): { id: string; status?: number; model?
     if (typeof entry.id !== 'string' || !entry.id) {
         throw new ProtocolError('System.All hub subdevice id is required');
     }
-    const sub: { id: string; status?: number; model?: string } = { id: entry.id };
+    const sub: { id: string; status?: number; model?: string; on?: boolean } = { id: entry.id };
     if (typeof entry.status === 'number') {
         sub.status = entry.status;
+    }
+    if (typeof entry.onoff === 'number') {
+        sub.on = entry.onoff === 1;
     }
     if (typeof entry.type === 'string' && entry.type) {
         sub.model = entry.type;

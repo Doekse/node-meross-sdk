@@ -46,6 +46,7 @@ describe('public API', () => {
     it('SwitchTrait.setOn drives on/off when bound to a transport', async () => {
         const endpoint = new Endpoint({ id: 'device-1', traits: ['switch'] });
         const trait = new SwitchTrait({
+            kind: 'board',
             uuid: 'uuid-1',
             channel: 0,
             namespace: TOGGLEX_NAMESPACE,
