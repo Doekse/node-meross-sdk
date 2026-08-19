@@ -12,6 +12,7 @@ import type { GraphEndpoint, PhysicalDevice } from './graph';
 import { DeviceAvailability } from './graph/availability';
 import { Inventory } from './inventory';
 import {
+    CONSUMPTIONH_NAMESPACE,
     CONSUMPTIONX_NAMESPACE,
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_NAMESPACE,
@@ -316,6 +317,7 @@ export class Session {
                 hasElectricity,
                 hasElectricityX: !hasElectricity && ELECTRICITYX_NAMESPACE in physical.ability,
                 hasConsumptionX: CONSUMPTIONX_NAMESPACE in physical.ability,
+                hasConsumptionH: CONSUMPTIONH_NAMESPACE in physical.ability,
                 request,
                 emitChange: (values) => endpoint.emit('change', {
                     trait: 'energy',

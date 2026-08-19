@@ -5,6 +5,10 @@ import { describe, it } from 'node:test';
 
 import { ProtocolError } from '../../../src/errors';
 import {
+    decodeConsumptionHGetAck,
+    encodeConsumptionHGet
+} from '../../../src/protocol/codecs/consumptionh';
+import {
     decodeConsumptionXGetAck,
     encodeConsumptionXGet
 } from '../../../src/protocol/codecs/consumptionx';
@@ -146,6 +150,43 @@ describe('ConsumptionX codec', () => {
     it('rejects a non-array consumptionx field', () => {
         assert.throws(
             () => decodeConsumptionXGetAck({ consumptionx: {} }),
+            (err: unknown) => err instanceof ProtocolError
+        );
+    });
+});
+
+describe('ConsumptionH codec', () => {
+    it('encodes GET with a channel-scoped consumptionH selector', () => {
+        assert.deepEqual(encodeConsumptionHGet(1), {
+            consumptionH: [{ channel: 1 }]
+        });
+    });
+
+    it('decodes meross_lan-shaped channel rows into hourly samples', () => {
+        assert.deepEqual(
+            decodeConsumptionHGetAck({
+                consumptionH: [{
+                    channel: 1,
+                    total: 958,
+                    data: [
+                        { timestamp: 1_721_548_740, value: 0 },
+                        { timestamp: 1_721_552_340, value: 12 }
+                    ]
+                }]
+            }),
+            [{
+                channel: 1,
+                hourly: [
+                    { timestamp: 1_721_548_740, value: 0 },
+                    { timestamp: 1_721_552_340, value: 12 }
+                ]
+            }]
+        );
+    });
+
+    it('rejects a non-array consumptionH field', () => {
+        assert.throws(
+            () => decodeConsumptionHGetAck({ consumptionH: {} }),
             (err: unknown) => err instanceof ProtocolError
         );
     });

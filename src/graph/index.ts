@@ -1,6 +1,7 @@
 import type { CloudDevice, CloudSubDevice } from '../cloud';
 import type { TraitName } from '../endpoint';
 import type { ClassHint, InventoryRow } from '../inventory';
+import { CONSUMPTIONH_NAMESPACE } from '../protocol/codecs/consumptionh';
 import { CONSUMPTIONX_NAMESPACE } from '../protocol/codecs/consumptionx';
 import { ELECTRICITY_NAMESPACE, ELECTRICITYX_NAMESPACE } from '../protocol/codecs/electricity';
 import { TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
@@ -76,7 +77,8 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
     const online = all.online.status === 1 || input.cloud?.onlineStatus === 1;
     const energy = ELECTRICITY_NAMESPACE in ability
         || ELECTRICITYX_NAMESPACE in ability
-        || CONSUMPTIONX_NAMESPACE in ability;
+        || CONSUMPTIONX_NAMESPACE in ability
+        || CONSUMPTIONH_NAMESPACE in ability;
     const isHub = 'Appliance.Hub.SubdeviceList' in ability || all.digest.hub !== undefined;
 
     return {

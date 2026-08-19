@@ -1,13 +1,17 @@
 import {
+    CONSUMPTIONH_NAMESPACE,
     CONSUMPTIONX_NAMESPACE,
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_NAMESPACE,
+    decodeConsumptionHGetAck,
     decodeConsumptionXGetAck,
     decodeElectricityGetAck,
     decodeElectricityXGetAck,
+    encodeConsumptionHGet,
     encodeConsumptionXGet,
     encodeElectricityGet,
     encodeElectricityXGet,
+    type ConsumptionHHour,
     type ConsumptionXDay,
     type ElectricitySample,
     type MerossMessage
@@ -24,6 +28,7 @@ export interface EnergyValues {
     consume?: number;
     powerFactor?: number;
     consumption?: ConsumptionXDay[];
+    hourly?: ConsumptionHHour[];
 }
 
 /**
@@ -36,6 +41,7 @@ export interface EnergyTraitBind {
     hasElectricity: boolean;
     hasElectricityX: boolean;
     hasConsumptionX: boolean;
+    hasConsumptionH: boolean;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
     emitChange: (values: EnergyValues) => void;
     electricityIntervalMs?: number;
@@ -43,8 +49,8 @@ export interface EnergyTraitBind {
 }
 
 /**
- * Power and daily consumption for one enrolled endpoint. Electricity and
- * ConsumptionX are request/response, so this trait owns its poll timers.
+ * Power plus consumption samples for one enrolled endpoint. Electricity and
+ * consumption namespaces are request/response, so this trait owns poll timers.
  */
 export class EnergyTrait {
     private readonly bind: EnergyTraitBind;
@@ -79,6 +85,13 @@ export class EnergyTrait {
                 this.consumptionIntervalMs
             );
             this.consumptionTimer.unref();
+        } else if (this.bind.hasConsumptionH && this.consumptionTimer === undefined) {
+            void this.pollHourlyConsumption();
+            this.consumptionTimer = setInterval(
+                () => void this.pollHourlyConsumption(),
+                this.consumptionIntervalMs
+            );
+            this.consumptionTimer.unref();
         }
     }
 
@@ -101,7 +114,19 @@ export class EnergyTrait {
         if (this.bind.hasConsumptionX) {
             await this.pollConsumption();
         }
+        if (this.bind.hasConsumptionH) {
+            await this.pollHourlyConsumption();
+        }
         return { ...this.last };
+    }
+
+    /** Fetches hourly consumption samples when ConsumptionH is available. */
+    async getHourlyConsumption(): Promise<ConsumptionHHour[] | undefined> {
+        if (!this.bind.hasConsumptionH) {
+            return undefined;
+        }
+        await this.pollHourlyConsumption();
+        return this.last.hourly;
     }
 
     handlePush(message: MerossMessage): void {
@@ -127,6 +152,14 @@ export class EnergyTrait {
         }
         if (message.header.namespace === CONSUMPTIONX_NAMESPACE && this.bind.hasConsumptionX) {
             this.applyConsumption(decodeConsumptionXGetAck(message.payload));
+            return;
+        }
+        if (message.header.namespace === CONSUMPTIONH_NAMESPACE && this.bind.hasConsumptionH) {
+            const sample = decodeConsumptionHGetAck(message.payload)
+                .find((entry) => entry.channel === this.bind.channel);
+            if (sample) {
+                this.applyHourlyConsumption(sample.hourly);
+            }
         }
     }
 
@@ -181,6 +214,26 @@ export class EnergyTrait {
         }
     }
 
+    private async pollHourlyConsumption(): Promise<void> {
+        try {
+            const reply = await this.bind.request({
+                namespace: CONSUMPTIONH_NAMESPACE,
+                method: 'GET',
+                payload: encodeConsumptionHGet(this.bind.channel)
+            });
+            if (this.stopped) {
+                return;
+            }
+            const sample = decodeConsumptionHGetAck(reply.payload)
+                .find((entry) => entry.channel === this.bind.channel);
+            if (sample) {
+                this.applyHourlyConsumption(sample.hourly);
+            }
+        } catch {
+            // Next interval retries.
+        }
+    }
+
     private applyElectricity(sample: ElectricitySample): void {
         const values: EnergyValues = {
             power: sample.power,
@@ -212,5 +265,13 @@ export class EnergyTrait {
         }
         this.last = { ...this.last, consumption };
         this.bind.emitChange({ consumption });
+    }
+
+    private applyHourlyConsumption(hourly: ConsumptionHHour[]): void {
+        if (JSON.stringify(this.last.hourly) === JSON.stringify(hourly)) {
+            return;
+        }
+        this.last = { ...this.last, hourly };
+        this.bind.emitChange({ hourly });
     }
 }

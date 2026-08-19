@@ -5,9 +5,11 @@ import { describe, it, type TestContext } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
 import {
+    CONSUMPTIONH_NAMESPACE,
     CONSUMPTIONX_NAMESPACE,
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_NAMESPACE,
+    encodeConsumptionHGet,
     decodeMessage,
     encodeConsumptionXGet,
     encodeElectricityGet,
@@ -18,6 +20,7 @@ import {
 import {
     DEFAULT_CONSUMPTION_INTERVAL_MS,
     DEFAULT_ELECTRICITY_INTERVAL_MS,
+    type EnergyValues,
     EnergyTrait
 } from '../../src/traits/energy';
 
@@ -80,10 +83,31 @@ function consumptionAck(): MerossMessage {
     });
 }
 
+function consumptionHAck(channel = CHANNEL): MerossMessage {
+    return encodeMessage({
+        namespace: CONSUMPTIONH_NAMESPACE,
+        method: 'GETACK',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload: {
+            consumptionH: [{
+                channel,
+                total: 958,
+                data: [
+                    { timestamp: 1_701_000_000, value: 12 },
+                    { timestamp: 1_701_003_600, value: 15 }
+                ]
+            }]
+        }
+    });
+}
+
 function createEnergyHarness(options: {
     hasElectricity?: boolean;
     hasElectricityX?: boolean;
     hasConsumptionX?: boolean;
+    hasConsumptionH?: boolean;
     electricityIntervalMs?: number;
     consumptionIntervalMs?: number;
 } = {}): {
@@ -102,6 +126,7 @@ function createEnergyHarness(options: {
         hasElectricity: options.hasElectricity ?? true,
         hasElectricityX: options.hasElectricityX ?? false,
         hasConsumptionX: options.hasConsumptionX ?? true,
+        hasConsumptionH: options.hasConsumptionH ?? false,
         electricityIntervalMs: options.electricityIntervalMs ?? DEFAULT_ELECTRICITY_INTERVAL_MS,
         consumptionIntervalMs: options.consumptionIntervalMs ?? DEFAULT_CONSUMPTION_INTERVAL_MS,
         request: async (opts) => {
@@ -119,9 +144,12 @@ function createEnergyHarness(options: {
             if (opts.namespace === CONSUMPTIONX_NAMESPACE) {
                 return consumptionAck();
             }
+            if (opts.namespace === CONSUMPTIONH_NAMESPACE) {
+                return consumptionHAck();
+            }
             throw new Error(`unexpected namespace ${opts.namespace}`);
         },
-        emitChange: (values) => endpoint.emit('change', { trait: 'energy', values })
+        emitChange: (values) => endpoint.emit('change', { trait: 'energy', values: { ...values } })
     });
     return { endpoint, trait, requests };
 }
@@ -158,7 +186,7 @@ describe('EnergyTrait.poll', () => {
 
     it('emits change patches for electricity and consumption', async () => {
         const { endpoint, trait } = createEnergyHarness();
-        const changes: Array<{ trait: string; values: Record<string, unknown> }> = [];
+        const changes: Array<{ trait: string; values: EnergyValues }> = [];
         endpoint.on('change', (change) => changes.push(change));
 
         await trait.poll();
@@ -225,6 +253,46 @@ describe('EnergyTrait.poll', () => {
             powerFactor: 0.95
         });
     });
+
+    it('GETs ConsumptionH and stores hourly samples when available', async () => {
+        const { trait, requests } = createEnergyHarness({
+            hasConsumptionX: false,
+            hasConsumptionH: true
+        });
+
+        const snapshot = await trait.poll();
+
+        assert.deepEqual(requests[1], {
+            namespace: CONSUMPTIONH_NAMESPACE,
+            method: 'GET',
+            payload: encodeConsumptionHGet(CHANNEL)
+        });
+        assert.deepEqual(snapshot.hourly, [
+            { timestamp: 1_701_000_000, value: 12 },
+            { timestamp: 1_701_003_600, value: 15 }
+        ]);
+    });
+
+    it('supports on-demand hourly polling for ConsumptionH-only boards', async () => {
+        const { trait, requests } = createEnergyHarness({
+            hasElectricity: false,
+            hasElectricityX: false,
+            hasConsumptionX: false,
+            hasConsumptionH: true
+        });
+
+        const hourly = await trait.getHourlyConsumption();
+
+        assert.deepEqual(requests, [{
+            namespace: CONSUMPTIONH_NAMESPACE,
+            method: 'GET',
+            payload: encodeConsumptionHGet(CHANNEL)
+        }]);
+        assert.deepEqual(hourly, [
+            { timestamp: 1_701_000_000, value: 12 },
+            { timestamp: 1_701_003_600, value: 15 }
+        ]);
+    });
 });
 
 describe('EnergyTrait polling timers', () => {
@@ -281,6 +349,36 @@ describe('EnergyTrait polling timers', () => {
             3
         );
     });
+
+    it('polls ConsumptionH on interval when ConsumptionX is absent', async (t: TestContext) => {
+        t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+        const { trait, requests } = createEnergyHarness({
+            hasElectricity: false,
+            hasElectricityX: false,
+            hasConsumptionX: false,
+            hasConsumptionH: true,
+            consumptionIntervalMs: 1_000
+        });
+        t.after(() => trait.stop());
+
+        trait.start();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.equal(
+            requests.filter((r) => r.namespace === CONSUMPTIONH_NAMESPACE).length,
+            1
+        );
+
+        t.mock.timers.tick(1_000);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.equal(
+            requests.filter((r) => r.namespace === CONSUMPTIONH_NAMESPACE).length,
+            2
+        );
+    });
 });
 
 describe('EnergyTrait PUSH', () => {
@@ -308,5 +406,28 @@ describe('EnergyTrait PUSH', () => {
         trait.handlePush(push);
 
         assert.deepEqual(changes, []);
+    });
+
+    it('applies ConsumptionH PUSH when advertised', () => {
+        const { endpoint, trait } = createEnergyHarness({
+            hasConsumptionX: false,
+            hasConsumptionH: true
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const push = consumptionHAck();
+        push.header.method = 'PUSH';
+        trait.handlePush(push);
+
+        assert.deepEqual(changes, [{
+            trait: 'energy',
+            values: {
+                hourly: [
+                    { timestamp: 1_701_000_000, value: 12 },
+                    { timestamp: 1_701_003_600, value: 15 }
+                ]
+            }
+        }]);
     });
 });

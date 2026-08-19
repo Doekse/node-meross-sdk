@@ -112,6 +112,17 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(endpoint?.parentId, undefined);
     });
 
+    it('adds the energy trait when only ConsumptionH is advertised', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.Control.ConsumptionH': {}
+            }),
+            allPayload: payload('system-all-getack.json')
+        });
+
+        assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'energy']);
+    });
+
     it('turns a 4-gang ToggleX digest into four switch endpoints and skips master 0', () => {
         const strip = loadFixture('togglex-getack-all.json');
         const device = enrollPhysicalDevice({

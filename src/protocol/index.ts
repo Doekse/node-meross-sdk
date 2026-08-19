@@ -67,6 +67,12 @@ export type {
     ElectricitySample
 } from './codecs/electricity';
 export {
+    CONSUMPTIONH_NAMESPACE,
+    decodeConsumptionHGetAck,
+    encodeConsumptionHGet
+} from './codecs/consumptionh';
+export type { ConsumptionHChannel, ConsumptionHHour } from './codecs/consumptionh';
+export {
     CONSUMPTIONX_NAMESPACE,
     decodeConsumptionXGetAck,
     encodeConsumptionXGet
