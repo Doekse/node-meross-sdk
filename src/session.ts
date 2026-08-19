@@ -9,7 +9,7 @@ import {
     decodeAbilityGetAck
 } from './graph';
 import { Inventory } from './inventory';
-import { ProtocolDispatcher } from './protocol';
+import { ProtocolDispatcher, TOGGLEX_NAMESPACE, type MerossMessage } from './protocol';
 import {
     LanHttpTransport,
     MqttTransport,
@@ -104,7 +104,7 @@ export class Session {
             return;
         }
 
-        const dispatcher = new ProtocolDispatcher();
+        const dispatcher = new ProtocolDispatcher((message) => this.handlePush(message));
         const mqtt = new MqttTransport({
             userId: this.token.userId,
             key: this.token.key,
@@ -132,13 +132,32 @@ export class Session {
         this.inventory.replace(rows);
         this.endpoints.clear();
         for (const row of rows) {
-            const traits = row.traits;
-            this.endpoints.set(row.id, new Endpoint({
+            let endpoint!: Endpoint;
+            let switchTrait: SwitchTrait | undefined;
+            if (row.traits.includes('switch')) {
+                const graphEndpoint = this.graph.getEndpoint(row.id)!;
+                const physical = this.graph.getPhysical(graphEndpoint.uuid)!;
+                switchTrait = new SwitchTrait({
+                    uuid: physical.uuid,
+                    channel: graphEndpoint.channel ?? 0,
+                    namespace: 'Appliance.Control.ToggleX' in physical.ability
+                        ? TOGGLEX_NAMESPACE
+                        : 'Appliance.Control.Toggle',
+                    request: (options) => this.router!.request({
+                        uuid: physical.uuid,
+                        ip: physical.innerIp,
+                        ...options
+                    }),
+                    emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
+                });
+            }
+            endpoint = new Endpoint({
                 id: row.id,
-                traits,
-                switch: traits.includes('switch') ? new SwitchTrait() : undefined,
-                energy: traits.includes('energy') ? new EnergyTrait() : undefined
-            }));
+                traits: row.traits,
+                switch: switchTrait,
+                energy: row.traits.includes('energy') ? new EnergyTrait() : undefined
+            });
+            this.endpoints.set(row.id, endpoint);
         }
     }
 
@@ -160,6 +179,12 @@ export class Session {
             throw new MerossError(`Unknown endpoint: ${id}`, 'ENDPOINT_NOT_FOUND');
         }
         return endpoint;
+    }
+
+    private handlePush(message: MerossMessage): void {
+        for (const endpoint of this.endpoints.values()) {
+            endpoint.switch?.handlePush(message);
+        }
     }
 
     private async enroll(cloudDevice: CloudDevice): Promise<void> {
