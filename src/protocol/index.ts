@@ -32,6 +32,22 @@ export type {
     ToggleXSetOptions
 } from './codecs/togglex';
 export {
+    ELECTRICITY_NAMESPACE,
+    decodeElectricityGetAck,
+    encodeElectricityGet
+} from './codecs/electricity';
+export type {
+    ElectricityConfig,
+    ElectricityGetOptions,
+    ElectricitySample
+} from './codecs/electricity';
+export {
+    CONSUMPTIONX_NAMESPACE,
+    decodeConsumptionXGetAck,
+    encodeConsumptionXGet
+} from './codecs/consumptionx';
+export type { ConsumptionXDay } from './codecs/consumptionx';
+export {
     HUB_TOGGLEX_NAMESPACE,
     MULTIPLE_NAMESPACE,
     SYSTEM_ALL_NAMESPACE,

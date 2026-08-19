@@ -112,7 +112,25 @@ function enrollmentAck(sent: MerossMessage): MerossMessage {
         });
     }
     if (sent.header.namespace === SYSTEM_ALL_NAMESPACE) {
-        return ackFor(sent, 'GETACK', loadFixture('system-all-getack.json'));
+        const payload = structuredClone(loadFixture('system-all-getack.json')) as {
+            all: { system: { firmware: { innerIp?: string } } };
+        };
+        // Session tests have no LAN HTTP server; drop innerIp so energy polls stay on MQTT.
+        delete payload.all.system.firmware.innerIp;
+        return ackFor(sent, 'GETACK', payload);
+    }
+    if (sent.header.namespace === 'Appliance.Control.Electricity') {
+        return ackFor(sent, 'GETACK', {
+            electricity: {
+                channel: 0,
+                power: 0,
+                current: 0,
+                voltage: 2300
+            }
+        });
+    }
+    if (sent.header.namespace === 'Appliance.Control.ConsumptionX') {
+        return ackFor(sent, 'GETACK', { consumptionx: [] });
     }
     return ackFor(sent, 'GETACK');
 }
@@ -167,6 +185,8 @@ async function connectSession(session: Session, clientRef: { current?: FakeMqttC
     await ackNextGet(client, acked);
     await ackNextGet(client, acked);
     await connectPromise;
+    await ackNextGet(client, acked);
+    await ackNextGet(client, acked);
 }
 
 describe('Session.login and restore', () => {
@@ -223,6 +243,7 @@ describe('Session.connect', () => {
         assert.equal(rows[0]?.classHint, 'socket');
         assert.deepEqual(rows[0]?.traits, ['switch', 'energy']);
         assert.equal(rows[0]?.online, true);
+        await session.disconnect();
     });
 
     it('endpoint returns a trait-bearing Endpoint after connect', async () => {
@@ -246,6 +267,7 @@ describe('Session.connect', () => {
             () => session.endpoint('missing'),
             (err: unknown) => err instanceof MerossError && err.code === 'ENDPOINT_NOT_FOUND'
         );
+        await session.disconnect();
     });
 
     it('disconnect closes MQTT and connect is idempotent', async () => {

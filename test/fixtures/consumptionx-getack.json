@@ -1,0 +1,26 @@
+{
+  "header": {
+    "messageId": "a5db0685d553a00da610754feb6e2660",
+    "namespace": "Appliance.Control.ConsumptionX",
+    "method": "GETACK",
+    "payloadVersion": 1,
+    "from": "/appliance/1802115453481929080434298f152e00/publish",
+    "timestamp": 1673855155,
+    "timestampMs": 192,
+    "sign": "581d21cd1da01878c280be76d37c47a7"
+  },
+  "payload": {
+    "consumptionx": [
+      {
+        "date": "2018-03-05",
+        "value": 1000,
+        "time": 1673855028
+      },
+      {
+        "date": "2018-03-06",
+        "value": 1000,
+        "time": 1673855028
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "header": {
+    "messageId": "7048c18d41871bf0eda3e54dee3f7",
+    "namespace": "Appliance.Control.Electricity",
+    "timestamp": 148222212335,
+    "method": "GET",
+    "sign": "886jc18d7s871bf080a3e54dfe6f4",
+    "from": "/app/123-1234567887654321/subscribe"
+  },
+  "payload": {
+    "electricity": {
+      "channel": 0
+    }
+  }
+}

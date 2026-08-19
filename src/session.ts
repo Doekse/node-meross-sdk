@@ -14,7 +14,8 @@ import {
     LanHttpTransport,
     MqttTransport,
     TransportRouter,
-    type MqttConnectFn
+    type MqttConnectFn,
+    type RoutedRequestOptions
 } from './transport';
 import { EnergyTrait } from './traits/energy';
 import { SwitchTrait } from './traits/switch';
@@ -134,30 +135,44 @@ export class Session {
         for (const row of rows) {
             let endpoint!: Endpoint;
             let switchTrait: SwitchTrait | undefined;
+            let energyTrait: EnergyTrait | undefined;
+            const graphEndpoint = this.graph.getEndpoint(row.id)!;
+            const physical = this.graph.getPhysical(graphEndpoint.uuid)!;
+            const channel = graphEndpoint.channel ?? 0;
+            const request = (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) =>
+                this.router!.request({ uuid: physical.uuid, ip: physical.innerIp, ...options });
             if (row.traits.includes('switch')) {
-                const graphEndpoint = this.graph.getEndpoint(row.id)!;
-                const physical = this.graph.getPhysical(graphEndpoint.uuid)!;
                 switchTrait = new SwitchTrait({
                     uuid: physical.uuid,
-                    channel: graphEndpoint.channel ?? 0,
+                    channel,
                     namespace: 'Appliance.Control.ToggleX' in physical.ability
                         ? TOGGLEX_NAMESPACE
                         : 'Appliance.Control.Toggle',
-                    request: (options) => this.router!.request({
-                        uuid: physical.uuid,
-                        ip: physical.innerIp,
-                        ...options
-                    }),
+                    request,
                     emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
+                });
+            }
+            if (row.traits.includes('energy')) {
+                energyTrait = new EnergyTrait({
+                    uuid: physical.uuid,
+                    channel,
+                    hasElectricity: 'Appliance.Control.Electricity' in physical.ability,
+                    hasConsumptionX: 'Appliance.Control.ConsumptionX' in physical.ability,
+                    request,
+                    emitChange: (values) => endpoint.emit('change', {
+                        trait: 'energy',
+                        values: { ...values }
+                    })
                 });
             }
             endpoint = new Endpoint({
                 id: row.id,
                 traits: row.traits,
                 switch: switchTrait,
-                energy: row.traits.includes('energy') ? new EnergyTrait() : undefined
+                energy: energyTrait
             });
             this.endpoints.set(row.id, endpoint);
+            energyTrait?.start();
         }
     }
 
@@ -165,6 +180,9 @@ export class Session {
      * Closes transports without discarding the stored token.
      */
     async disconnect(): Promise<void> {
+        for (const endpoint of this.endpoints.values()) {
+            endpoint.energy?.stop();
+        }
         const router = this.router;
         this.router = undefined;
         await router?.disconnect();
@@ -184,6 +202,7 @@ export class Session {
     private handlePush(message: MerossMessage): void {
         for (const endpoint of this.endpoints.values()) {
             endpoint.switch?.handlePush(message);
+            endpoint.energy?.handlePush(message);
         }
     }
 

@@ -1,0 +1,13 @@
+{
+  "header": {
+    "messageId": "e41c0fd0cb56bf9e1004f58718290c4a",
+    "payloadVersion": 1,
+    "namespace": "Appliance.Control.ConsumptionX",
+    "method": "GET",
+    "triggerSrc": "iOS",
+    "timestamp": 1673925168,
+    "from": "cloud/sub/OeXxGicMltVwKK09/d9f323c540b6ee0e",
+    "sign": "1e1ace716ed31010aa3438081289594f"
+  },
+  "payload": {}
+}
