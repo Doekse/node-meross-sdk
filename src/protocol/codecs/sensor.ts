@@ -10,6 +10,7 @@ export const HUB_SENSOR_ALERT_NAMESPACE = 'Appliance.Hub.Sensor.Alert';
 export const HUB_SENSOR_ALL_NAMESPACE = 'Appliance.Hub.Sensor.All';
 export const HUB_BATTERY_NAMESPACE = 'Appliance.Hub.Battery';
 export const SENSOR_LATESTX_NAMESPACE = 'Appliance.Control.Sensor.LatestX';
+export const SMOKE_CONFIG_NAMESPACE = 'Appliance.Control.Smoke.Config';
 
 export interface SensorTempHumState {
     id: string;
@@ -78,6 +79,13 @@ export interface LatestXState {
     times?: number;
 }
 
+export interface SmokeConfigState {
+    channel: number;
+    subId?: string;
+    dndEnabled?: boolean;
+    detectEnabled?: boolean;
+}
+
 export interface SensorAdjustSetOptions {
     id: string;
     temperature?: number;
@@ -99,6 +107,18 @@ export interface LatestXGetOptions {
     channel: number;
     subId?: string;
     keys: string[];
+}
+
+export interface SmokeConfigGetOptions {
+    channel: number;
+    subId?: string;
+}
+
+export interface SmokeConfigSetOptions {
+    channel: number;
+    subId?: string;
+    dndEnabled?: boolean;
+    detectEnabled?: boolean;
 }
 
 function encodeArray(key: string, entry: Record<string, unknown>): MerossPayload {
@@ -450,4 +470,55 @@ function latestObject(raw: unknown): Record<string, unknown> | undefined {
         return undefined;
     }
     return raw[0] as Record<string, unknown>;
+}
+
+export function encodeSmokeConfigGet(options: SmokeConfigGetOptions): MerossPayload {
+    const entry: Record<string, unknown> = { channel: options.channel };
+    if (options.subId) {
+        entry.subId = options.subId;
+    }
+    return encodeArray('config', entry);
+}
+
+export function encodeSmokeConfigSet(options: SmokeConfigSetOptions): MerossPayload {
+    const entry: Record<string, unknown> = { channel: options.channel };
+    if (options.subId) {
+        entry.subId = options.subId;
+    }
+    if (options.dndEnabled !== undefined) {
+        entry.dnd = { enable: options.dndEnabled ? 1 : 2 };
+    }
+    if (options.detectEnabled !== undefined) {
+        entry.detect = { enable: options.detectEnabled ? 1 : 2 };
+    }
+    return encodeArray('config', entry);
+}
+
+export function decodeSmokeConfigGetAck(payload: MerossPayload): SmokeConfigState[] {
+    return decodeSmokeConfig(payload);
+}
+
+export function decodeSmokeConfigPush(payload: MerossPayload): SmokeConfigState[] {
+    return decodeSmokeConfig(payload);
+}
+
+function decodeSmokeConfig(payload: MerossPayload): SmokeConfigState[] {
+    return decodeArray(payload, 'config', 'Control.Smoke.Config').map((item) => {
+        if (typeof item.channel !== 'number') {
+            throw new ProtocolError('Control.Smoke.Config channel is required');
+        }
+        const result: SmokeConfigState = { channel: item.channel };
+        if (typeof item.subId === 'string') {
+            result.subId = item.subId;
+        }
+        const dnd = nestedNumber(item.dnd, 'enable');
+        if (dnd !== undefined) {
+            result.dndEnabled = dnd === 1;
+        }
+        const detect = nestedNumber(item.detect, 'enable');
+        if (detect !== undefined) {
+            result.detectEnabled = detect === 1;
+        }
+        return result;
+    });
 }

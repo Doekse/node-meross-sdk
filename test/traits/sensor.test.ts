@@ -11,6 +11,7 @@ import {
     HUB_SENSOR_SMOKE_NAMESPACE,
     HUB_SENSOR_TEMPHUM_NAMESPACE,
     HUB_SENSOR_WATERLEAK_NAMESPACE,
+    SMOKE_CONFIG_NAMESPACE,
     SENSOR_LATESTX_NAMESPACE,
     encodeMessage,
     type MerossMessage
@@ -31,7 +32,8 @@ const HUB_SENSOR_NAMESPACES = new Set([
     HUB_SENSOR_ALERT_NAMESPACE,
     HUB_SENSOR_ALL_NAMESPACE,
     HUB_BATTERY_NAMESPACE,
-    SENSOR_LATESTX_NAMESPACE
+    SENSOR_LATESTX_NAMESPACE,
+    SMOKE_CONFIG_NAMESPACE
 ]);
 
 function createHarness(
@@ -214,6 +216,32 @@ describe('SensorTrait — smoke PUSH', () => {
         assert.equal(changes[0].smoke, false);
         assert.equal(changes[0].smokeStatus, 'ok');
     });
+
+    it('applies smoke DND and detect values from Smoke.Config PUSH', () => {
+        const { trait, changes } = createHarness('smoke');
+        trait.handlePush(pushMessage(SMOKE_CONFIG_NAMESPACE, {
+            config: [{
+                channel: 0,
+                subId: SUB_DEVICE_ID,
+                dnd: { enable: 1 },
+                detect: { enable: 2 }
+            }]
+        }));
+        assert.equal(changes[0].smokeDnd, true);
+        assert.equal(changes[0].smokeDetect, false);
+    });
+
+    it('ignores Smoke.Config PUSH for a different sub-device id', () => {
+        const { trait, changes } = createHarness('smoke');
+        trait.handlePush(pushMessage(SMOKE_CONFIG_NAMESPACE, {
+            config: [{
+                channel: 0,
+                subId: 'other-id',
+                dnd: { enable: 1 }
+            }]
+        }));
+        assert.equal(changes.length, 0);
+    });
 });
 
 describe('SensorTrait — battery PUSH', () => {
@@ -285,6 +313,19 @@ describe('SensorTrait — start() initial GET', () => {
         assert.ok(tempChange, 'should emit temperature');
         assert.equal(tempChange!.temperature, 25);
         assert.equal(tempChange!.humidity, 70);
+    });
+
+    it('GETs Smoke.Config when advertised for smoke family', async () => {
+        const { trait, requests } = createHarness('smoke', {
+            smokeAlarm: [{ id: SUB_DEVICE_ID, status: 0 }],
+            config: [{ channel: 0, subId: SUB_DEVICE_ID, dnd: { enable: 1 } }]
+        }, new Set([HUB_SENSOR_SMOKE_NAMESPACE, SMOKE_CONFIG_NAMESPACE]));
+        trait.start();
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+        const namespaces = requests.map((r) => r.header.namespace);
+        assert.ok(namespaces.includes(HUB_SENSOR_SMOKE_NAMESPACE), 'should GET Hub.Sensor.Smoke');
+        assert.ok(namespaces.includes(SMOKE_CONFIG_NAMESPACE), 'should GET Control.Smoke.Config');
     });
 });
 
@@ -365,6 +406,24 @@ describe('SensorTrait — extras', () => {
         assert.equal(changes[0].smokeStatus, 'test');
     });
 
+    it('setSmokeDnd() SETs Smoke.Config dnd enable', async () => {
+        const { trait, requests, changes } = createHarness('smoke');
+        await trait.setSmokeDnd(true);
+        assert.equal(requests[0].header.namespace, SMOKE_CONFIG_NAMESPACE);
+        assert.equal(requests[0].header.method, 'SET');
+        const entry = (requests[0].payload.config as Array<Record<string, unknown>>)[0];
+        assert.deepEqual(entry.dnd, { enable: 1 });
+        assert.equal(changes[0].smokeDnd, true);
+    });
+
+    it('setSmokeDetect() SETs Smoke.Config detect enable', async () => {
+        const { trait, requests, changes } = createHarness('smoke');
+        await trait.setSmokeDetect(false);
+        const entry = (requests[0].payload.config as Array<Record<string, unknown>>)[0];
+        assert.deepEqual(entry.detect, { enable: 2 });
+        assert.equal(changes[0].smokeDetect, false);
+    });
+
     it('setCalibration is a no-op on contact sensors', async () => {
         const { trait, requests } = createHarness('contact');
         await trait.setCalibration({ temperature: 1 });
@@ -374,6 +433,18 @@ describe('SensorTrait — extras', () => {
     it('setCalibration is a no-op when Adjust is not advertised', async () => {
         const { trait, requests } = createHarness('tempHum', {}, new Set());
         await trait.setCalibration({ temperature: 1 });
+        assert.equal(requests.length, 0);
+    });
+
+    it('setSmokeDnd is a no-op on contact sensors', async () => {
+        const { trait, requests } = createHarness('contact');
+        await trait.setSmokeDnd(true);
+        assert.equal(requests.length, 0);
+    });
+
+    it('setSmokeDnd is a no-op when Smoke.Config is not advertised', async () => {
+        const { trait, requests } = createHarness('smoke', {}, new Set([HUB_SENSOR_SMOKE_NAMESPACE]));
+        await trait.setSmokeDnd(true);
         assert.equal(requests.length, 0);
     });
 

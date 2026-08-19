@@ -285,6 +285,7 @@ export {
     HUB_SENSOR_ALL_NAMESPACE,
     HUB_BATTERY_NAMESPACE,
     SENSOR_LATESTX_NAMESPACE,
+    SMOKE_CONFIG_NAMESPACE,
     encodeSensorTempHumGet,
     decodeSensorTempHumGetAck,
     decodeSensorTempHumPush,
@@ -314,7 +315,11 @@ export {
     decodeSensorAllPush,
     encodeLatestXGet,
     decodeLatestXGetAck,
-    decodeLatestXPush
+    decodeLatestXPush,
+    encodeSmokeConfigGet,
+    encodeSmokeConfigSet,
+    decodeSmokeConfigGetAck,
+    decodeSmokeConfigPush
 } from './codecs/sensor';
 export type {
     SensorTempHumState,
@@ -326,5 +331,8 @@ export type {
     SensorAlertBand,
     SensorAlertState,
     SensorAllState,
-    LatestXState
+    LatestXState,
+    SmokeConfigState,
+    SmokeConfigGetOptions,
+    SmokeConfigSetOptions
 } from './codecs/sensor';

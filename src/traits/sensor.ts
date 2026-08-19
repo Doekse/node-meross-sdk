@@ -8,6 +8,9 @@ import {
     HUB_SENSOR_TEMPHUM_NAMESPACE,
     HUB_SENSOR_WATERLEAK_NAMESPACE,
     SENSOR_LATESTX_NAMESPACE,
+    SMOKE_CONFIG_NAMESPACE,
+    decodeSmokeConfigGetAck,
+    decodeSmokeConfigPush,
     decodeBatteryGetAck,
     decodeBatteryPush,
     decodeLatestXGetAck,
@@ -38,12 +41,15 @@ import {
     encodeSensorSmokeSet,
     encodeSensorTempHumGet,
     encodeSensorWaterLeakGet,
+    encodeSmokeConfigGet,
+    encodeSmokeConfigSet,
     type MerossMessage,
     type MerossPayload,
     type SensorAlertBand,
     type SensorAlertState,
     type SensorAllState,
-    type SensorSmokeState
+    type SensorSmokeState,
+    type SmokeConfigState
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
 
@@ -78,6 +84,8 @@ export interface SensorValues {
     smokeError?: boolean;
     smokeMuted?: boolean;
     interConn?: boolean;
+    smokeDnd?: boolean;
+    smokeDetect?: boolean;
     battery?: number;
     calibration?: number;
     humidityCalibration?: number;
@@ -176,6 +184,22 @@ export class SensorTrait {
     }
 
     /**
+     * Enables or disables smoke detector Do Not Disturb mode. No-op unless this
+     * is a smoke child and Control.Smoke.Config is advertised.
+     */
+    async setSmokeDnd(enabled: boolean): Promise<SensorValues> {
+        return this.setSmokeConfig({ dndEnabled: enabled });
+    }
+
+    /**
+     * Enables or disables the smoke detector periodic self-detect mode. No-op
+     * unless this is a smoke child and Control.Smoke.Config is advertised.
+     */
+    async setSmokeDetect(enabled: boolean): Promise<SensorValues> {
+        return this.setSmokeConfig({ detectEnabled: enabled });
+    }
+
+    /**
      * Applies a firmware PUSH for this endpoint.
      */
     handlePush(message: MerossMessage): void {
@@ -210,6 +234,12 @@ export class SensorTrait {
         if (ns === HUB_SENSOR_SMOKE_NAMESPACE && family === 'smoke') {
             for (const entry of decodeSensorSmokePush(payload)) {
                 if (entry.id === id) this.applyChange(smokePatch(entry));
+            }
+            return;
+        }
+        if (ns === SMOKE_CONFIG_NAMESPACE && family === 'smoke' && this.has(ns)) {
+            for (const entry of decodeSmokeConfigPush(payload)) {
+                if (entry.subId === id) this.applyChange(smokeConfigPatch(entry));
             }
             return;
         }
@@ -281,6 +311,24 @@ export class SensorTrait {
             namespace: HUB_SENSOR_SMOKE_NAMESPACE,
             method: 'SET',
             payload: encodeSensorSmokeSet({ id: this.bind.subDeviceId, status })
+        });
+        this.applyChange(patch);
+        return patch;
+    }
+
+    private async setSmokeConfig(options: { dndEnabled?: boolean; detectEnabled?: boolean }): Promise<SensorValues> {
+        const patch = smokeConfigPatch(options);
+        if (this.bind.family !== 'smoke' || !this.has(SMOKE_CONFIG_NAMESPACE)) {
+            return patch;
+        }
+        await this.bind.request({
+            namespace: SMOKE_CONFIG_NAMESPACE,
+            method: 'SET',
+            payload: encodeSmokeConfigSet({
+                channel: 0,
+                subId: this.bind.subDeviceId,
+                ...options
+            })
         });
         this.applyChange(patch);
         return patch;
@@ -387,6 +435,16 @@ export class SensorTrait {
                 )
             );
         }
+        if (family === 'smoke') {
+            extras.push(this.pollHubNs(
+                SMOKE_CONFIG_NAMESPACE,
+                encodeSmokeConfigGet({ channel: 0, subId: subDeviceId }),
+                (payload) => {
+                    const entry = decodeSmokeConfigGetAck(payload).find((e) => e.subId === subDeviceId);
+                    if (entry) this.applyChange(smokeConfigPatch(entry));
+                }
+            ));
+        }
         await Promise.all(extras);
     }
 
@@ -459,6 +517,17 @@ function smokePatch(entry: SensorSmokeState): SensorValues {
     };
     if (entry.interConn !== undefined) {
         patch.interConn = entry.interConn !== 0;
+    }
+    return patch;
+}
+
+function smokeConfigPatch(entry: { dndEnabled?: boolean; detectEnabled?: boolean }): SensorValues {
+    const patch: SensorValues = {};
+    if (entry.dndEnabled !== undefined) {
+        patch.smokeDnd = entry.dndEnabled;
+    }
+    if (entry.detectEnabled !== undefined) {
+        patch.smokeDetect = entry.detectEnabled;
     }
     return patch;
 }
