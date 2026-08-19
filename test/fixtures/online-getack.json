@@ -1,0 +1,21 @@
+{
+  "header": {
+    "messageId": "ad8195c12fe55f623c3839b8db059bde",
+    "namespace": "Appliance.System.Online",
+    "triggerSrc": "AndroidLocal",
+    "method": "GETACK",
+    "payloadVersion": 1,
+    "from": "/appliance/2206138957096651080248e1e99705a4/publish",
+    "uuid": "2206138957096651080248e1e99705a4",
+    "timestamp": 1646124429,
+    "timestampMs": 562,
+    "sign": "3df0212383dde90b5df6ce18d3e58efb"
+  },
+  "payload": {
+    "online": {
+      "status": 1,
+      "bindId": "yBFSl4Gt6RKVqyHa",
+      "who": 1
+    }
+  }
+}

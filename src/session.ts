@@ -8,6 +8,7 @@ import {
     SYSTEM_ALL_NAMESPACE,
     decodeAbilityGetAck
 } from './graph';
+import { DeviceAvailability } from './graph/availability';
 import { Inventory } from './inventory';
 import { ProtocolDispatcher, TOGGLEX_NAMESPACE, type MerossMessage } from './protocol';
 import {
@@ -57,6 +58,7 @@ export class Session {
     private readonly mqttConnect?: MqttConnectFn;
     private readonly graph = new DeviceGraph();
     private readonly endpoints = new Map<string, Endpoint>();
+    private readonly availability = new Map<string, DeviceAvailability>();
     private router: TransportRouter | undefined;
 
     private constructor(
@@ -105,7 +107,10 @@ export class Session {
             return;
         }
 
-        const dispatcher = new ProtocolDispatcher((message) => this.handlePush(message));
+        const dispatcher = new ProtocolDispatcher({
+            onPush: (message) => this.handlePush(message),
+            onInbound: (message) => this.handleInbound(message)
+        });
         const mqtt = new MqttTransport({
             userId: this.token.userId,
             key: this.token.key,
@@ -132,6 +137,8 @@ export class Session {
         const rows = this.graph.inventoryRows();
         this.inventory.replace(rows);
         this.endpoints.clear();
+        this.stopAvailability();
+        const endpointsByUuid = new Map<string, Endpoint[]>();
         for (const row of rows) {
             let endpoint!: Endpoint;
             let switchTrait: SwitchTrait | undefined;
@@ -169,10 +176,35 @@ export class Session {
                 id: row.id,
                 traits: row.traits,
                 switch: switchTrait,
-                energy: energyTrait
+                energy: energyTrait,
+                initialOnline: row.online
             });
             this.endpoints.set(row.id, endpoint);
             energyTrait?.start();
+            if (graphEndpoint.subDeviceId) {
+                endpoint.setAvailability(row.online, true);
+            } else {
+                const group = endpointsByUuid.get(physical.uuid) ?? [];
+                group.push(endpoint);
+                endpointsByUuid.set(physical.uuid, group);
+            }
+        }
+        for (const [uuid, endpoints] of endpointsByUuid) {
+            const physical = this.graph.getPhysical(uuid)!;
+            const monitor = new DeviceAvailability({
+                uuid,
+                initialOnline: physical.online,
+                endpoints,
+                request: (namespace, method, payload) => this.router!.request({
+                    uuid,
+                    ip: physical.innerIp,
+                    namespace,
+                    method,
+                    payload: payload ?? {}
+                })
+            });
+            this.availability.set(uuid, monitor);
+            monitor.start();
         }
     }
 
@@ -183,6 +215,7 @@ export class Session {
         for (const endpoint of this.endpoints.values()) {
             endpoint.energy?.stop();
         }
+        this.stopAvailability();
         const router = this.router;
         this.router = undefined;
         await router?.disconnect();
@@ -204,6 +237,19 @@ export class Session {
             endpoint.switch?.handlePush(message);
             endpoint.energy?.handlePush(message);
         }
+    }
+
+    private handleInbound(message: MerossMessage): void {
+        for (const monitor of this.availability.values()) {
+            monitor.handleMessage(message);
+        }
+    }
+
+    private stopAvailability(): void {
+        for (const monitor of this.availability.values()) {
+            monitor.stop();
+        }
+        this.availability.clear();
     }
 
     private async enroll(cloudDevice: CloudDevice): Promise<void> {

@@ -3,6 +3,11 @@ import { PendingRequests } from './pending';
 
 export type DispatchResult = 'reply' | 'push' | 'stale' | 'ignored';
 
+export interface DispatcherHandlers {
+    onPush?: (message: MerossMessage) => void;
+    onInbound?: (message: MerossMessage) => void;
+}
+
 /**
  * Match replies by `messageId`; apply unmatched PUSH in header-time order so
  * MQTT reordering cannot overwrite a newer update. One dispatcher serves the
@@ -11,10 +16,19 @@ export type DispatchResult = 'reply' | 'push' | 'stale' | 'ignored';
 export class ProtocolDispatcher {
     readonly pending = new PendingRequests();
     private readonly lastTs = new Map<string, number>();
+    private readonly handlers: DispatcherHandlers;
 
-    constructor(private readonly onPush?: (message: MerossMessage) => void) {}
+    constructor(handlers?: DispatcherHandlers | ((message: MerossMessage) => void)) {
+        if (typeof handlers === 'function') {
+            this.handlers = { onPush: handlers };
+        } else {
+            this.handlers = handlers ?? {};
+        }
+    }
 
     handle(message: MerossMessage): DispatchResult {
+        this.handlers.onInbound?.(message);
+
         if (this.pending.settle(message)) {
             return 'reply';
         }
@@ -31,7 +45,7 @@ export class ProtocolDispatcher {
             return 'stale';
         }
         this.lastTs.set(key, ts);
-        this.onPush?.(message);
+        this.handlers.onPush?.(message);
         return 'push';
     }
 }

@@ -1,0 +1,106 @@
+import type { Endpoint } from '../endpoint';
+import type { MerossMessage, MerossPayload } from '../protocol/message';
+import {
+    ONLINE_NAMESPACE,
+    decodeOnlineStatus
+} from '../protocol/codecs/online';
+import { Heartbeat } from './heartbeat';
+
+const RUNTIME_NAMESPACE = 'Appliance.System.Runtime';
+
+export interface DeviceAvailabilityOptions {
+    uuid: string;
+    initialOnline: boolean;
+    endpoints: readonly Endpoint[];
+    request: (
+        namespace: string,
+        method: 'GET',
+        payload?: MerossPayload
+    ) => Promise<MerossMessage>;
+    heartbeatIntervalMs?: number;
+    now?: () => number;
+}
+
+/**
+ * Tracks one physical board and fans out `availability` to its endpoints.
+ */
+export class DeviceAvailability {
+    private readonly uuid: string;
+    private readonly endpoints: readonly Endpoint[];
+    private readonly request: DeviceAvailabilityOptions['request'];
+    private readonly heartbeat: Heartbeat;
+
+    private online: boolean;
+
+    constructor(options: DeviceAvailabilityOptions) {
+        this.uuid = options.uuid;
+        this.endpoints = options.endpoints;
+        this.request = options.request;
+        this.online = options.initialOnline;
+        this.heartbeat = new Heartbeat({
+            intervalMs: options.heartbeatIntervalMs,
+            isOnline: () => this.online,
+            pollOnline: () => this.pollOnline(),
+            onSilenceOffline: () => this.setOnline(false),
+            now: options.now
+        });
+    }
+
+    start(): void {
+        for (const endpoint of this.endpoints) {
+            endpoint.setAvailability(this.online, true);
+        }
+        this.heartbeat.start();
+    }
+
+    stop(): void {
+        this.heartbeat.stop();
+    }
+
+    handleMessage(message: MerossMessage): void {
+        const uuid = message.header.uuid
+            ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
+        if (uuid !== this.uuid) {
+            return;
+        }
+
+        this.heartbeat.recordResponse();
+
+        const { namespace, method } = message.header;
+        if (namespace === ONLINE_NAMESPACE && (method === 'PUSH' || method === 'GETACK')) {
+            const status = decodeOnlineStatus(message.payload);
+            if (status !== undefined) {
+                this.setOnline(status === 1);
+            }
+            return;
+        }
+
+        if (namespace === RUNTIME_NAMESPACE && method === 'GETACK') {
+            const runtime = message.payload.runtime;
+            if (runtime && typeof runtime === 'object' && !Array.isArray(runtime)) {
+                const iotStatus = (runtime as { iotStatus?: unknown }).iotStatus;
+                if (iotStatus === 2) {
+                    this.setOnline(false);
+                }
+            }
+        }
+    }
+
+    private async pollOnline(): Promise<void> {
+        const reply = await this.request(ONLINE_NAMESPACE, 'GET', {});
+        const status = decodeOnlineStatus(reply.payload);
+        if (status !== undefined) {
+            this.setOnline(status === 1);
+        }
+    }
+
+    private setOnline(online: boolean): void {
+        if (this.online === online) {
+            return;
+        }
+        this.online = online;
+        for (const endpoint of this.endpoints) {
+            endpoint.setAvailability(online);
+        }
+    }
+}

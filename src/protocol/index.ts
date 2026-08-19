@@ -17,7 +17,8 @@ export type {
 } from './message';
 export { DEFAULT_COMMAND_TIMEOUT_MS, PendingRequests } from './pending';
 export { ProtocolDispatcher } from './dispatcher';
-export type { DispatchResult } from './dispatcher';
+export type { DispatchResult, DispatcherHandlers } from './dispatcher';
+export { ONLINE_NAMESPACE, decodeOnlineStatus } from './codecs/online';
 export {
     TOGGLEX_ALL_CHANNELS,
     TOGGLEX_NAMESPACE,

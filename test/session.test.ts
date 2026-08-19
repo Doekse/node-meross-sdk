@@ -270,6 +270,37 @@ describe('Session.connect', () => {
         await session.disconnect();
     });
 
+    it('updates endpoint availability from System.Online PUSH', async () => {
+        const { fetchImpl } = createCloudFetch();
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+
+        await connectSession(session, clientRef);
+
+        const endpoint = session.endpoint(`${UUID}:0`);
+        const availability: boolean[] = [];
+        endpoint.on('availability', (online) => availability.push(online));
+
+        const client = clientRef.current!;
+        client.deliver(encodeMessage({
+            namespace: 'Appliance.System.Online',
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { online: { status: 2 } }
+        }));
+
+        assert.deepEqual(availability, [false]);
+        await session.disconnect();
+    });
+
     it('disconnect closes MQTT and connect is idempotent', async () => {
         const { fetchImpl } = createCloudFetch();
         const clientRef: { current?: FakeMqttClient } = {};

@@ -1,0 +1,21 @@
+{
+  "header": {
+    "messageId": "42706118d71768d18c61ef2264e503eb",
+    "namespace": "Appliance.System.Runtime",
+    "method": "GETACK",
+    "payloadVersion": 1,
+    "from": "/appliance/2206138957096651080248e1e99705a4/publish",
+    "uuid": "2206138957096651080248e1e99705a4",
+    "timestamp": 1674109636,
+    "timestampMs": 282,
+    "sign": "49ede81006fac1dd2d530e0c2ae2b74e"
+  },
+  "payload": {
+    "runtime": {
+      "signal": 50,
+      "netType": 2,
+      "iotStatus": 2,
+      "ssid": "test"
+    }
+  }
+}

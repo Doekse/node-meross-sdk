@@ -15,6 +15,7 @@ export interface EndpointOptions {
     traits?: readonly TraitName[];
     switch?: SwitchTrait;
     energy?: EnergyTrait;
+    initialOnline?: boolean;
 }
 
 interface EndpointEvents {
@@ -32,11 +33,22 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     readonly switch?: SwitchTrait;
     readonly energy?: EnergyTrait;
 
+    private online: boolean;
+
     constructor(options: EndpointOptions) {
         super();
         this.id = options.id;
         this.traits = options.traits ?? [];
         this.switch = options.switch;
         this.energy = options.energy;
+        this.online = options.initialOnline ?? true;
+    }
+
+    setAvailability(online: boolean, force = false): void {
+        if (!force && this.online === online) {
+            return;
+        }
+        this.online = online;
+        this.emit('availability', online);
     }
 }
