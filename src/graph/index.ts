@@ -17,10 +17,19 @@ export { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from './system-all';
 export type { SystemAll } from './system-all';
 
 const CLIMATE_SUBDEVICES = new Set(['mts100', 'mts100v3', 'mts150', 'mts150p']);
-const SPRINKLER_SUBDEVICES = new Set(['mst100']);
 const SENSOR_SUBDEVICES = new Set([
     'ms100', 'ms100f', 'ms130', 'ms200', 'ms400', 'ms405', 'ma151', 'gs559'
 ]);
+
+/** meross_lan digest keys that differ from cloud subDeviceType strings. */
+const HUB_MODEL_ALIASES: Record<string, string> = {
+    mst: 'mst100',
+    temphum: 'ms100',
+    temphumi: 'ms130',
+    doorwindow: 'ms200',
+    waterleak: 'ms400',
+    smokealarm: 'gs559'
+};
 
 export interface EnrollInput {
     abilityPayload: MerossPayload;
@@ -124,17 +133,38 @@ export class DeviceGraph {
 
     inventoryRows(): InventoryRow[] {
         return [...this.physical.values()].flatMap((device) =>
-            device.endpoints.map((endpoint) => ({
-                id: endpoint.id,
-                name: endpoint.name,
-                model: endpoint.model,
-                classHint: endpoint.classHint,
-                traits: [...endpoint.traits],
-                online: endpoint.online,
-                ...(endpoint.parentId ? { parentId: endpoint.parentId } : {})
-            }))
+            device.endpoints
+                .filter((endpoint) => endpoint.traits.length > 0)
+                .map((endpoint) => ({
+                    id: endpoint.id,
+                    name: endpoint.name,
+                    model: endpoint.model,
+                    classHint: endpoint.classHint,
+                    traits: [...endpoint.traits],
+                    online: endpoint.online,
+                    ...(endpoint.parentId ? { parentId: endpoint.parentId } : {})
+                }))
         );
     }
+}
+
+function classifyHubChild(raw: string | undefined): {
+    model: string;
+    classHint: ClassHint;
+    traits: readonly TraitName[];
+} | undefined {
+    if (!raw) {
+        return undefined;
+    }
+    const lowered = raw.toLowerCase();
+    const model = HUB_MODEL_ALIASES[lowered] ?? lowered;
+    if (CLIMATE_SUBDEVICES.has(model)) {
+        return { model, classHint: 'climate', traits: ['climate'] };
+    }
+    if (SENSOR_SUBDEVICES.has(model)) {
+        return { model, classHint: 'sensor', traits: ['sensor'] };
+    }
+    return undefined;
 }
 
 function enrollBoard(
@@ -258,24 +288,19 @@ function enrollHub(
     }
 
     for (const [subDeviceId, sub] of byId) {
-        const subModel = sub.model || model;
-        const lowered = subModel.toLowerCase();
-        const classHint: ClassHint = CLIMATE_SUBDEVICES.has(lowered)
-            ? 'climate'
-            : SPRINKLER_SUBDEVICES.has(lowered)
-                ? 'sprinkler'
-                : 'sensor';
+        const child = classifyHubChild(sub.model);
+        if (!child) {
+            continue;
+        }
         endpoints.push({
             id: `${uuid}#${subDeviceId}`,
             uuid,
             subDeviceId,
             parentId: uuid,
-            name: sub.name || subModel,
-            model: subModel,
-            classHint,
-            traits: classHint === 'climate'
-                ? ['climate']
-                : (classHint === 'sensor' && SENSOR_SUBDEVICES.has(lowered) ? ['sensor'] : []),
+            name: sub.name || child.model,
+            model: child.model,
+            classHint: child.classHint,
+            traits: child.traits,
             online: sub.online
         });
     }

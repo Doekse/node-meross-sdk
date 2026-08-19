@@ -150,6 +150,9 @@ function decodeHubSubdevice(raw: unknown): { id: string; status?: number; model?
     if (typeof entry.status === 'number') {
         sub.status = entry.status;
     }
+    if (typeof entry.type === 'string' && entry.type) {
+        sub.model = entry.type;
+    }
     for (const [key, value] of Object.entries(entry)) {
         if (value && typeof value === 'object' && !Array.isArray(value)) {
             sub.model = key;

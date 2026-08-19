@@ -258,7 +258,8 @@ describe('enrollPhysicalDevice', () => {
                 subDeviceName: 'Hall sensor'
             }
         ];
-        const device = enrollPhysicalDevice({
+        const graph = new DeviceGraph();
+        const device = graph.enroll({
             abilityPayload: {
                 ability: {
                     'Appliance.Hub.SubdeviceList': {},
@@ -321,9 +322,17 @@ describe('enrollPhysicalDevice', () => {
         assert.deepEqual(sensor?.traits, ['sensor']);
         assert.equal(sensor?.name, 'Hall sensor');
         assert.equal(sensor?.online, false);
+
+        const rows = graph.inventoryRows();
+        assert.equal(rows.length, 2);
+        assert.deepEqual(rows.map((row) => row.id).sort(), [
+            `${HUB_UUID}#01008C11`,
+            `${HUB_UUID}#120027D21C19`
+        ]);
+        assert.equal(graph.getPhysical(HUB_UUID)?.endpoints.length, 3);
     });
 
-    it('enrolls mst100 sprinklers as unpaired sprinkler children', () => {
+    it('omits sprinkler-family and unknown hub children until they have a trait', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: {
                 ability: { 'Appliance.Hub.SubdeviceList': {} }
@@ -337,17 +346,23 @@ describe('enrollPhysicalDevice', () => {
                     },
                     digest: {
                         hub: {
-                            subdevice: [{ id: 'aabbcc', status: 1, type: 'mst100' }]
+                            subdevice: [
+                                { id: 'aabbcc', status: 1, type: 'mst100' },
+                                { id: 'sprinkler1', status: 1, mst: { onoff: 1 } },
+                                { id: 'deadbeef', status: 1, ms120: {} }
+                            ]
                         }
                     }
                 }
             },
             subDevices: [{ subDeviceId: 'aabbcc', subDeviceType: 'mst100', subDeviceName: 'Garden' }]
         });
-        const child = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'aabbcc');
-        assert.equal(child?.classHint, 'sprinkler');
-        assert.deepEqual(child?.traits, []);
-        assert.equal(child?.name, 'Garden');
+        assert.equal(device.endpoints.length, 1);
+        assert.equal(device.endpoints[0]?.classHint, 'hub');
+        assert.equal(
+            device.endpoints.some((endpoint) => endpoint.subDeviceId),
+            false
+        );
     });
 });
 

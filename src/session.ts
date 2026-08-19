@@ -253,15 +253,10 @@ export class Session {
         }
         const byUuid = new Map<string, Endpoint[]>();
         for (const row of rows) {
-            const graphEndpoint = this.graph.getEndpoint(row.id)!;
-            const endpoint = this.endpoints.get(row.id)!;
-            if (graphEndpoint.subDeviceId) {
-                endpoint.setAvailability(row.online, true);
-                continue;
-            }
-            const group = byUuid.get(graphEndpoint.uuid) ?? [];
-            group.push(endpoint);
-            byUuid.set(graphEndpoint.uuid, group);
+            const uuid = this.graph.getEndpoint(row.id)!.uuid;
+            const group = byUuid.get(uuid) ?? [];
+            group.push(this.endpoints.get(row.id)!);
+            byUuid.set(uuid, group);
         }
         for (const [uuid, endpoints] of byUuid) {
             if (this.availability.has(uuid)) {
