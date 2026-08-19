@@ -262,6 +262,20 @@ export {
 } from './encryption';
 export type { EncryptEcdhe, EncryptSuite } from './encryption';
 export {
+    PRESENCE_CONFIG_NAMESPACE,
+    PRESENCE_STUDY_NAMESPACE,
+    decodePresenceConfigGetAck,
+    decodePresenceConfigPush,
+    encodePresenceConfigGet,
+    encodePresenceConfigSet,
+    encodePresenceStudySet
+} from './codecs/presence';
+export type {
+    PresenceConfig,
+    PresenceConfigSetOptions,
+    PresenceMode
+} from './codecs/presence';
+export {
     HUB_SENSOR_TEMPHUM_NAMESPACE,
     HUB_SENSOR_DOORWINDOW_NAMESPACE,
     HUB_SENSOR_WATERLEAK_NAMESPACE,

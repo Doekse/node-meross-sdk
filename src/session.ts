@@ -420,6 +420,7 @@ export class Session {
             presenceTrait = new PresenceTrait({
                 uuid: physical.uuid,
                 channel,
+                namespaces,
                 request,
                 emitChange: (values) => endpoint.emit('change', {
                     trait: 'presence',

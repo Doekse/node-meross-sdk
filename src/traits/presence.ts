@@ -1,9 +1,18 @@
 import {
+    PRESENCE_CONFIG_NAMESPACE,
+    PRESENCE_STUDY_NAMESPACE,
     SENSOR_LATESTX_NAMESPACE,
     decodeLatestXGetAck,
     decodeLatestXPush,
+    decodePresenceConfigGetAck,
+    decodePresenceConfigPush,
     encodeLatestXGet,
-    type MerossMessage
+    encodePresenceConfigGet,
+    encodePresenceConfigSet,
+    encodePresenceStudySet,
+    type MerossMessage,
+    type PresenceConfig,
+    type PresenceConfigSetOptions
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
 
@@ -15,6 +24,16 @@ export interface PresenceValues {
     /** Illuminance in lux. */
     light?: number;
     times?: number;
+    /** Nobody-timeout in seconds from Presence.Config. */
+    noBodyTime?: number;
+    /** Max detection distance in meters from Presence.Config. */
+    maxDistance?: number;
+    /** Sensitivity level (0–2) from Presence.Config. */
+    sensitivity?: number;
+    /** Work mode (0–2) from Presence.Config. */
+    workMode?: number;
+    /** Test mode (0–2) from Presence.Config. */
+    testMode?: number;
 }
 
 /**
@@ -24,6 +43,8 @@ export interface PresenceValues {
 export interface PresenceTraitBind {
     uuid: string;
     channel: number;
+    /** Ability keys; extra methods no-op when the namespace is absent. */
+    namespaces?: ReadonlySet<string>;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
     emitChange: (values: PresenceValues) => void;
 }
@@ -40,6 +61,11 @@ export class PresenceTrait {
         this.bind = bind;
     }
 
+    /** Mirrors other traits by guarding optional namespace behavior. */
+    private has(namespace: string): boolean {
+        return this.bind.namespaces?.has(namespace) ?? false;
+    }
+
     /** Fetches initial state. Idempotent; Session calls this once and does not await it. */
     start(): void {
         void this.pollInitial();
@@ -54,15 +80,74 @@ export class PresenceTrait {
         if (!uuid || uuid !== this.bind.uuid) {
             return;
         }
-        if (message.header.namespace !== SENSOR_LATESTX_NAMESPACE) {
+        if (message.header.namespace === SENSOR_LATESTX_NAMESPACE) {
+            for (const entry of decodeLatestXPush(message.payload)) {
+                if (entry.subId || entry.channel !== this.bind.channel) {
+                    continue;
+                }
+                this.applyChange(presencePatch(entry));
+            }
             return;
         }
-        for (const entry of decodeLatestXPush(message.payload)) {
-            if (entry.subId || entry.channel !== this.bind.channel) {
-                continue;
+        if (message.header.namespace === PRESENCE_CONFIG_NAMESPACE && this.has(PRESENCE_CONFIG_NAMESPACE)) {
+            for (const entry of decodePresenceConfigPush(message.payload)) {
+                if (entry.channel !== this.bind.channel) {
+                    continue;
+                }
+                this.applyChange(configPatch(entry));
             }
-            this.applyChange(presencePatch(entry));
         }
+    }
+
+    /**
+     * Reads current config from the device and emits changed fields.
+     * Returns `undefined` when Presence.Config is not advertised.
+     */
+    async getConfig(): Promise<PresenceConfig | undefined> {
+        if (!this.has(PRESENCE_CONFIG_NAMESPACE)) {
+            return undefined;
+        }
+        const reply = await this.bind.request({
+            namespace: PRESENCE_CONFIG_NAMESPACE,
+            method: 'GET',
+            payload: encodePresenceConfigGet(this.bind.channel)
+        });
+        const entry = decodePresenceConfigGetAck(reply.payload).find(
+            (e) => e.channel === this.bind.channel
+        );
+        if (entry) {
+            this.applyChange(configPatch(entry));
+        }
+        return entry;
+    }
+
+    /**
+     * Writes one or more config fields. Only supplied fields go on the wire.
+     * No-op when Presence.Config is not advertised.
+     */
+    async setConfig(options: Omit<PresenceConfigSetOptions, 'channel'>): Promise<void> {
+        if (!this.has(PRESENCE_CONFIG_NAMESPACE)) {
+            return;
+        }
+        await this.bind.request({
+            namespace: PRESENCE_CONFIG_NAMESPACE,
+            method: 'SET',
+            payload: encodePresenceConfigSet({ ...options, channel: this.bind.channel })
+        });
+    }
+
+    /**
+     * Triggers firmware self-calibration. No-op when Presence.Study is not advertised.
+     */
+    async startStudy(): Promise<void> {
+        if (!this.has(PRESENCE_STUDY_NAMESPACE)) {
+            return;
+        }
+        await this.bind.request({
+            namespace: PRESENCE_STUDY_NAMESPACE,
+            method: 'SET',
+            payload: encodePresenceStudySet(this.bind.channel)
+        });
     }
 
     private applyChange(patch: PresenceValues): void {
@@ -89,7 +174,7 @@ export class PresenceTrait {
 
     private async pollInitial(): Promise<void> {
         try {
-            const reply = await this.bind.request({
+            const latestReply = await this.bind.request({
                 namespace: SENSOR_LATESTX_NAMESPACE,
                 method: 'GET',
                 payload: encodeLatestXGet({
@@ -97,10 +182,23 @@ export class PresenceTrait {
                     keys: ['presence', 'light']
                 })
             });
-            const entry = decodeLatestXGetAck(reply.payload).find((e) =>
+            const latestEntry = decodeLatestXGetAck(latestReply.payload).find((e) =>
                 !e.subId && e.channel === this.bind.channel
             );
-            if (entry) this.applyChange(presencePatch(entry));
+            if (latestEntry) this.applyChange(presencePatch(latestEntry));
+
+            if (!this.has(PRESENCE_CONFIG_NAMESPACE)) {
+                return;
+            }
+            const configReply = await this.bind.request({
+                namespace: PRESENCE_CONFIG_NAMESPACE,
+                method: 'GET',
+                payload: encodePresenceConfigGet(this.bind.channel)
+            });
+            const configEntry = decodePresenceConfigGetAck(configReply.payload).find(
+                (e) => e.channel === this.bind.channel
+            );
+            if (configEntry) this.applyChange(configPatch(configEntry));
         } catch {
             // Next PUSH or setter call will recover.
         }
@@ -119,4 +217,14 @@ function presencePatch(entry: {
     if (entry.light !== undefined) patch.light = entry.light;
     if (entry.times !== undefined) patch.times = entry.times;
     return patch;
+}
+
+function configPatch(entry: PresenceConfig): PresenceValues {
+    return {
+        noBodyTime: entry.noBodyTime,
+        maxDistance: entry.distance,
+        sensitivity: entry.sensitivity,
+        workMode: entry.mode.workMode,
+        testMode: entry.mode.testMode
+    };
 }
