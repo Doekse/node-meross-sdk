@@ -27,6 +27,9 @@ import {
     THERMOSTAT_MODE_NAMESPACE,
     TIMER_NAMESPACE,
     WINDOW_OPENED_NAMESPACE,
+    TEMP_UNIT_NAMESPACE,
+    PHYSICAL_LOCK_NAMESPACE,
+    SCREEN_BRIGHTNESS_NAMESPACE,
     decodeAlarm,
     decodeAlarmConfig,
     decodeCalibration,
@@ -51,6 +54,9 @@ import {
     decodeSchedule,
     decodeSensorMode,
     decodeSummerMode,
+    decodeTempUnit,
+    decodePhysicalLock,
+    decodeScreenBrightness,
     decodeThermostatModeBGetAck,
     decodeThermostatModeBPush,
     decodeThermostatModeCGetAck,
@@ -78,9 +84,13 @@ import {
     encodeHubToggleXGet,
     encodeHubToggleXSet,
     encodeOverheatSet,
+    encodePhysicalLockGet,
+    encodePhysicalLockSet,
     encodeScheduleSet,
+    encodeScreenBrightnessSet,
     encodeSensorModeSet,
     encodeSummerModeSet,
+    encodeTempUnitSet,
     encodeThermostatChannelGet,
     encodeThermostatModeBGet,
     encodeThermostatModeBSet,
@@ -96,6 +106,7 @@ import {
     type ClimateMode,
     type ClimateSchedule,
     type ClimateSensorMode,
+    type ClimateTempUnit,
     type ClimateTimer,
     type ClimateWorkMode,
     type MerossMessage,
@@ -157,6 +168,11 @@ export interface ClimateValues {
     superCtl?: boolean;
     superCtlLevel?: number;
     timeSync?: boolean;
+    tempUnit?: ClimateTempUnit;
+    childLock?: boolean;
+    screenStandbyBrightness?: number;
+    screenOperationBrightness?: number;
+    screenStandbyView?: boolean;
 }
 
 type ClimatePatch = ClimateValues & { channel?: number; id?: string };
@@ -778,6 +794,65 @@ export class ClimateTrait {
     }
 
     /**
+     * Sets the on-device temperature unit. Host temperatures stay °C.
+     * No-op unless TempUnit is advertised (board thermostats only).
+     */
+    async setTempUnit(tempUnit: ClimateTempUnit): Promise<{ tempUnit: ClimateTempUnit }> {
+        if (!this.has(TEMP_UNIT_NAMESPACE) || this.bind.kind !== 'board') {
+            return { tempUnit };
+        }
+        await this.bind.request({
+            namespace: TEMP_UNIT_NAMESPACE,
+            method: 'SET',
+            payload: encodeTempUnitSet({ channel: this.bind.channel, tempUnit })
+        });
+        this.applyChange({ tempUnit });
+        return { tempUnit };
+    }
+
+    /**
+     * Enables or disables the physical child lock. No-op unless PhysicalLock is advertised.
+     */
+    async setChildLock(locked: boolean): Promise<{ childLock: boolean }> {
+        if (!this.has(PHYSICAL_LOCK_NAMESPACE)) {
+            return { childLock: locked };
+        }
+        const channel = this.bind.kind === 'board' ? this.bind.channel : 0;
+        const subId = this.bind.kind === 'hub' ? this.bind.subDeviceId : undefined;
+        await this.bind.request({
+            namespace: PHYSICAL_LOCK_NAMESPACE,
+            method: 'SET',
+            payload: encodePhysicalLockSet({ channel, locked, subId })
+        });
+        this.applyChange({ childLock: locked });
+        return { childLock: locked };
+    }
+
+    /**
+     * Sets display brightness (0–1). No-op unless Screen.Brightness is advertised (board only).
+     */
+    async setScreenBrightness(options: {
+        standby?: number;
+        operation?: number;
+        standbyView?: boolean;
+    }): Promise<typeof options> {
+        if (!this.has(SCREEN_BRIGHTNESS_NAMESPACE) || this.bind.kind !== 'board') {
+            return options;
+        }
+        await this.bind.request({
+            namespace: SCREEN_BRIGHTNESS_NAMESPACE,
+            method: 'SET',
+            payload: encodeScreenBrightnessSet({ channel: this.bind.channel, ...options })
+        });
+        this.applyChange({
+            ...(options.standby !== undefined ? { screenStandbyBrightness: options.standby } : {}),
+            ...(options.operation !== undefined ? { screenOperationBrightness: options.operation } : {}),
+            ...(options.standbyView !== undefined ? { screenStandbyView: options.standbyView } : {})
+        });
+        return options;
+    }
+
+    /**
      * Sets the weekly schedule. Prefers ScheduleB when both are advertised.
      */
     async setSchedule(schedule: ClimateSchedule): Promise<{ schedule: ClimateSchedule }> {
@@ -908,6 +983,10 @@ export class ClimateTrait {
         }
         if (ns === HUB_MTS100_TIMESYNC_NAMESPACE && this.has(ns)) {
             this.applyMatching(decodeHubTimeSync(payload).filter((entry) => entry.id === subId));
+            return;
+        }
+        if (ns === PHYSICAL_LOCK_NAMESPACE && this.has(ns)) {
+            this.applyMatching(decodePhysicalLock(payload).filter((entry) => entry.id === subId));
         }
     }
 
@@ -990,6 +1069,18 @@ export class ClimateTrait {
         }
         if (ns === SCHEDULEB_NAMESPACE) {
             this.applyMatching(decodeSchedule(payload, 100, 'scheduleB'));
+            return;
+        }
+        if (ns === TEMP_UNIT_NAMESPACE) {
+            this.applyMatching(decodeTempUnit(payload));
+            return;
+        }
+        if (ns === PHYSICAL_LOCK_NAMESPACE) {
+            this.applyMatching(decodePhysicalLock(payload));
+            return;
+        }
+        if (ns === SCREEN_BRIGHTNESS_NAMESPACE) {
+            this.applyMatching(decodeScreenBrightness(payload));
         }
     }
 
@@ -1055,7 +1146,10 @@ export class ClimateTrait {
             this.pollNs(ALARM_NAMESPACE, 'alarm', decodeAlarm),
             this.pollNs(ALARM_CONFIG_NAMESPACE, 'alarmConfig', decodeAlarmConfig),
             this.pollNs(SCHEDULE_NAMESPACE, 'schedule', (payload) => decodeSchedule(payload, 10, 'schedule')),
-            this.pollNs(SCHEDULEB_NAMESPACE, 'scheduleB', (payload) => decodeSchedule(payload, 100, 'scheduleB'))
+            this.pollNs(SCHEDULEB_NAMESPACE, 'scheduleB', (payload) => decodeSchedule(payload, 100, 'scheduleB')),
+            this.pollNs(TEMP_UNIT_NAMESPACE, 'tempUnit', decodeTempUnit),
+            this.pollNs(PHYSICAL_LOCK_NAMESPACE, 'lock', decodePhysicalLock),
+            this.pollNs(SCREEN_BRIGHTNESS_NAMESPACE, 'brightness', decodeScreenBrightness)
         ]);
     }
 
@@ -1135,8 +1229,28 @@ export class ClimateTrait {
                     : HUB_MTS100_SCHEDULE_NAMESPACE,
                 'schedule',
                 (payload) => decodeHubSchedule(payload, 10)
-            )
+            ),
+            this.pollPhysicalLock()
         ]);
+    }
+
+    private async pollPhysicalLock(): Promise<void> {
+        if (!this.has(PHYSICAL_LOCK_NAMESPACE)) {
+            return;
+        }
+        try {
+            const payload = this.bind.kind === 'hub'
+                ? encodePhysicalLockGet({ channel: 0, subId: this.bind.subDeviceId })
+                : encodePhysicalLockGet({ channel: this.bind.channel });
+            const reply = await this.bind.request({
+                namespace: PHYSICAL_LOCK_NAMESPACE,
+                method: 'GET',
+                payload
+            });
+            this.applyMatching(decodePhysicalLock(reply.payload));
+        } catch {
+            // Next PUSH or setter call will recover.
+        }
     }
 
     private async pollNs(

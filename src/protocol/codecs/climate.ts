@@ -474,6 +474,9 @@ export const HUB_MTS100_SUPERCTL_NAMESPACE = 'Appliance.Hub.Mts100.SuperCtl';
 export const HUB_MTS100_SCHEDULE_NAMESPACE = 'Appliance.Hub.Mts100.Schedule';
 export const HUB_MTS100_SCHEDULEB_NAMESPACE = 'Appliance.Hub.Mts100.ScheduleB';
 export const HUB_MTS100_TIMESYNC_NAMESPACE = 'Appliance.Hub.Mts100.TimeSync';
+export const TEMP_UNIT_NAMESPACE = 'Appliance.Control.TempUnit';
+export const PHYSICAL_LOCK_NAMESPACE = 'Appliance.Control.PhysicalLock';
+export const SCREEN_BRIGHTNESS_NAMESPACE = 'Appliance.Control.Screen.Brightness';
 
 /** Board ScheduleB sentinel for an off slot; send as-is, do not scale. */
 export const SCHEDULEB_OFF = 43690;
@@ -487,6 +490,7 @@ export type ClimateHoldMode = 'permanent' | 'untilSchedule' | 'until';
 export type ClimateSensorMode = 'internalExternal' | 'external' | 'internal';
 export type ClimateAlarmKind = 'high' | 'low' | 'probe';
 export type ClimateTimerKind = 'countdown' | 'cycle';
+export type ClimateTempUnit = 'celsius' | 'fahrenheit';
 
 export interface ClimateSchedule {
     mon?: number[][];
@@ -1094,6 +1098,107 @@ export function decodeHubMts100All(payload: MerossPayload): Array<{
             ...(typeof temperature?.openWindow === 'number' ? { windowOpen: temperature.openWindow === 1 } : {}),
             ...(typeof temperature?.heating === 'number' ? { heating: temperature.heating === 1 } : {}),
             ...(typeof timeSync?.state === 'number' ? { timeSync: timeSync.state === 1 } : {})
+        };
+    });
+}
+
+const TEMP_UNIT_FROM_WIRE: Record<number, ClimateTempUnit> = {
+    1: 'celsius',
+    2: 'fahrenheit'
+};
+const TEMP_UNIT_TO_WIRE: Record<ClimateTempUnit, number> = {
+    celsius: 1,
+    fahrenheit: 2
+};
+
+export function encodeTempUnitSet(options: { channel: number; tempUnit: ClimateTempUnit }): MerossPayload {
+    return encodeArray('tempUnit', {
+        channel: options.channel,
+        tempUnit: TEMP_UNIT_TO_WIRE[options.tempUnit]
+    });
+}
+
+export function decodeTempUnit(payload: MerossPayload): Array<{ channel: number; tempUnit?: ClimateTempUnit }> {
+    return decodeArray(payload, 'tempUnit', 'Control.TempUnit').map((item) => {
+        if (typeof item.channel !== 'number') {
+            throw new ProtocolError('Control.TempUnit entry requires channel');
+        }
+        return {
+            channel: item.channel,
+            ...(typeof item.tempUnit === 'number' && TEMP_UNIT_FROM_WIRE[item.tempUnit]
+                ? { tempUnit: TEMP_UNIT_FROM_WIRE[item.tempUnit] }
+                : {})
+        };
+    });
+}
+
+export function encodePhysicalLockGet(options: { channel: number; subId?: string }): MerossPayload {
+    return encodeArray('lock', {
+        channel: options.channel,
+        ...(options.subId !== undefined ? { subId: options.subId } : {})
+    });
+}
+
+export function encodePhysicalLockSet(options: {
+    channel: number;
+    locked: boolean;
+    subId?: string;
+}): MerossPayload {
+    return encodeArray('lock', {
+        channel: options.channel,
+        onoff: options.locked ? 1 : 0,
+        ...(options.subId !== undefined ? { subId: options.subId } : {})
+    });
+}
+
+export function decodePhysicalLock(payload: MerossPayload): Array<{
+    channel: number;
+    id?: string;
+    childLock?: boolean;
+}> {
+    return decodeArray(payload, 'lock', 'Control.PhysicalLock').map((item) => {
+        if (typeof item.channel !== 'number') {
+            throw new ProtocolError('Control.PhysicalLock entry requires channel');
+        }
+        return {
+            channel: item.channel,
+            ...(typeof item.subId === 'string' ? { id: item.subId } : {}),
+            ...(typeof item.onoff === 'number' ? { childLock: item.onoff === 1 } : {})
+        };
+    });
+}
+
+export function encodeScreenBrightnessSet(options: {
+    channel: number;
+    standby?: number;
+    operation?: number;
+    standbyView?: boolean;
+    subId?: string;
+}): MerossPayload {
+    return encodeArray('brightness', {
+        channel: options.channel,
+        ...(options.subId !== undefined ? { subId: options.subId } : {}),
+        ...(options.standby !== undefined ? { standby: options.standby * 100 } : {}),
+        ...(options.operation !== undefined ? { operation: options.operation * 100 } : {}),
+        ...(options.standbyView !== undefined ? { standbyView: options.standbyView ? 1 : 2 } : {})
+    });
+}
+
+export function decodeScreenBrightness(payload: MerossPayload): Array<{
+    channel: number;
+    screenStandbyBrightness?: number;
+    screenOperationBrightness?: number;
+    screenStandbyView?: boolean;
+}> {
+    return decodeArray(payload, 'brightness', 'Control.Screen.Brightness').map((item) => {
+        if (typeof item.channel !== 'number') {
+            throw new ProtocolError('Control.Screen.Brightness entry requires channel');
+        }
+        return {
+            channel: item.channel,
+            ...(typeof item.standby === 'number' ? { screenStandbyBrightness: item.standby / 100 } : {}),
+            ...(typeof item.operation === 'number' ? { screenOperationBrightness: item.operation / 100 } : {}),
+            ...(typeof item.standbyView === 'number' ? { screenStandbyView: item.standbyView === 1 } : {})
         };
     });
 }

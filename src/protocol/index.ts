@@ -161,6 +161,9 @@ export {
     HUB_MTS100_SCHEDULE_NAMESPACE,
     HUB_MTS100_SCHEDULEB_NAMESPACE,
     HUB_MTS100_TIMESYNC_NAMESPACE,
+    TEMP_UNIT_NAMESPACE,
+    PHYSICAL_LOCK_NAMESPACE,
+    SCREEN_BRIGHTNESS_NAMESPACE,
     SCHEDULEB_OFF,
     SCHEDULEB_HUB_OFF,
     decodeThermostatModeGetAck,
@@ -225,7 +228,14 @@ export {
     encodeHubScheduleSet,
     decodeHubSchedule,
     decodeHubTimeSync,
-    decodeHubMts100All
+    decodeHubMts100All,
+    encodeTempUnitSet,
+    decodeTempUnit,
+    encodePhysicalLockGet,
+    encodePhysicalLockSet,
+    decodePhysicalLock,
+    encodeScreenBrightnessSet,
+    decodeScreenBrightness
 } from './codecs/climate';
 export type {
     ClimateMode,
@@ -238,6 +248,7 @@ export type {
     ClimateTimerKind,
     ClimateTimer,
     ClimateSchedule,
+    ClimateTempUnit,
     HubMts100ModeSetOptions,
     HubMts100TemperatureSetOptions,
     HubMts100TemperatureState,

@@ -12,6 +12,9 @@ import {
     HUB_TOGGLEX_NAMESPACE,
     HOLD_ACTION_NAMESPACE,
     WINDOW_OPENED_NAMESPACE,
+    TEMP_UNIT_NAMESPACE,
+    PHYSICAL_LOCK_NAMESPACE,
+    SCREEN_BRIGHTNESS_NAMESPACE,
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
@@ -447,5 +450,98 @@ describe('ClimateTrait extras', () => {
 
         const change = changes[0] as { values: Record<string, unknown> };
         assert.equal(change.values.holdMode, 'permanent');
+    });
+});
+
+describe('ClimateTrait device settings', () => {
+    it('setTempUnit is a no-op when TempUnit is not advertised', async () => {
+        const { trait, requests } = createBoardHarness('mode');
+
+        await trait.setTempUnit('fahrenheit');
+
+        assert.equal(requests.length, 0);
+    });
+
+    it('setTempUnit sends TempUnit SET when advertised', async () => {
+        const { trait, requests } = createBoardHarness('mode', [TEMP_UNIT_NAMESPACE]);
+
+        await trait.setTempUnit('fahrenheit');
+
+        assert.equal(requests[0]?.header.namespace, TEMP_UNIT_NAMESPACE);
+        const payload = requests[0]?.payload as { tempUnit: Array<{ tempUnit: number }> };
+        assert.equal(payload.tempUnit[0]?.tempUnit, 2);
+    });
+
+    it('setChildLock sends PhysicalLock SET on board when advertised', async () => {
+        const { trait, requests } = createBoardHarness('mode', [PHYSICAL_LOCK_NAMESPACE]);
+
+        await trait.setChildLock(true);
+
+        assert.equal(requests[0]?.header.namespace, PHYSICAL_LOCK_NAMESPACE);
+        const payload = requests[0]?.payload as { lock: Array<{ onoff: number; channel: number }> };
+        assert.equal(payload.lock[0]?.channel, CHANNEL);
+        assert.equal(payload.lock[0]?.onoff, 1);
+    });
+
+    it('setChildLock sends PhysicalLock SET on hub with subId when advertised', async () => {
+        const { trait, requests } = createHubHarness([PHYSICAL_LOCK_NAMESPACE]);
+
+        await trait.setChildLock(false);
+
+        assert.equal(requests[0]?.header.namespace, PHYSICAL_LOCK_NAMESPACE);
+        const payload = requests[0]?.payload as { lock: Array<{ subId: string; onoff: number }> };
+        assert.equal(payload.lock[0]?.subId, SUB_DEVICE_ID);
+        assert.equal(payload.lock[0]?.onoff, 0);
+    });
+
+    it('setScreenBrightness is a no-op when Screen.Brightness is not advertised', async () => {
+        const { trait, requests } = createBoardHarness('mode');
+
+        await trait.setScreenBrightness({ operation: 0.5 });
+
+        assert.equal(requests.length, 0);
+    });
+
+    it('setScreenBrightness sends wire 0–100 when advertised', async () => {
+        const { trait, requests } = createBoardHarness('mode', [SCREEN_BRIGHTNESS_NAMESPACE]);
+
+        await trait.setScreenBrightness({ standby: 0, operation: 0.5, standbyView: true });
+
+        assert.equal(requests[0]?.header.namespace, SCREEN_BRIGHTNESS_NAMESPACE);
+        const payload = requests[0]?.payload as {
+            brightness: Array<{ standby: number; operation: number; standbyView: number }>;
+        };
+        assert.deepEqual(payload.brightness[0], {
+            channel: CHANNEL,
+            standby: 0,
+            operation: 50,
+            standbyView: 1
+        });
+    });
+
+    it('handlePush applies TempUnit when advertised', () => {
+        const { endpoint, trait } = createBoardHarness('mode', [TEMP_UNIT_NAMESPACE]);
+        const changes: unknown[] = [];
+        endpoint.on('change', (c) => changes.push(c));
+
+        trait.handlePush(push(TEMP_UNIT_NAMESPACE, {
+            tempUnit: [{ channel: CHANNEL, tempUnit: 2 }]
+        }));
+
+        const change = changes[0] as { values: Record<string, unknown> };
+        assert.equal(change.values.tempUnit, 'fahrenheit');
+    });
+
+    it('handlePush applies PhysicalLock on hub when advertised', () => {
+        const { endpoint, trait } = createHubHarness([PHYSICAL_LOCK_NAMESPACE]);
+        const changes: unknown[] = [];
+        endpoint.on('change', (c) => changes.push(c));
+
+        trait.handlePush(push(PHYSICAL_LOCK_NAMESPACE, {
+            lock: [{ channel: 0, subId: SUB_DEVICE_ID, onoff: 1 }]
+        }));
+
+        const change = changes[0] as { values: Record<string, unknown> };
+        assert.equal(change.values.childLock, true);
     });
 });

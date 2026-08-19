@@ -26,8 +26,14 @@ import {
     encodeHoldActionSet,
     encodeHubScheduleSet,
     encodeOverheatSet,
+    encodePhysicalLockSet,
     encodeScheduleSet,
-    encodeWindowOpenedSet
+    encodeScreenBrightnessSet,
+    encodeTempUnitSet,
+    encodeWindowOpenedSet,
+    decodePhysicalLock,
+    decodeScreenBrightness,
+    decodeTempUnit
 } from '../../../src/protocol/codecs/climate';
 
 describe('Thermostat.Mode codec', () => {
@@ -405,5 +411,56 @@ describe('Hub MTS100 extra codecs', () => {
         });
         const [entry] = decodeHubSchedule(payload, 10);
         assert.deepEqual(entry?.schedule.sun, [[120, SCHEDULEB_HUB_OFF]]);
+    });
+});
+
+describe('Control.TempUnit codec', () => {
+    it('decodes GETACK with celsius and fahrenheit', () => {
+        const [celsius] = decodeTempUnit({ tempUnit: [{ channel: 0, tempUnit: 1 }] });
+        const [fahrenheit] = decodeTempUnit({ tempUnit: [{ channel: 1, tempUnit: 2 }] });
+        assert.equal(celsius?.tempUnit, 'celsius');
+        assert.equal(fahrenheit?.tempUnit, 'fahrenheit');
+    });
+
+    it('encodes SET with wire tempUnit', () => {
+        assert.deepEqual(
+            encodeTempUnitSet({ channel: 0, tempUnit: 'fahrenheit' }),
+            { tempUnit: [{ channel: 0, tempUnit: 2 }] }
+        );
+    });
+});
+
+describe('Control.PhysicalLock codec', () => {
+    it('decodes lock state and maps subId to id', () => {
+        const [entry] = decodePhysicalLock({
+            lock: [{ channel: 0, subId: '00000101', onoff: 1 }]
+        });
+        assert.equal(entry?.childLock, true);
+        assert.equal(entry?.id, '00000101');
+    });
+
+    it('encodes SET with onoff and optional subId', () => {
+        assert.deepEqual(
+            encodePhysicalLockSet({ channel: 0, locked: false, subId: '00000101' }),
+            { lock: [{ channel: 0, onoff: 0, subId: '00000101' }] }
+        );
+    });
+});
+
+describe('Control.Screen.Brightness codec', () => {
+    it('decodes wire 0–100 to host 0–1', () => {
+        const [entry] = decodeScreenBrightness({
+            brightness: [{ channel: 0, standby: 0, operation: 50, standbyView: 1 }]
+        });
+        assert.equal(entry?.screenStandbyBrightness, 0);
+        assert.equal(entry?.screenOperationBrightness, 0.5);
+        assert.equal(entry?.screenStandbyView, true);
+    });
+
+    it('encodes host 0–1 to wire 0–100', () => {
+        assert.deepEqual(
+            encodeScreenBrightnessSet({ channel: 0, standby: 0.25, operation: 0.5, standbyView: false }),
+            { brightness: [{ channel: 0, standby: 25, operation: 50, standbyView: 2 }] }
+        );
     });
 });
