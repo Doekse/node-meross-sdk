@@ -10,6 +10,8 @@ export const HUB_SENSOR_ALERT_NAMESPACE = 'Appliance.Hub.Sensor.Alert';
 export const HUB_SENSOR_ALL_NAMESPACE = 'Appliance.Hub.Sensor.All';
 export const HUB_BATTERY_NAMESPACE = 'Appliance.Hub.Battery';
 export const SENSOR_LATESTX_NAMESPACE = 'Appliance.Control.Sensor.LatestX';
+export const SENSOR_LATEST_NAMESPACE = 'Appliance.Control.Sensor.Latest';
+export const SENSOR_HISTORY_NAMESPACE = 'Appliance.Control.Sensor.History';
 export const SMOKE_CONFIG_NAMESPACE = 'Appliance.Control.Smoke.Config';
 
 export interface SensorTempHumState {
@@ -107,6 +109,32 @@ export interface LatestXGetOptions {
     channel: number;
     subId?: string;
     keys: string[];
+}
+
+export interface SensorLatestState {
+    channel: number;
+    capacity?: number;
+    timestamp?: number;
+    temperature?: number;
+    humidity?: number;
+    light?: number;
+}
+
+export interface SensorHistorySample {
+    timestamp?: number;
+    temperature?: number;
+    humidity?: number;
+}
+
+export interface SensorHistoryState {
+    channel: number;
+    capacity?: number;
+    samples: SensorHistorySample[];
+}
+
+export interface SensorHistoryGetOptions {
+    channel: number;
+    capacity?: number;
 }
 
 export interface SmokeConfigGetOptions {
@@ -470,6 +498,108 @@ function latestObject(raw: unknown): Record<string, unknown> | undefined {
         return undefined;
     }
     return raw[0] as Record<string, unknown>;
+}
+
+function decodeSensorSampleFields(
+    obj: Record<string, unknown>,
+    tempScale: number
+): SensorHistorySample & { light?: number } {
+    const sample: SensorHistorySample & { light?: number } = {};
+    if (typeof obj.timestamp === 'number') {
+        sample.timestamp = obj.timestamp;
+    }
+    if (typeof obj.temp === 'number') {
+        sample.temperature = obj.temp / tempScale;
+    }
+    if (typeof obj.humi === 'number') {
+        sample.humidity = obj.humi / 10;
+    }
+    if (typeof obj.light === 'number') {
+        sample.light = obj.light;
+    }
+    return sample;
+}
+
+export function encodeSensorLatestGet(channel: number): MerossPayload {
+    return encodeArray('latest', { channel });
+}
+
+export function decodeSensorLatestGetAck(payload: MerossPayload, tempScale: number): SensorLatestState[] {
+    return decodeSensorLatest(payload, tempScale);
+}
+
+export function decodeSensorLatestPush(payload: MerossPayload, tempScale: number): SensorLatestState[] {
+    return decodeSensorLatest(payload, tempScale);
+}
+
+function decodeSensorLatest(payload: MerossPayload, tempScale: number): SensorLatestState[] {
+    return decodeArray(payload, 'latest', 'Control.Sensor.Latest').map((item) => {
+        const channel = typeof item.channel === 'number' ? item.channel : 0;
+        const result: SensorLatestState = { channel };
+        if (typeof item.capacity === 'number') {
+            result.capacity = item.capacity;
+        }
+        const values = item.value;
+        if (!Array.isArray(values)) {
+            return result;
+        }
+        for (const raw of values) {
+            if (typeof raw !== 'object' || raw === null) {
+                continue;
+            }
+            const sample = decodeSensorSampleFields(raw as Record<string, unknown>, tempScale);
+            if (sample.timestamp !== undefined) {
+                result.timestamp = sample.timestamp;
+            }
+            if (sample.temperature !== undefined) {
+                result.temperature = sample.temperature;
+            }
+            if (sample.humidity !== undefined) {
+                result.humidity = sample.humidity;
+            }
+            if (sample.light !== undefined) {
+                result.light = sample.light;
+            }
+        }
+        return result;
+    });
+}
+
+export function encodeSensorHistoryGet(options: SensorHistoryGetOptions): MerossPayload {
+    const entry: Record<string, unknown> = { channel: options.channel };
+    if (options.capacity !== undefined) {
+        entry.capacity = options.capacity;
+    }
+    return encodeArray('history', entry);
+}
+
+export function decodeSensorHistoryGetAck(payload: MerossPayload, tempScale: number): SensorHistoryState[] {
+    return decodeSensorHistory(payload, tempScale);
+}
+
+export function decodeSensorHistoryPush(payload: MerossPayload, tempScale: number): SensorHistoryState[] {
+    return decodeSensorHistory(payload, tempScale);
+}
+
+function decodeSensorHistory(payload: MerossPayload, tempScale: number): SensorHistoryState[] {
+    return decodeArray(payload, 'history', 'Control.Sensor.History').map((item) => {
+        const channel = typeof item.channel === 'number' ? item.channel : 0;
+        const result: SensorHistoryState = { channel, samples: [] };
+        if (typeof item.capacity === 'number') {
+            result.capacity = item.capacity;
+        }
+        const values = item.value;
+        if (!Array.isArray(values)) {
+            return result;
+        }
+        for (const raw of values) {
+            if (typeof raw !== 'object' || raw === null) {
+                continue;
+            }
+            result.samples.push(decodeSensorSampleFields(raw as Record<string, unknown>, tempScale));
+        }
+        return result;
+    });
 }
 
 export function encodeSmokeConfigGet(options: SmokeConfigGetOptions): MerossPayload {

@@ -110,7 +110,15 @@ import {
     type ClimateTimer,
     type ClimateWorkMode,
     type MerossMessage,
-    type MerossPayload
+    type MerossPayload,
+    SENSOR_LATEST_NAMESPACE,
+    SENSOR_HISTORY_NAMESPACE,
+    decodeSensorLatestGetAck,
+    decodeSensorLatestPush,
+    encodeSensorHistoryGet,
+    decodeSensorHistoryGetAck,
+    type SensorHistorySample,
+    type SensorLatestState
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
 
@@ -853,6 +861,28 @@ export class ClimateTrait {
     }
 
     /**
+     * Fetches stored sensor history samples. On-demand only; returns
+     * `undefined` when Sensor.History is not advertised or the bind is a hub valve.
+     */
+    async getHistory(options?: { capacity?: number }): Promise<SensorHistorySample[] | undefined> {
+        if (!this.has(SENSOR_HISTORY_NAMESPACE) || this.bind.kind !== 'board') {
+            return undefined;
+        }
+        const channel = this.bind.channel;
+        const reply = await this.bind.request({
+            namespace: SENSOR_HISTORY_NAMESPACE,
+            method: 'GET',
+            payload: encodeSensorHistoryGet({
+                channel,
+                capacity: options?.capacity
+            })
+        });
+        const match = decodeSensorHistoryGetAck(reply.payload, this.boardScale())
+            .find((entry) => entry.channel === channel);
+        return match?.samples;
+    }
+
+    /**
      * Sets the weekly schedule. Prefers ScheduleB when both are advertised.
      */
     async setSchedule(schedule: ClimateSchedule): Promise<{ schedule: ClimateSchedule }> {
@@ -1081,6 +1111,11 @@ export class ClimateTrait {
         }
         if (ns === SCREEN_BRIGHTNESS_NAMESPACE) {
             this.applyMatching(decodeScreenBrightness(payload));
+            return;
+        }
+        if (ns === SENSOR_LATEST_NAMESPACE) {
+            this.applyMatching(decodeSensorLatestPush(payload, scale).map(sensorLatestToClimatePatch));
+            return;
         }
     }
 
@@ -1149,7 +1184,12 @@ export class ClimateTrait {
             this.pollNs(SCHEDULEB_NAMESPACE, 'scheduleB', (payload) => decodeSchedule(payload, 100, 'scheduleB')),
             this.pollNs(TEMP_UNIT_NAMESPACE, 'tempUnit', decodeTempUnit),
             this.pollNs(PHYSICAL_LOCK_NAMESPACE, 'lock', decodePhysicalLock),
-            this.pollNs(SCREEN_BRIGHTNESS_NAMESPACE, 'brightness', decodeScreenBrightness)
+            this.pollNs(SCREEN_BRIGHTNESS_NAMESPACE, 'brightness', decodeScreenBrightness),
+            this.pollNs(
+                SENSOR_LATEST_NAMESPACE,
+                'latest',
+                (payload) => decodeSensorLatestGetAck(payload, scale).map(sensorLatestToClimatePatch)
+            )
         ]);
     }
 
@@ -1335,4 +1375,15 @@ export class ClimateTrait {
     private boardScale(): number {
         return this.bind.kind === 'board' && this.bind.generation === 'mode' ? 10 : 100;
     }
+}
+
+function sensorLatestToClimatePatch(entry: SensorLatestState): ClimatePatch {
+    const patch: ClimatePatch = { channel: entry.channel };
+    if (entry.humidity !== undefined) {
+        patch.humidity = entry.humidity;
+    }
+    if (entry.temperature !== undefined) {
+        patch.currentTemperature = entry.temperature;
+    }
+    return patch;
 }

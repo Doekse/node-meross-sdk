@@ -15,6 +15,8 @@ import {
     TEMP_UNIT_NAMESPACE,
     PHYSICAL_LOCK_NAMESPACE,
     SCREEN_BRIGHTNESS_NAMESPACE,
+    SENSOR_LATEST_NAMESPACE,
+    SENSOR_HISTORY_NAMESPACE,
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
@@ -543,5 +545,130 @@ describe('ClimateTrait device settings', () => {
 
         const change = changes[0] as { values: Record<string, unknown> };
         assert.equal(change.values.childLock, true);
+    });
+});
+
+describe('ClimateTrait board sensor readings', () => {
+    const LATEST_ACK = {
+        latest: [{
+            channel: CHANNEL,
+            capacity: 2,
+            value: [{ timestamp: 1718302939, humi: 596 }]
+        }]
+    };
+
+    const HISTORY_ACK = {
+        history: [{
+            channel: CHANNEL,
+            capacity: 3,
+            value: [
+                { timestamp: 1718222159, temp: 166, humi: 607 },
+                { timestamp: 1718225759, temp: 172, humi: 616 }
+            ]
+        }]
+    };
+
+    function createSensorHarness(namespaces: readonly string[]): {
+        endpoint: Endpoint;
+        trait: ClimateTrait;
+        requests: MerossMessage[];
+        changes: Record<string, unknown>[];
+    } {
+        const requests: MerossMessage[] = [];
+        const changes: Record<string, unknown>[] = [];
+        const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['climate'] });
+        const bind: ClimateTraitBind = {
+            kind: 'board',
+            uuid: UUID,
+            channel: CHANNEL,
+            generation: 'mode',
+            namespaces: new Set(namespaces),
+            request: async (options) => {
+                const message = encodeMessage({
+                    namespace: options.namespace,
+                    method: options.method,
+                    key: KEY,
+                    from: '/app/test/subscribe',
+                    payload: options.payload,
+                    uuid: UUID
+                });
+                requests.push(message);
+                let replyPayload: MerossMessage['payload'] = {};
+                if (options.namespace === THERMOSTAT_MODE_NAMESPACE) {
+                    replyPayload = { mode: [{ channel: CHANNEL, onoff: 1, mode: 1, targetTemp: 210, currentTemp: 205 }] };
+                } else if (options.namespace === SENSOR_LATEST_NAMESPACE) {
+                    replyPayload = LATEST_ACK;
+                } else if (options.namespace === SENSOR_HISTORY_NAMESPACE) {
+                    replyPayload = HISTORY_ACK;
+                }
+                return encodeMessage({
+                    namespace: options.namespace,
+                    method: 'GETACK',
+                    key: KEY,
+                    from: `/appliance/${UUID}/publish`,
+                    messageId: message.header.messageId,
+                    uuid: UUID,
+                    payload: replyPayload
+                });
+            },
+            emitChange: (values) => {
+                changes.push({ ...values });
+                endpoint.emit('change', { trait: 'climate', values: { ...values } });
+            }
+        };
+        return { endpoint, trait: new ClimateTrait(bind), requests, changes };
+    }
+
+    it('handlePush applies humidity from Sensor.Latest when advertised', () => {
+        const { endpoint, trait } = createBoardHarness('mode', [SENSOR_LATEST_NAMESPACE]);
+        const changes: unknown[] = [];
+        endpoint.on('change', (c) => changes.push(c));
+
+        trait.handlePush(push(SENSOR_LATEST_NAMESPACE, LATEST_ACK));
+
+        const change = changes[0] as { values: Record<string, unknown> };
+        assert.equal(change.values.humidity, 59.6);
+    });
+
+    it('GETs Sensor.Latest on start when advertised', async () => {
+        const { trait, requests, changes } = createSensorHarness([SENSOR_LATEST_NAMESPACE]);
+        trait.start();
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.ok(requests.some((r) => r.header.namespace === SENSOR_LATEST_NAMESPACE));
+        assert.equal(changes.find((c) => c.humidity !== undefined)?.humidity, 59.6);
+    });
+
+    it('getHistory returns undefined when Sensor.History is not advertised', async () => {
+        const { trait, requests } = createBoardHarness('mode');
+
+        const samples = await trait.getHistory();
+
+        assert.equal(samples, undefined);
+        assert.equal(requests.length, 0);
+    });
+
+    it('getHistory returns undefined for hub valves', async () => {
+        const { trait, requests } = createHubHarness([SENSOR_HISTORY_NAMESPACE]);
+
+        const samples = await trait.getHistory();
+
+        assert.equal(samples, undefined);
+        assert.equal(requests.length, 0);
+    });
+
+    it('getHistory returns decoded samples when advertised', async () => {
+        const { trait, requests } = createSensorHarness([SENSOR_HISTORY_NAMESPACE]);
+
+        const samples = await trait.getHistory();
+
+        assert.equal(requests[0]?.header.namespace, SENSOR_HISTORY_NAMESPACE);
+        assert.deepEqual(
+            (requests[0]?.payload as { history: Array<{ channel: number }> }).history[0],
+            { channel: CHANNEL }
+        );
+        assert.equal(samples?.length, 2);
+        assert.equal(samples?.[0]?.temperature, 16.6);
+        assert.equal(samples?.[0]?.humidity, 60.7);
     });
 });
