@@ -3,11 +3,18 @@ import { describe, it } from 'node:test';
 
 import { ProtocolError } from '../../../src/errors';
 import {
+    decodeGarageConfigGetAck,
     decodeGarageGetAck,
+    decodeGarageMultipleConfigGetAck,
+    decodeGarageMultipleConfigPush,
     decodeGaragePush,
     decodeShutterPositionGetAck,
     decodeShutterStatePush,
+    encodeGarageConfigGet,
+    encodeGarageConfigSet,
     encodeGarageGet,
+    encodeGarageMultipleConfigGet,
+    encodeGarageMultipleConfigSet,
     encodeGarageSet,
     encodeShutterPositionGet,
     encodeShutterPositionSet
@@ -73,6 +80,95 @@ describe('RollerShutter codec', () => {
     it('rejects a non-array position payload', () => {
         assert.throws(
             () => decodeShutterPositionGetAck({ position: { channel: 0, position: 50 } }),
+            (err: unknown) => err instanceof ProtocolError
+        );
+    });
+});
+
+describe('GarageDoor.Config codec', () => {
+    it('encodes GET as an empty payload', () => {
+        assert.deepEqual(encodeGarageConfigGet(), {});
+    });
+
+    it('encodes SET with partial config fields', () => {
+        assert.deepEqual(
+            encodeGarageConfigSet({ signalDuration: 2000, buzzerEnable: 1 }),
+            { config: { signalDuration: 2000, buzzerEnable: 1 } }
+        );
+    });
+
+    it('decodes GETACK with all optional fields', () => {
+        assert.deepEqual(
+            decodeGarageConfigGetAck({
+                config: { signalDuration: 2000, buzzerEnable: 1, doorOpenDuration: 15000, doorCloseDuration: 15000 }
+            }),
+            { signalDuration: 2000, buzzerEnable: 1, doorOpenDuration: 15000, doorCloseDuration: 15000 }
+        );
+    });
+
+    it('decodes GETACK with only signalDuration', () => {
+        assert.deepEqual(
+            decodeGarageConfigGetAck({ config: { signalDuration: 500 } }),
+            { signalDuration: 500 }
+        );
+    });
+
+    it('rejects a GETACK payload missing signalDuration', () => {
+        assert.throws(
+            () => decodeGarageConfigGetAck({ config: { buzzerEnable: 1 } }),
+            (err: unknown) => err instanceof ProtocolError
+        );
+    });
+
+    it('rejects a GETACK payload where config is an array', () => {
+        assert.throws(
+            () => decodeGarageConfigGetAck({ config: [] }),
+            (err: unknown) => err instanceof ProtocolError
+        );
+    });
+});
+
+describe('GarageDoor.MultipleConfig codec', () => {
+    const sampleEntries = [
+        { channel: 0, signalClose: 2000, signalOpen: 2000, doorOpenDuration: 15000, doorCloseDuration: 15000, buzzerEnable: 1 },
+        { channel: 1, signalClose: 2000, signalOpen: 2000, doorOpenDuration: 15000, doorCloseDuration: 15000, buzzerEnable: 0 }
+    ];
+
+    it('encodes GET as an empty payload', () => {
+        assert.deepEqual(encodeGarageMultipleConfigGet(), {});
+    });
+
+    it('encodes SET as a single channel config object', () => {
+        assert.deepEqual(
+            encodeGarageMultipleConfigSet({ channel: 1, buzzerEnable: 0, signalClose: 1500, signalOpen: 1500 }),
+            { config: { channel: 1, buzzerEnable: 0, signalClose: 1500, signalOpen: 1500 } }
+        );
+    });
+
+    it('decodes GETACK array with all optional fields', () => {
+        assert.deepEqual(
+            decodeGarageMultipleConfigGetAck({ config: sampleEntries }),
+            sampleEntries
+        );
+    });
+
+    it('decodes PUSH array', () => {
+        assert.deepEqual(
+            decodeGarageMultipleConfigPush({ config: sampleEntries }),
+            sampleEntries
+        );
+    });
+
+    it('rejects a non-array config payload', () => {
+        assert.throws(
+            () => decodeGarageMultipleConfigGetAck({ config: sampleEntries[0] }),
+            (err: unknown) => err instanceof ProtocolError
+        );
+    });
+
+    it('rejects an entry missing channel', () => {
+        assert.throws(
+            () => decodeGarageMultipleConfigGetAck({ config: [{ buzzerEnable: 1 }] }),
             (err: unknown) => err instanceof ProtocolError
         );
     });

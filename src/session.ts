@@ -358,6 +358,7 @@ export class Session {
                 uuid: physical.uuid,
                 channel,
                 kind,
+                namespaces: new Set(Object.keys(physical.ability)),
                 request,
                 emitChange: (values) => endpoint.emit('change', {
                     trait: 'cover',

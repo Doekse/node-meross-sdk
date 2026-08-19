@@ -3,6 +3,8 @@ import { describe, it } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
 import {
+    GARAGE_CONFIG_NAMESPACE,
+    GARAGE_MULTIPLE_CONFIG_NAMESPACE,
     GARAGE_STATE_NAMESPACE,
     SHUTTER_POSITION_NAMESPACE,
     SHUTTER_STATE_NAMESPACE,
@@ -17,7 +19,11 @@ const KEY = 'stub-key';
 const UUID = '2206138957096651080248e1e99705a4';
 const CHANNEL = 0;
 
-function createCoverHarness(kind: 'garage' | 'shutter'): {
+function createCoverHarness(
+    kind: 'garage' | 'shutter',
+    namespaces?: ReadonlySet<string>,
+    getAckPayloads: Record<string, MerossMessage['payload']> = {}
+): {
     endpoint: Endpoint;
     trait: CoverTrait;
     requests: MerossMessage[];
@@ -31,6 +37,7 @@ function createCoverHarness(kind: 'garage' | 'shutter'): {
         uuid: UUID,
         channel: CHANNEL,
         kind,
+        namespaces,
         request: async (options) => {
             const message = encodeMessage({
                 namespace: options.namespace,
@@ -41,14 +48,15 @@ function createCoverHarness(kind: 'garage' | 'shutter'): {
                 uuid: UUID
             });
             requests.push(message);
+            const ackPayload = getAckPayloads[options.namespace] ?? {};
             return encodeMessage({
                 namespace: options.namespace,
-                method: 'SETACK',
+                method: options.method === 'GET' ? 'GETACK' : 'SETACK',
                 key: KEY,
                 from: `/appliance/${UUID}/publish`,
                 messageId: message.header.messageId,
                 uuid: UUID,
-                payload: {}
+                payload: ackPayload
             });
         },
         emitChange: (values) => endpoint.emit('change', { trait: 'cover', values: { ...values } })
@@ -221,5 +229,105 @@ describe('CoverTrait PUSH', () => {
             { trait: 'cover', values: { moving: true } },
             { trait: 'cover', values: { moving: false } }
         ]);
+    });
+});
+
+describe('CoverTrait.getConfig / setConfig (GarageDoor.Config)', () => {
+    const configPayload = {
+        config: { signalDuration: 2000, buzzerEnable: 1, doorOpenDuration: 15000, doorCloseDuration: 15000 }
+    };
+
+    it('getConfig() sends GarageDoor.Config GET and returns decoded config', async () => {
+        const { trait, requests } = createCoverHarness(
+            'garage',
+            new Set([GARAGE_CONFIG_NAMESPACE]),
+            { [GARAGE_CONFIG_NAMESPACE]: configPayload }
+        );
+
+        const result = await trait.getConfig();
+
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.header.namespace, GARAGE_CONFIG_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'GET');
+        assert.deepEqual(result, {
+            signalDuration: 2000,
+            buzzerEnable: 1,
+            doorOpenDuration: 15000,
+            doorCloseDuration: 15000
+        });
+    });
+
+    it('setConfig() sends GarageDoor.Config SET', async () => {
+        const { trait, requests } = createCoverHarness(
+            'garage',
+            new Set([GARAGE_CONFIG_NAMESPACE])
+        );
+
+        await trait.setConfig({ signalDuration: 3000, buzzerEnable: 0 });
+
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.header.namespace, GARAGE_CONFIG_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(requests[0]?.payload, {
+            config: { signalDuration: 3000, buzzerEnable: 0 }
+        });
+    });
+
+    it('getConfig() returns undefined when no config namespace is advertised', async () => {
+        const { trait, requests } = createCoverHarness('garage');
+        const result = await trait.getConfig();
+        assert.equal(result, undefined);
+        assert.equal(requests.length, 0);
+    });
+
+    it('setConfig() is a no-op on shutters', async () => {
+        const { trait, requests } = createCoverHarness(
+            'shutter',
+            new Set([GARAGE_CONFIG_NAMESPACE])
+        );
+        await trait.setConfig({ signalDuration: 1000 });
+        assert.equal(requests.length, 0);
+    });
+});
+
+describe('CoverTrait.getConfig / setConfig (GarageDoor.MultipleConfig)', () => {
+    const multipleConfigPayload = {
+        config: [
+            { channel: 0, signalClose: 2000, signalOpen: 2000, doorOpenDuration: 15000, doorCloseDuration: 15000, buzzerEnable: 1 },
+            { channel: 1, signalClose: 2000, signalOpen: 2000, doorOpenDuration: 15000, doorCloseDuration: 15000, buzzerEnable: 0 }
+        ]
+    };
+
+    it('getConfig() prefers MultipleConfig over Config and returns the matching channel entry', async () => {
+        const { trait, requests } = createCoverHarness(
+            'garage',
+            new Set([GARAGE_CONFIG_NAMESPACE, GARAGE_MULTIPLE_CONFIG_NAMESPACE]),
+            { [GARAGE_MULTIPLE_CONFIG_NAMESPACE]: multipleConfigPayload }
+        );
+
+        const result = await trait.getConfig();
+
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.header.namespace, GARAGE_MULTIPLE_CONFIG_NAMESPACE);
+        assert.deepEqual(result, {
+            channel: 0, signalClose: 2000, signalOpen: 2000,
+            doorOpenDuration: 15000, doorCloseDuration: 15000, buzzerEnable: 1
+        });
+    });
+
+    it('setConfig() uses MultipleConfig SET and merges the bound channel', async () => {
+        const { trait, requests } = createCoverHarness(
+            'garage',
+            new Set([GARAGE_MULTIPLE_CONFIG_NAMESPACE])
+        );
+
+        await trait.setConfig({ channel: 0, buzzerEnable: 0, signalClose: 1500, signalOpen: 1500 });
+
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.header.namespace, GARAGE_MULTIPLE_CONFIG_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(requests[0]?.payload, {
+            config: { channel: 0, buzzerEnable: 0, signalClose: 1500, signalOpen: 1500 }
+        });
     });
 });

@@ -74,15 +74,24 @@ export {
 export type { ConsumptionXDay } from './codecs/consumptionx';
 export {
     GARAGE_STATE_NAMESPACE,
+    GARAGE_CONFIG_NAMESPACE,
+    GARAGE_MULTIPLE_CONFIG_NAMESPACE,
     SHUTTER_POSITION_NAMESPACE,
     SHUTTER_STATE_NAMESPACE,
     decodeGarageGetAck,
     decodeGaragePush,
+    decodeGarageConfigGetAck,
+    decodeGarageMultipleConfigGetAck,
+    decodeGarageMultipleConfigPush,
     decodeShutterPositionGetAck,
     decodeShutterPositionPush,
     decodeShutterStatePush,
     encodeGarageGet,
     encodeGarageSet,
+    encodeGarageConfigGet,
+    encodeGarageConfigSet,
+    encodeGarageMultipleConfigGet,
+    encodeGarageMultipleConfigSet,
     encodeShutterPositionGet,
     encodeShutterPositionSet
 } from './codecs/cover';
@@ -90,6 +99,8 @@ export type {
     GarageChannelState,
     GarageGetOptions,
     GarageSetOptions,
+    GarageDoorConfig,
+    GarageMultipleConfigEntry,
     ShutterMoveState,
     ShutterPositionSetOptions,
     ShutterPositionState

@@ -1,18 +1,27 @@
 import {
+    GARAGE_CONFIG_NAMESPACE,
+    GARAGE_MULTIPLE_CONFIG_NAMESPACE,
     GARAGE_STATE_NAMESPACE,
     SHUTTER_POSITION_NAMESPACE,
     SHUTTER_STATE_NAMESPACE,
+    decodeGarageConfigGetAck,
     decodeGarageGetAck,
+    decodeGarageMultipleConfigGetAck,
     decodeGaragePush,
     decodeShutterPositionGetAck,
     decodeShutterPositionPush,
     decodeShutterStatePush,
+    encodeGarageConfigGet,
+    encodeGarageConfigSet,
     encodeGarageGet,
+    encodeGarageMultipleConfigGet,
+    encodeGarageMultipleConfigSet,
     encodeGarageSet,
     encodeShutterPositionGet,
     encodeShutterPositionSet,
     type MerossMessage
 } from '../protocol';
+import type { GarageDoorConfig, GarageMultipleConfigEntry } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
 
 export interface CoverValues {
@@ -30,6 +39,11 @@ export interface CoverTraitBind {
     channel: number;
     /** Garage vs shutter namespaces stay in codecs; the host API is the same. */
     kind: 'garage' | 'shutter';
+    /**
+     * Ability namespace keys advertised by the device.
+     * Optional garage config methods use this to no-op when unsupported.
+     */
+    namespaces?: ReadonlySet<string>;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
     emitChange: (values: CoverValues) => void;
 }
@@ -45,6 +59,11 @@ export class CoverTrait {
 
     constructor(bind: CoverTraitBind) {
         this.bind = bind;
+    }
+
+    /** Mirrors other traits by guarding optional namespace behavior. */
+    private has(namespace: string): boolean {
+        return this.bind.namespaces?.has(namespace) ?? false;
     }
 
     /** Polls initial state. Idempotent; Session calls this once and does not await it. */
@@ -139,6 +158,67 @@ export class CoverTrait {
     }
 
     /**
+     * Retrieves the garage door config from the device.
+     * Prefers MultipleConfig (MSG200) when advertised, falls back to Config (MSG100).
+     * Returns `undefined` when unsupported or when no entry exists for this channel.
+     */
+    async getConfig(): Promise<GarageMultipleConfigEntry | GarageDoorConfig | undefined> {
+        if (this.bind.kind !== 'garage') {
+            return undefined;
+        }
+        if (this.has(GARAGE_MULTIPLE_CONFIG_NAMESPACE)) {
+            const reply = await this.bind.request({
+                namespace: GARAGE_MULTIPLE_CONFIG_NAMESPACE,
+                method: 'GET',
+                payload: encodeGarageMultipleConfigGet()
+            });
+            const entries = decodeGarageMultipleConfigGetAck(reply.payload);
+            return entries.find((e) => e.channel === this.bind.channel);
+        }
+        if (this.has(GARAGE_CONFIG_NAMESPACE)) {
+            const reply = await this.bind.request({
+                namespace: GARAGE_CONFIG_NAMESPACE,
+                method: 'GET',
+                payload: encodeGarageConfigGet()
+            });
+            return decodeGarageConfigGetAck(reply.payload);
+        }
+        return undefined;
+    }
+
+    /**
+     * Writes garage door config back to the device.
+     * Uses MultipleConfig (MSG200) when advertised, else Config (MSG100).
+     * No-op on shutters or when neither namespace is available.
+     */
+    async setConfig(
+        config: Partial<GarageDoorConfig> | GarageMultipleConfigEntry
+    ): Promise<void> {
+        if (this.bind.kind !== 'garage') {
+            return;
+        }
+        if (this.has(GARAGE_MULTIPLE_CONFIG_NAMESPACE)) {
+            const entry = config as GarageMultipleConfigEntry;
+            await this.bind.request({
+                namespace: GARAGE_MULTIPLE_CONFIG_NAMESPACE,
+                method: 'SET',
+                payload: encodeGarageMultipleConfigSet({
+                    ...entry,
+                    channel: this.bind.channel
+                })
+            });
+            return;
+        }
+        if (this.has(GARAGE_CONFIG_NAMESPACE)) {
+            await this.bind.request({
+                namespace: GARAGE_CONFIG_NAMESPACE,
+                method: 'SET',
+                payload: encodeGarageConfigSet(config as Partial<GarageDoorConfig>)
+            });
+        }
+    }
+
+    /**
      * Applies a firmware PUSH for this endpoint.
      */
     handlePush(message: MerossMessage): void {
@@ -148,10 +228,12 @@ export class CoverTrait {
             return;
         }
 
-        if (this.bind.kind === 'garage' && message.header.namespace === GARAGE_STATE_NAMESPACE) {
-            for (const entry of decodeGaragePush(message.payload)) {
-                if (entry.channel === this.bind.channel) {
-                    this.applyGarage(entry.open);
+        if (this.bind.kind === 'garage') {
+            if (message.header.namespace === GARAGE_STATE_NAMESPACE) {
+                for (const entry of decodeGaragePush(message.payload)) {
+                    if (entry.channel === this.bind.channel) {
+                        this.applyGarage(entry.open);
+                    }
                 }
             }
             return;

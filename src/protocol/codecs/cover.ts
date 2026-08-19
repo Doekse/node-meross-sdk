@@ -2,6 +2,8 @@ import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
 export const GARAGE_STATE_NAMESPACE = 'Appliance.GarageDoor.State';
+export const GARAGE_CONFIG_NAMESPACE = 'Appliance.GarageDoor.Config';
+export const GARAGE_MULTIPLE_CONFIG_NAMESPACE = 'Appliance.GarageDoor.MultipleConfig';
 export const SHUTTER_POSITION_NAMESPACE = 'Appliance.RollerShutter.Position';
 export const SHUTTER_STATE_NAMESPACE = 'Appliance.RollerShutter.State';
 
@@ -111,6 +113,110 @@ function decodeShutterPosition(payload: MerossPayload): ShutterPositionState[] {
             throw new ProtocolError('RollerShutter.Position channel and position are required');
         }
         return { channel, position };
+    });
+}
+
+/**
+ * Device-level config returned by GarageDoor.Config (MSG100, single channel).
+ * All durations are milliseconds.
+ */
+export interface GarageDoorConfig {
+    signalDuration: number;
+    buzzerEnable?: number;
+    doorOpenDuration?: number;
+    doorCloseDuration?: number;
+}
+
+/**
+ * Per-channel config entry returned by GarageDoor.MultipleConfig (MSG200).
+ * All durations are milliseconds.
+ */
+export interface GarageMultipleConfigEntry {
+    channel: number;
+    doorEnable?: number;
+    signalClose?: number;
+    signalOpen?: number;
+    doorOpenDuration?: number;
+    doorCloseDuration?: number;
+    buzzerEnable?: number;
+}
+
+/** SET payload for GarageDoor.Config — fields are merged with the existing config. */
+export function encodeGarageConfigSet(config: Partial<GarageDoorConfig>): MerossPayload {
+    return { config };
+}
+
+/** GET payload for GarageDoor.Config — empty body fetches the current config. */
+export function encodeGarageConfigGet(): MerossPayload {
+    return {};
+}
+
+export function decodeGarageConfigGetAck(payload: MerossPayload): GarageDoorConfig {
+    const raw = payload.config;
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        throw new ProtocolError('GarageDoor.Config payload must contain a config object');
+    }
+    const { signalDuration, buzzerEnable, doorOpenDuration, doorCloseDuration } =
+        raw as Record<string, unknown>;
+    if (typeof signalDuration !== 'number') {
+        throw new ProtocolError('GarageDoor.Config signalDuration is required');
+    }
+    return {
+        signalDuration,
+        ...(typeof buzzerEnable === 'number' ? { buzzerEnable } : {}),
+        ...(typeof doorOpenDuration === 'number' ? { doorOpenDuration } : {}),
+        ...(typeof doorCloseDuration === 'number' ? { doorCloseDuration } : {})
+    };
+}
+
+/** SET payload for GarageDoor.MultipleConfig — single-channel object inside `config`. */
+export function encodeGarageMultipleConfigSet(entry: GarageMultipleConfigEntry): MerossPayload {
+    return { config: entry };
+}
+
+/** GET payload for GarageDoor.MultipleConfig — empty body fetches all channels. */
+export function encodeGarageMultipleConfigGet(): MerossPayload {
+    return {};
+}
+
+export function decodeGarageMultipleConfigGetAck(payload: MerossPayload): GarageMultipleConfigEntry[] {
+    return decodeGarageMultipleConfig(payload);
+}
+
+export function decodeGarageMultipleConfigPush(payload: MerossPayload): GarageMultipleConfigEntry[] {
+    return decodeGarageMultipleConfig(payload);
+}
+
+function decodeGarageMultipleConfig(payload: MerossPayload): GarageMultipleConfigEntry[] {
+    const raw = payload.config;
+    if (!Array.isArray(raw)) {
+        throw new ProtocolError('GarageDoor.MultipleConfig payload must contain a config array');
+    }
+    return raw.map((item) => {
+        if (typeof item !== 'object' || item === null) {
+            throw new ProtocolError('GarageDoor.MultipleConfig entry must be an object');
+        }
+        const {
+            channel,
+            doorEnable,
+            signalClose,
+            signalOpen,
+            doorOpenDuration,
+            doorCloseDuration,
+            buzzerEnable
+        } = item as Record<string, unknown>;
+        if (typeof channel !== 'number') {
+            throw new ProtocolError('GarageDoor.MultipleConfig channel is required');
+        }
+        return {
+            channel,
+            ...(typeof doorEnable === 'number' ? { doorEnable } : {}),
+            ...(typeof signalClose === 'number' ? { signalClose } : {}),
+            ...(typeof signalOpen === 'number' ? { signalOpen } : {}),
+            ...(typeof doorOpenDuration === 'number' ? { doorOpenDuration } : {}),
+            ...(typeof doorCloseDuration === 'number' ? { doorCloseDuration } : {}),
+            ...(typeof buzzerEnable === 'number' ? { buzzerEnable } : {})
+        };
     });
 }
 
