@@ -112,10 +112,10 @@ describe('CloudClient.login', () => {
     });
 
     it('uses global fetch when no fetch option is injected', async (t) => {
-        t.mock.method(globalThis, 'fetch', async () => ok(LOGIN_DATA));
+        const fetchMock = t.mock.method(globalThis, 'fetch', async () => ok(LOGIN_DATA));
         const client = await CloudClient.login({ email: EMAIL, password: PASSWORD });
-        assert.equal(globalThis.fetch.mock.callCount(), 1);
-        assert.equal(String(globalThis.fetch.mock.calls[0]!.arguments[0]), SIGN_IN);
+        assert.equal(fetchMock.mock.callCount(), 1);
+        assert.equal(String(fetchMock.mock.calls[0]!.arguments[0]), SIGN_IN);
         assert.equal(client.getToken().token, 'stub-token');
     });
 
