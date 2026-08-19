@@ -185,7 +185,9 @@ export class PresenceTrait {
             const latestEntry = decodeLatestXGetAck(latestReply.payload).find((e) =>
                 !e.subId && e.channel === this.bind.channel
             );
-            if (latestEntry) this.applyChange(presencePatch(latestEntry));
+            if (latestEntry) {
+                this.applyChange(presencePatch(latestEntry));
+            }
 
             if (!this.has(PRESENCE_CONFIG_NAMESPACE)) {
                 return;
@@ -198,7 +200,9 @@ export class PresenceTrait {
             const configEntry = decodePresenceConfigGetAck(configReply.payload).find(
                 (e) => e.channel === this.bind.channel
             );
-            if (configEntry) this.applyChange(configPatch(configEntry));
+            if (configEntry) {
+                this.applyChange(configPatch(configEntry));
+            }
         } catch {
             // Next PUSH or setter call will recover.
         }
@@ -212,10 +216,18 @@ function presencePatch(entry: {
     times?: number;
 }): PresenceValues {
     const patch: PresenceValues = {};
-    if (entry.present !== undefined) patch.present = entry.present;
-    if (entry.distance !== undefined) patch.distance = entry.distance;
-    if (entry.light !== undefined) patch.light = entry.light;
-    if (entry.times !== undefined) patch.times = entry.times;
+    if (entry.present !== undefined) {
+        patch.present = entry.present;
+    }
+    if (entry.distance !== undefined) {
+        patch.distance = entry.distance;
+    }
+    if (entry.light !== undefined) {
+        patch.light = entry.light;
+    }
+    if (entry.times !== undefined) {
+        patch.times = entry.times;
+    }
     return patch;
 }
 

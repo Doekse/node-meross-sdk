@@ -294,6 +294,8 @@ export class Session {
         const channel = graphEndpoint.channel ?? 0;
         const namespaces = new Set(Object.keys(physical.ability));
         const request = this.deviceRequest(physical);
+        // Assigned after traits so emitChange closures can capture the binding.
+        // eslint-disable-next-line prefer-const -- definite assignment; constructed below
         let endpoint!: Endpoint;
         let switchTrait: SwitchTrait | undefined;
         let energyTrait: EnergyTrait | undefined;

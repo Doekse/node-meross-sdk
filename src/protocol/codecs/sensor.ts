@@ -372,8 +372,12 @@ function decodeAlert(payload: MerossPayload): SensorAlertState[] {
         const result: SensorAlertState = { id: requireId(item.id, 'Hub.Sensor.Alert') };
         const temperature = decodeAlertBands(item.temperature);
         const humidity = decodeAlertBands(item.humidity);
-        if (temperature) result.temperature = temperature;
-        if (humidity) result.humidity = humidity;
+        if (temperature) {
+            result.temperature = temperature;
+        }
+        if (humidity) {
+            result.humidity = humidity;
+        }
         return result;
     });
 }
@@ -416,12 +420,20 @@ function decodeSensorAll(payload: MerossPayload): SensorAllState[] {
         const result: SensorAllState = { id: requireId(item.id, 'Hub.Sensor.All') };
         const temperature = nestedNumber(item.temperature, 'latest');
         const humidity = nestedNumber(item.humidity, 'latest');
-        if (temperature !== undefined) result.temperature = scaleHubTemperature(temperature);
-        if (humidity !== undefined) result.humidity = humidity / 10;
+        if (temperature !== undefined) {
+            result.temperature = scaleHubTemperature(temperature);
+        }
+        if (humidity !== undefined) {
+            result.humidity = humidity / 10;
+        }
         const leak = nestedNumber(item.waterLeak, 'latestWaterLeak');
-        if (leak !== undefined) result.leak = leak !== 0;
+        if (leak !== undefined) {
+            result.leak = leak !== 0;
+        }
         const door = nestedNumber(item.doorWindow, 'status');
-        if (door !== undefined) result.open = door === 1;
+        if (door !== undefined) {
+            result.open = door === 1;
+        }
         if (typeof item.smokeAlarm === 'object' && item.smokeAlarm !== null) {
             const smoke = item.smokeAlarm as Record<string, unknown>;
             result.smoke = decodeSmokeEntry({ ...smoke, id: item.id });
@@ -469,9 +481,15 @@ function decodeLatestX(payload: MerossPayload): LatestXState[] {
         const temperature = latestValue(block.temp);
         const humidity = latestValue(block.humi);
         const light = latestValue(block.light);
-        if (temperature !== undefined) result.temperature = scaleHubTemperature(temperature);
-        if (humidity !== undefined) result.humidity = humidity / 10;
-        if (light !== undefined) result.light = light;
+        if (temperature !== undefined) {
+            result.temperature = scaleHubTemperature(temperature);
+        }
+        if (humidity !== undefined) {
+            result.humidity = humidity / 10;
+        }
+        if (light !== undefined) {
+            result.light = light;
+        }
         const presence = latestObject(block.presence);
         if (presence) {
             if (typeof presence.value === 'number') {
