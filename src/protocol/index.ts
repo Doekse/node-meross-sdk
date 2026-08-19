@@ -359,3 +359,23 @@ export type {
     SmokeConfigGetOptions,
     SmokeConfigSetOptions
 } from './codecs/sensor';
+export {
+    CONTROL_WATER_NAMESPACE,
+    DEVICE_CFG_NAMESPACE,
+    encodeWaterGet,
+    encodeWaterSet,
+    decodeWaterGetAck,
+    decodeWaterPush,
+    encodeDeviceCfgGet,
+    encodeDeviceCfgSet,
+    decodeDeviceCfgGetAck,
+    decodeDeviceCfgPush
+} from './codecs/water';
+export type {
+    WaterControlState,
+    MstDeviceCfgState,
+    WaterGetOptions,
+    WaterSetOptions,
+    DeviceCfgGetOptions,
+    DeviceCfgSetOptions
+} from './codecs/water';

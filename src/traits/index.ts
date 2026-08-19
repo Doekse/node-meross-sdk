@@ -7,3 +7,5 @@ export { SensorTrait } from './sensor';
 export type { SensorFamily, SensorValues, SensorSmokeStatus, SensorAlertBand } from './sensor';
 export { PresenceTrait } from './presence';
 export type { PresenceValues } from './presence';
+export { SprinklerTrait } from './sprinkler';
+export type { SprinklerValues } from './sprinkler';

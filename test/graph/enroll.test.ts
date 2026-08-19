@@ -332,7 +332,7 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(graph.getPhysical(HUB_UUID)?.endpoints.length, 3);
     });
 
-    it('omits sprinkler-family and unknown hub children until they have a trait', () => {
+    it('enrolls MST100 sprinklers with sprinkler trait and omits unknown hub children', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: {
                 ability: { 'Appliance.Hub.SubdeviceList': {} }
@@ -357,12 +357,56 @@ describe('enrollPhysicalDevice', () => {
             },
             subDevices: [{ subDeviceId: 'aabbcc', subDeviceType: 'mst100', subDeviceName: 'Garden' }]
         });
-        assert.equal(device.endpoints.length, 1);
+        assert.equal(device.endpoints.length, 3);
         assert.equal(device.endpoints[0]?.classHint, 'hub');
+
+        const sprinkler = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'aabbcc');
+        assert.ok(sprinkler);
+        assert.equal(sprinkler?.parentId, HUB_UUID);
+        assert.equal(sprinkler?.classHint, 'sprinkler');
+        assert.deepEqual(sprinkler?.traits, ['sprinkler']);
+        assert.equal(sprinkler?.name, 'Garden');
+        assert.equal(sprinkler?.model, 'mst100');
+
+        const aliasSprinkler = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'sprinkler1');
+        assert.ok(aliasSprinkler);
+        assert.equal(aliasSprinkler?.classHint, 'sprinkler');
+        assert.deepEqual(aliasSprinkler?.traits, ['sprinkler']);
+
         assert.equal(
-            device.endpoints.some((endpoint) => endpoint.subDeviceId),
+            device.endpoints.some((endpoint) => endpoint.subDeviceId === 'deadbeef'),
             false
         );
+
+        const graph = new DeviceGraph();
+        graph.enroll({
+            abilityPayload: { ability: { 'Appliance.Hub.SubdeviceList': {} } },
+            allPayload: {
+                all: {
+                    system: {
+                        hardware: { type: 'msh300', uuid: HUB_UUID },
+                        firmware: {},
+                        online: { status: 1 }
+                    },
+                    digest: {
+                        hub: {
+                            subdevice: [
+                                { id: 'aabbcc', status: 1, type: 'mst100' },
+                                { id: 'sprinkler1', status: 1, mst: { onoff: 1 } },
+                                { id: 'deadbeef', status: 1, ms120: {} }
+                            ]
+                        }
+                    }
+                }
+            },
+            subDevices: [{ subDeviceId: 'aabbcc', subDeviceType: 'mst100', subDeviceName: 'Garden' }]
+        });
+        const rows = graph.inventoryRows();
+        assert.equal(rows.length, 2);
+        assert.deepEqual(rows.map((row) => row.id).sort(), [
+            `${HUB_UUID}#aabbcc`,
+            `${HUB_UUID}#sprinkler1`
+        ]);
     });
 });
 

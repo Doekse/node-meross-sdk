@@ -20,6 +20,7 @@ const CLIMATE_SUBDEVICES = new Set(['mts100', 'mts100v3', 'mts150', 'mts150p']);
 const SENSOR_SUBDEVICES = new Set([
     'ms100', 'ms100f', 'ms130', 'ms200', 'ms400', 'ms405', 'ma151', 'gs559'
 ]);
+const SPRINKLER_SUBDEVICES = new Set(['mst100']);
 
 /** meross_lan digest keys that differ from cloud subDeviceType strings. */
 const HUB_MODEL_ALIASES: Record<string, string> = {
@@ -163,6 +164,9 @@ function classifyHubChild(raw: string | undefined): {
     }
     if (SENSOR_SUBDEVICES.has(model)) {
         return { model, classHint: 'sensor', traits: ['sensor'] };
+    }
+    if (SPRINKLER_SUBDEVICES.has(model)) {
+        return { model, classHint: 'sprinkler', traits: ['sprinkler'] };
     }
     return undefined;
 }

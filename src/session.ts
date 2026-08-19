@@ -37,6 +37,7 @@ import { EnergyTrait } from './traits/energy';
 import { LightTrait } from './traits/light';
 import { PresenceTrait } from './traits/presence';
 import { SENSOR_FAMILY_MAP, SensorTrait } from './traits/sensor';
+import { SprinklerTrait } from './traits/sprinkler';
 import { SwitchTrait } from './traits/switch';
 
 export interface LoginOptions {
@@ -207,6 +208,7 @@ export class Session {
             endpoint.climate?.handlePush(message);
             endpoint.sensor?.handlePush(message);
             endpoint.presence?.handlePush(message);
+            endpoint.sprinkler?.handlePush(message);
         }
     }
 
@@ -292,6 +294,7 @@ export class Session {
         let climateTrait: ClimateTrait | undefined;
         let sensorTrait: SensorTrait | undefined;
         let presenceTrait: PresenceTrait | undefined;
+        let sprinklerTrait: SprinklerTrait | undefined;
         if (graphEndpoint.traits.includes('switch')) {
             switchTrait = new SwitchTrait({
                 uuid: physical.uuid,
@@ -423,6 +426,18 @@ export class Session {
                 })
             });
         }
+        if (graphEndpoint.traits.includes('sprinkler') && graphEndpoint.subDeviceId) {
+            sprinklerTrait = new SprinklerTrait({
+                uuid: physical.uuid,
+                subDeviceId: graphEndpoint.subDeviceId,
+                namespaces,
+                request,
+                emitChange: (values) => endpoint.emit('change', {
+                    trait: 'sprinkler',
+                    values: { ...values }
+                })
+            });
+        }
         endpoint = new Endpoint({
             id: graphEndpoint.id,
             traits: graphEndpoint.traits,
@@ -433,6 +448,7 @@ export class Session {
             climate: climateTrait,
             sensor: sensorTrait,
             presence: presenceTrait,
+            sprinkler: sprinklerTrait,
             initialOnline: graphEndpoint.online
         });
         energyTrait?.start();
@@ -441,6 +457,7 @@ export class Session {
         climateTrait?.start();
         sensorTrait?.start();
         presenceTrait?.start();
+        sprinklerTrait?.start();
         return endpoint;
     }
 

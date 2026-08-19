@@ -6,9 +6,10 @@ import type { EnergyTrait } from './traits/energy';
 import type { LightTrait } from './traits/light';
 import type { PresenceTrait } from './traits/presence';
 import type { SensorTrait } from './traits/sensor';
+import type { SprinklerTrait } from './traits/sprinkler';
 import type { SwitchTrait } from './traits/switch';
 
-export type TraitName = 'switch' | 'energy' | 'light' | 'climate' | 'cover' | 'sensor' | 'presence';
+export type TraitName = 'switch' | 'energy' | 'light' | 'climate' | 'cover' | 'sensor' | 'presence' | 'sprinkler';
 
 export interface EndpointChange {
     trait: TraitName;
@@ -25,6 +26,7 @@ export interface EndpointOptions {
     climate?: ClimateTrait;
     sensor?: SensorTrait;
     presence?: PresenceTrait;
+    sprinkler?: SprinklerTrait;
     initialOnline?: boolean;
 }
 
@@ -47,6 +49,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     readonly climate?: ClimateTrait;
     readonly sensor?: SensorTrait;
     readonly presence?: PresenceTrait;
+    readonly sprinkler?: SprinklerTrait;
 
     private online: boolean;
 
@@ -61,6 +64,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         this.climate = options.climate;
         this.sensor = options.sensor;
         this.presence = options.presence;
+        this.sprinkler = options.sprinkler;
         this.online = options.initialOnline ?? true;
     }
 
