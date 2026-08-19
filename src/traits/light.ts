@@ -1,20 +1,27 @@
 import {
+    LIGHT_CAPACITY_EFFECT,
     LIGHT_CAPACITY_LUMINANCE,
     LIGHT_CAPACITY_RGB,
     LIGHT_CAPACITY_TEMPERATURE,
+    LIGHT_EFFECT_NAMESPACE,
     LIGHT_NAMESPACE,
+    decodeLightEffectGetAck,
+    decodeLightEffectPush,
     decodeLightGetAck,
     decodeLightPush,
+    encodeLightEffectGet,
+    encodeLightEffectSet,
     encodeLightGet,
     encodeLightSet,
     TOGGLEX_NAMESPACE,
     decodeToggleXGetAck,
     decodeToggleXPush,
     encodeToggleXGet,
-    encodeToggleXSet
+    encodeToggleXSet,
+    type LightChannelWireState,
+    type LightEffectEntry,
+    type MerossMessage
 } from '../protocol';
-import type { LightChannelWireState } from '../protocol';
-import type { MerossMessage } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
 
 export interface LightRgb {
@@ -42,6 +49,8 @@ export interface LightTraitBind {
     hasToggleX: boolean;
     /** Device-level on/off via classic Toggle (only when ToggleX is absent). */
     hasToggle: boolean;
+    /** Whether the device exposes `Appliance.Control.Light.Effect` for an effect catalog. */
+    hasLightEffect: boolean;
     /** Capacity bitmask from Ability; the trait updates it after the first GETACK. */
     lightCapacity: number;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
@@ -61,6 +70,7 @@ export class LightTrait {
     private temperature: number | undefined;
     private rgb: LightRgb | undefined;
     private effect: number | undefined;
+    private effectCatalog: LightEffectEntry[] = [];
 
     constructor(bind: LightTraitBind) {
         this.bind = bind;
@@ -90,6 +100,44 @@ export class LightTrait {
     /** Last known RGB color. */
     getRgb(): LightRgb | undefined {
         return this.rgb && { ...this.rgb };
+    }
+
+    /** Last known Control.Light effect index. */
+    getEffect(): number | undefined {
+        return this.effect;
+    }
+
+    /** Names from the last Light.Effect GET/PUSH. Empty when the namespace is absent. */
+    getEffectNames(): string[] {
+        return this.effectCatalog.map((entry) => entry.effectName);
+    }
+
+    /**
+     * Boards without Light.Effect still take an effect id on Control.Light.
+     * MSL320 also needs that catalog row enabled on Light.Effect.
+     */
+    async setEffect(effect: number): Promise<{ effect: number }> {
+        await this.bind.request({
+            namespace: LIGHT_NAMESPACE,
+            method: 'SET',
+            payload: encodeLightSet({
+                channel: this.bind.channel,
+                capacity: LIGHT_CAPACITY_EFFECT,
+                effect
+            })
+        });
+        this.applyLight({ channel: this.bind.channel, capacity: 0, effect });
+
+        if (this.bind.hasLightEffect) {
+            const entry = this.effectCatalog[effect];
+            await this.bind.request({
+                namespace: LIGHT_EFFECT_NAMESPACE,
+                method: 'SET',
+                payload: encodeLightEffectSet([{ ...entry, enable: 1 }])
+            });
+        }
+
+        return { effect };
     }
 
     /**
@@ -194,6 +242,11 @@ export class LightTrait {
             if (decoded.channel === this.bind.channel) {
                 this.applyLight(decoded, !this.bind.hasToggleX && !this.bind.hasToggle);
             }
+            return;
+        }
+
+        if (message.header.namespace === LIGHT_EFFECT_NAMESPACE && this.bind.hasLightEffect) {
+            this.effectCatalog = decodeLightEffectPush(message.payload);
         }
     }
 
@@ -219,6 +272,15 @@ export class LightTrait {
                 if (toggle) {
                     this.on = toggle.on;
                 }
+            }
+
+            if (this.bind.hasLightEffect) {
+                const effectReply = await this.bind.request({
+                    namespace: LIGHT_EFFECT_NAMESPACE,
+                    method: 'GET',
+                    payload: encodeLightEffectGet()
+                });
+                this.effectCatalog = decodeLightEffectGetAck(effectReply.payload);
             }
         } catch {
             // Next PUSH or setter call will recover.

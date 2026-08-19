@@ -6,8 +6,11 @@ import {
     LIGHT_CAPACITY_LUMINANCE,
     LIGHT_CAPACITY_RGB,
     LIGHT_CAPACITY_TEMPERATURE,
+    decodeLightEffectGetAck,
     decodeLightGetAck,
     encodeLightGet,
+    encodeLightEffectGet,
+    encodeLightEffectSet,
     encodeLightSet
 } from '../../../src/protocol/codecs/light';
 
@@ -65,6 +68,43 @@ describe('Control.Light codec', () => {
     it('rejects malformed Control.Light payload', () => {
         assert.throws(
             () => decodeLightGetAck({ light: null }),
+            (err: unknown) => err instanceof Error
+        );
+    });
+});
+
+describe('Control.Light.Effect codec', () => {
+    it('encodes Light.Effect GET as an empty catalog request', () => {
+        assert.deepEqual(encodeLightEffectGet(), { effect: [] });
+    });
+
+    it('encodes Light.Effect SET as an effect list', () => {
+        assert.deepEqual(
+            encodeLightEffectSet([{ Id: '1', effectName: 'Night', enable: 1 }]),
+            {
+                effect: [{ Id: '1', effectName: 'Night', enable: 1 }]
+            }
+        );
+    });
+
+    it('decodes Light.Effect GETACK catalog entries', () => {
+        const decoded = decodeLightEffectGetAck({
+            effect: [{ Id: '1', effectName: 'Night', enable: 0, member: [] }]
+        });
+
+        assert.equal(decoded.length, 1);
+        assert.equal(decoded[0].Id, '1');
+        assert.equal(decoded[0].effectName, 'Night');
+        assert.equal(decoded[0].enable, 0);
+    });
+
+    it('rejects malformed Light.Effect payloads', () => {
+        assert.throws(
+            () => decodeLightEffectGetAck({ effect: null }),
+            (err: unknown) => err instanceof Error
+        );
+        assert.throws(
+            () => decodeLightEffectGetAck({ effect: [{ Id: '1' }] }),
             (err: unknown) => err instanceof Error
         );
     });

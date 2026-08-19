@@ -3,12 +3,17 @@ import { describe, it } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
 import {
+    LIGHT_CAPACITY_EFFECT,
     LIGHT_CAPACITY_LUMINANCE,
     LIGHT_CAPACITY_RGB,
     LIGHT_CAPACITY_TEMPERATURE,
     LIGHT_NAMESPACE,
+    LIGHT_EFFECT_NAMESPACE,
     TOGGLEX_NAMESPACE,
     encodeMessage,
+    encodeLightEffectGet,
+    encodeLightEffectSet,
+    encodeLightSet,
     encodeToggleXSet
 } from '../../src/protocol';
 import { LightTrait } from '../../src/traits/light';
@@ -63,6 +68,8 @@ function createLightHarness(options: {
     hasToggleX?: boolean;
     hasToggle?: boolean;
     lightCapacity?: number;
+    hasLightEffect?: boolean;
+    lightEffectCatalog?: Array<{ Id: string; effectName: string; enable?: number }>;
 } = {}): {
     endpoint: Endpoint;
     trait: LightTrait;
@@ -80,6 +87,7 @@ function createLightHarness(options: {
         hasToggleX: options.hasToggleX ?? false,
         hasToggle: options.hasToggle ?? false,
         lightCapacity: options.lightCapacity ?? 0,
+        hasLightEffect: options.hasLightEffect ?? false,
         request: async (opts) => {
             const sent = encodeMessage({
                 namespace: opts.namespace,
@@ -120,6 +128,29 @@ function createLightHarness(options: {
                 });
             }
 
+            if (opts.namespace === LIGHT_EFFECT_NAMESPACE) {
+                if (opts.method === 'GET') {
+                    return encodeMessage({
+                        namespace: LIGHT_EFFECT_NAMESPACE,
+                        method: 'GETACK',
+                        key: KEY,
+                        from: `/appliance/${UUID}/publish`,
+                        uuid: UUID,
+                        payload: {
+                            effect: options.lightEffectCatalog ?? []
+                        }
+                    });
+                }
+                return encodeMessage({
+                    namespace: LIGHT_EFFECT_NAMESPACE,
+                    method: 'SETACK',
+                    key: KEY,
+                    from: `/appliance/${UUID}/publish`,
+                    uuid: UUID,
+                    payload: {}
+                });
+            }
+
             if (opts.namespace === TOGGLEX_NAMESPACE) {
                 if (opts.method === 'GET') {
                     return encodeMessage({
@@ -152,7 +183,10 @@ function createLightHarness(options: {
                 payload: {}
             });
         },
-        emitChange: (values) => endpoint.emit('change', { trait: 'light', values })
+        emitChange: (values) => endpoint.emit('change', {
+            trait: 'light',
+            values: values as Record<string, unknown>
+        })
     });
 
     return { endpoint, trait, requests };
@@ -214,6 +248,89 @@ describe('LightTrait PUSH', () => {
         trait.handlePush(togglexPush(true));
 
         assert.deepEqual(changes, [{ trait: 'light', values: { on: true } }]);
+    });
+});
+
+describe('LightTrait.setEffect', () => {
+    it('selects effects via Control.Light capacity 0x8 when no catalog is available', async () => {
+        const { endpoint, trait, requests } = createLightHarness({ hasLightEffect: false });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        await trait.setEffect(2);
+
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0].header.namespace, LIGHT_NAMESPACE);
+        assert.equal(requests[0].header.method, 'SET');
+        assert.deepEqual(
+            requests[0].payload,
+            encodeLightSet({ channel: CHANNEL, capacity: LIGHT_CAPACITY_EFFECT, effect: 2 })
+        );
+        assert.deepEqual(changes, [{ trait: 'light', values: { effect: 2 } }]);
+    });
+
+    it('GETs Light.Effect on start only when advertised', async () => {
+        const catalog = [
+            { Id: '1', effectName: 'Night', enable: 0 },
+            { Id: '2', effectName: 'Day', enable: 0 }
+        ];
+        const withEffect = createLightHarness({
+            hasLightEffect: true,
+            lightEffectCatalog: catalog
+        });
+        withEffect.trait.start();
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+
+        const effectGet = withEffect.requests.find((request) => request.header.namespace === LIGHT_EFFECT_NAMESPACE);
+        assert.equal(effectGet?.header.method, 'GET');
+        assert.deepEqual(effectGet?.payload, encodeLightEffectGet());
+        assert.deepEqual(withEffect.trait.getEffectNames(), ['Night', 'Day']);
+
+        const withoutEffect = createLightHarness({ hasLightEffect: false });
+        withoutEffect.trait.start();
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(
+            withoutEffect.requests.some((request) => request.header.namespace === LIGHT_EFFECT_NAMESPACE),
+            false
+        );
+        assert.deepEqual(withoutEffect.trait.getEffectNames(), []);
+    });
+
+    it('setEffect enables the selected Light.Effect entry only when advertised', async () => {
+        const catalog = [
+            { Id: '1', effectName: 'Night', enable: 0, member: [] },
+            { Id: '2', effectName: 'Day', enable: 0, member: [] }
+        ];
+
+        const { endpoint, trait, requests } = createLightHarness({
+            hasLightEffect: true,
+            lightEffectCatalog: catalog
+        });
+        trait.start();
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+        requests.length = 0;
+
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        await trait.setEffect(1);
+
+        assert.equal(requests.length, 2);
+        assert.equal(requests[0].header.namespace, LIGHT_NAMESPACE);
+        assert.equal(requests[0].header.method, 'SET');
+        assert.deepEqual(
+            requests[0].payload,
+            encodeLightSet({ channel: CHANNEL, capacity: LIGHT_CAPACITY_EFFECT, effect: 1 })
+        );
+
+        assert.equal(requests[1].header.namespace, LIGHT_EFFECT_NAMESPACE);
+        assert.equal(requests[1].header.method, 'SET');
+        assert.deepEqual(requests[1].payload, encodeLightEffectSet([{ ...catalog[1], enable: 1 }]));
+
+        assert.deepEqual(changes, [{ trait: 'light', values: { effect: 1 } }]);
     });
 });
 

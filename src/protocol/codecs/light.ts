@@ -12,6 +12,7 @@ import type { MerossPayload } from '../message';
  *   - 0x8 effect
  */
 export const LIGHT_NAMESPACE = 'Appliance.Control.Light';
+export const LIGHT_EFFECT_NAMESPACE = 'Appliance.Control.Light.Effect';
 
 export const LIGHT_CAPACITY_RGB = 0x1;
 export const LIGHT_CAPACITY_TEMPERATURE = 0x2;
@@ -44,6 +45,16 @@ export interface LightSetOptions {
     luminance?: number;
     effect?: number;
     onoff?: boolean;
+}
+
+/**
+ * One Light.Effect catalog row. SET repeats the GETACK object with `enable`
+ * flipped; extra firmware keys stay on the object.
+ */
+export interface LightEffectEntry {
+    Id: string;
+    effectName: string;
+    enable?: number;
 }
 
 /**
@@ -95,6 +106,23 @@ export function decodeLightPush(payload: MerossPayload): LightChannelWireState {
     return decodeLight(payload);
 }
 
+/** Empty `effect` list returns the full catalog. */
+export function encodeLightEffectGet(): MerossPayload {
+    return { effect: [] };
+}
+
+export function encodeLightEffectSet(entries: LightEffectEntry[]): MerossPayload {
+    return { effect: entries };
+}
+
+export function decodeLightEffectGetAck(payload: MerossPayload): LightEffectEntry[] {
+    return decodeLightEffect(payload);
+}
+
+export function decodeLightEffectPush(payload: MerossPayload): LightEffectEntry[] {
+    return decodeLightEffect(payload);
+}
+
 function decodeLight(payload: MerossPayload): LightChannelWireState {
     const raw = payload.light;
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
@@ -127,3 +155,21 @@ function decodeLight(payload: MerossPayload): LightChannelWireState {
     return state;
 }
 
+function decodeLightEffect(payload: MerossPayload): LightEffectEntry[] {
+    const raw = payload.effect;
+    if (!Array.isArray(raw)) {
+        throw new ProtocolError('Light.Effect payload must contain an effect array');
+    }
+    return raw.map(decodeLightEffectEntry);
+}
+
+function decodeLightEffectEntry(item: unknown): LightEffectEntry {
+    if (typeof item !== 'object' || item === null) {
+        throw new ProtocolError('Light.Effect entry must be an object');
+    }
+    const { Id, effectName } = item as Record<string, unknown>;
+    if (typeof Id !== 'string' || typeof effectName !== 'string') {
+        throw new ProtocolError('Light.Effect Id and effectName are required');
+    }
+    return item as LightEffectEntry;
+}

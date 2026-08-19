@@ -34,6 +34,7 @@ export type {
 } from './codecs/togglex';
 export {
     LIGHT_NAMESPACE,
+    LIGHT_EFFECT_NAMESPACE,
     LIGHT_CAPACITY_RGB,
     LIGHT_CAPACITY_TEMPERATURE,
     LIGHT_CAPACITY_LUMINANCE,
@@ -41,11 +42,16 @@ export {
     decodeLightGetAck,
     decodeLightPush,
     encodeLightGet,
-    encodeLightSet
+    encodeLightSet,
+    decodeLightEffectGetAck,
+    decodeLightEffectPush,
+    encodeLightEffectGet,
+    encodeLightEffectSet
 } from './codecs/light';
 export type {
     LightChannelWireState,
-    LightSetOptions
+    LightSetOptions,
+    LightEffectEntry
 } from './codecs/light';
 export {
     ELECTRICITY_NAMESPACE,

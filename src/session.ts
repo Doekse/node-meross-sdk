@@ -15,6 +15,7 @@ import {
     CONSUMPTIONX_NAMESPACE,
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_NAMESPACE,
+    LIGHT_EFFECT_NAMESPACE,
     ProtocolDispatcher,
     TOGGLEX_NAMESPACE,
     deriveEncryptionKey,
@@ -333,12 +334,14 @@ export class Session {
 
             const hasToggleX = TOGGLEX_NAMESPACE in physical.ability;
             const hasToggle = !hasToggleX && 'Appliance.Control.Toggle' in physical.ability;
+            const hasLightEffect = LIGHT_EFFECT_NAMESPACE in physical.ability;
 
             lightTrait = new LightTrait({
                 uuid: physical.uuid,
                 channel,
                 hasToggleX,
                 hasToggle,
+                hasLightEffect,
                 lightCapacity: guessedCapacity,
                 request,
                 emitChange: (values) => endpoint.emit('change', {
