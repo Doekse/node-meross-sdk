@@ -33,6 +33,8 @@ import type { ThermostatGeneration } from './traits/climate';
 import { CoverTrait } from './traits/cover';
 import { EnergyTrait } from './traits/energy';
 import { LightTrait } from './traits/light';
+import { PresenceTrait } from './traits/presence';
+import { SENSOR_FAMILY_MAP, SensorTrait } from './traits/sensor';
 import { SwitchTrait } from './traits/switch';
 
 export interface LoginOptions {
@@ -201,6 +203,8 @@ export class Session {
             endpoint.light?.handlePush(message);
             endpoint.cover?.handlePush(message);
             endpoint.climate?.handlePush(message);
+            endpoint.sensor?.handlePush(message);
+            endpoint.presence?.handlePush(message);
         }
     }
 
@@ -281,6 +285,7 @@ export class Session {
     private createEndpoint(graphEndpoint: GraphEndpoint): Endpoint {
         const physical = this.graph.getPhysical(graphEndpoint.uuid)!;
         const channel = graphEndpoint.channel ?? 0;
+        const namespaces = new Set(Object.keys(physical.ability));
         const request = this.deviceRequest(physical);
         let endpoint!: Endpoint;
         let switchTrait: SwitchTrait | undefined;
@@ -288,6 +293,8 @@ export class Session {
         let lightTrait: LightTrait | undefined;
         let coverTrait: CoverTrait | undefined;
         let climateTrait: ClimateTrait | undefined;
+        let sensorTrait: SensorTrait | undefined;
+        let presenceTrait: PresenceTrait | undefined;
         if (graphEndpoint.traits.includes('switch')) {
             switchTrait = new SwitchTrait({
                 uuid: physical.uuid,
@@ -356,7 +363,6 @@ export class Session {
             });
         }
         if (graphEndpoint.traits.includes('climate')) {
-            const namespaces = new Set(Object.keys(physical.ability));
             if (graphEndpoint.subDeviceId) {
                 climateTrait = new ClimateTrait({
                     kind: 'hub',
@@ -388,6 +394,33 @@ export class Session {
                 });
             }
         }
+        if (graphEndpoint.traits.includes('sensor') && graphEndpoint.subDeviceId) {
+            const family = SENSOR_FAMILY_MAP.get(graphEndpoint.model.toLowerCase());
+            if (family) {
+                sensorTrait = new SensorTrait({
+                    uuid: physical.uuid,
+                    subDeviceId: graphEndpoint.subDeviceId,
+                    family,
+                    namespaces,
+                    request,
+                    emitChange: (values) => endpoint.emit('change', {
+                        trait: 'sensor',
+                        values: { ...values }
+                    })
+                });
+            }
+        }
+        if (graphEndpoint.traits.includes('presence')) {
+            presenceTrait = new PresenceTrait({
+                uuid: physical.uuid,
+                channel,
+                request,
+                emitChange: (values) => endpoint.emit('change', {
+                    trait: 'presence',
+                    values: { ...values }
+                })
+            });
+        }
         endpoint = new Endpoint({
             id: graphEndpoint.id,
             traits: graphEndpoint.traits,
@@ -396,12 +429,16 @@ export class Session {
             light: lightTrait,
             cover: coverTrait,
             climate: climateTrait,
+            sensor: sensorTrait,
+            presence: presenceTrait,
             initialOnline: graphEndpoint.online
         });
         energyTrait?.start();
         lightTrait?.start();
         coverTrait?.start();
         climateTrait?.start();
+        sensorTrait?.start();
+        presenceTrait?.start();
         return endpoint;
     }
 

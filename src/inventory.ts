@@ -1,6 +1,6 @@
 import type { TraitName } from './endpoint';
 
-export type ClassHint = 'socket' | 'light' | 'climate' | 'cover' | 'hub' | 'sensor';
+export type ClassHint = 'socket' | 'light' | 'climate' | 'cover' | 'hub' | 'sensor' | 'sprinkler';
 
 export interface InventoryRow {
     id: string;

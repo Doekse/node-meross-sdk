@@ -16,6 +16,10 @@ export { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from './system-all';
 export type { SystemAll } from './system-all';
 
 const CLIMATE_SUBDEVICES = new Set(['mts100', 'mts100v3', 'mts150', 'mts150p']);
+const SPRINKLER_SUBDEVICES = new Set(['mst100']);
+const SENSOR_SUBDEVICES = new Set([
+    'ms100', 'ms100f', 'ms130', 'ms200', 'ms400', 'ms405', 'ma151', 'gs559'
+]);
 
 export interface EnrollInput {
     abilityPayload: MerossPayload;
@@ -190,6 +194,10 @@ function enrollBoard(
         add(0, 'climate', ['climate']);
     }
 
+    if ('Appliance.Control.Presence.Config' in ability || 'Appliance.Control.Presence.Study' in ability) {
+        add(0, 'sensor', ['presence']);
+    }
+
     let toggles: DigestToggle[] = all.digest.togglex;
     if (toggles.length === 0 && cloud?.channels?.length) {
         toggles = cloud.channels.map((_, channel) => ({ channel }));
@@ -249,7 +257,12 @@ function enrollHub(
 
     for (const [subDeviceId, sub] of byId) {
         const subModel = sub.model || model;
-        const classHint: ClassHint = CLIMATE_SUBDEVICES.has(subModel.toLowerCase()) ? 'climate' : 'sensor';
+        const lowered = subModel.toLowerCase();
+        const classHint: ClassHint = CLIMATE_SUBDEVICES.has(lowered)
+            ? 'climate'
+            : SPRINKLER_SUBDEVICES.has(lowered)
+                ? 'sprinkler'
+                : 'sensor';
         endpoints.push({
             id: `${uuid}#${subDeviceId}`,
             uuid,
@@ -258,7 +271,9 @@ function enrollHub(
             name: sub.name || subModel,
             model: subModel,
             classHint,
-            traits: classHint === 'climate' ? ['climate'] : [],
+            traits: classHint === 'climate'
+                ? ['climate']
+                : (classHint === 'sensor' && SENSOR_SUBDEVICES.has(lowered) ? ['sensor'] : []),
             online: sub.online
         });
     }

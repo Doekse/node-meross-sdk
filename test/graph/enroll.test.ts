@@ -211,6 +211,22 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(device.endpoints[0]?.id, `${UUID}:0`);
     });
 
+    it('enrolls a presence board as classHint sensor with the presence trait', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Presence.Config': {},
+                    'Appliance.Control.Sensor.LatestX': {},
+                    'Appliance.Control.Multiple': { maxCmdNum: 5 }
+                }
+            },
+            allPayload: systemAllWithDigest({})
+        });
+        assert.equal(device.endpoints.length, 1);
+        assert.equal(device.endpoints[0]?.classHint, 'sensor');
+        assert.deepEqual(device.endpoints[0]?.traits, ['presence']);
+    });
+
     it('enrolls hub children as uuid#subdevice with parentId metadata', () => {
         const cloud: CloudDevice = {
             uuid: HUB_UUID,
@@ -291,9 +307,36 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(sensor?.id, `${HUB_UUID}#120027D21C19`);
         assert.equal(sensor?.parentId, HUB_UUID);
         assert.equal(sensor?.classHint, 'sensor');
-        assert.deepEqual(sensor?.traits, []);
+        assert.deepEqual(sensor?.traits, ['sensor']);
         assert.equal(sensor?.name, 'Hall sensor');
         assert.equal(sensor?.online, false);
+    });
+
+    it('enrolls mst100 sprinklers as unpaired sprinkler children', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: { 'Appliance.Hub.SubdeviceList': {} }
+            },
+            allPayload: {
+                all: {
+                    system: {
+                        hardware: { type: 'msh300', uuid: HUB_UUID },
+                        firmware: {},
+                        online: { status: 1 }
+                    },
+                    digest: {
+                        hub: {
+                            subdevice: [{ id: 'aabbcc', status: 1, type: 'mst100' }]
+                        }
+                    }
+                }
+            },
+            subDevices: [{ subDeviceId: 'aabbcc', subDeviceType: 'mst100', subDeviceName: 'Garden' }]
+        });
+        const child = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'aabbcc');
+        assert.equal(child?.classHint, 'sprinkler');
+        assert.deepEqual(child?.traits, []);
+        assert.equal(child?.name, 'Garden');
     });
 });
 

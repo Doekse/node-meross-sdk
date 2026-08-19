@@ -3,3 +3,7 @@ export { EnergyTrait } from './energy';
 export { LightTrait } from './light';
 export { CoverTrait } from './cover';
 export { ClimateTrait } from './climate';
+export { SensorTrait } from './sensor';
+export type { SensorFamily, SensorValues, SensorSmokeStatus, SensorAlertBand } from './sensor';
+export { PresenceTrait } from './presence';
+export type { PresenceValues } from './presence';

@@ -4,9 +4,11 @@ import type { ClimateTrait } from './traits/climate';
 import type { CoverTrait } from './traits/cover';
 import type { EnergyTrait } from './traits/energy';
 import type { LightTrait } from './traits/light';
+import type { PresenceTrait } from './traits/presence';
+import type { SensorTrait } from './traits/sensor';
 import type { SwitchTrait } from './traits/switch';
 
-export type TraitName = 'switch' | 'energy' | 'light' | 'climate' | 'cover';
+export type TraitName = 'switch' | 'energy' | 'light' | 'climate' | 'cover' | 'sensor' | 'presence';
 
 export interface EndpointChange {
     trait: TraitName;
@@ -21,6 +23,8 @@ export interface EndpointOptions {
     light?: LightTrait;
     cover?: CoverTrait;
     climate?: ClimateTrait;
+    sensor?: SensorTrait;
+    presence?: PresenceTrait;
     initialOnline?: boolean;
 }
 
@@ -41,6 +45,8 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     readonly light?: LightTrait;
     readonly cover?: CoverTrait;
     readonly climate?: ClimateTrait;
+    readonly sensor?: SensorTrait;
+    readonly presence?: PresenceTrait;
 
     private online: boolean;
 
@@ -53,6 +59,8 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         this.light = options.light;
         this.cover = options.cover;
         this.climate = options.climate;
+        this.sensor = options.sensor;
+        this.presence = options.presence;
         this.online = options.initialOnline ?? true;
     }
 
