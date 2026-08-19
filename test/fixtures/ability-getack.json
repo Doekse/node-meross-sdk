@@ -1,0 +1,23 @@
+{
+  "header": {
+    "messageId": "7965b68a200af465517e20ad87f232a8",
+    "namespace": "Appliance.System.Ability",
+    "triggerSrc": "CloudSmart",
+    "method": "GETACK",
+    "payloadVersion": 1,
+    "from": "/appliance/2206138957096651080248e1e99705a4/publish",
+    "uuid": "2206138957096651080248e1e99705a4",
+    "timestamp": 1675237344,
+    "timestampMs": 269,
+    "sign": "bb34a3dc1042faa16c5277eaa30b0f26"
+  },
+  "payload": {
+    "payloadVersion": 1,
+    "ability": {
+      "Appliance.Control.Multiple": {
+        "maxCmdNum": 3
+      },
+      "Appliance.Control.Bind": {}
+    }
+  }
+}

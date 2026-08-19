@@ -30,5 +30,8 @@ describe('CJS public surface', () => {
         assert.equal(sdk.CloudError, undefined);
         assert.equal(sdk.MqttTransport, undefined);
         assert.equal(sdk.TransportError, undefined);
+        assert.equal(sdk.DeviceGraph, undefined);
+        assert.equal(sdk.enrollPhysicalDevice, undefined);
+        assert.equal(sdk.decodeAbilityGetAck, undefined);
     });
 });

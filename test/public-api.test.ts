@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
     Endpoint,
+    Inventory,
     NotImplementedError,
     Session,
     SwitchTrait
@@ -18,24 +19,16 @@ describe('public API', () => {
         assert.equal(typeof Session.prototype.getToken, 'function');
     });
 
-    it('Session.login rejects with NotImplementedError', async () => {
-        await assert.rejects(
-            () => Session.login({ email: 'you@example.com', password: 'secret' }),
-            (err: unknown) => err instanceof NotImplementedError
-        );
-    });
-
-    it('Session.restore throws NotImplementedError', () => {
-        assert.throws(
-            () => Session.restore({
-                token: 't',
-                key: 'k',
-                userId: '1',
-                domain: 'https://example.com',
-                mqttDomain: 'mqtt.example.com'
-            }),
-            (err: unknown) => err instanceof NotImplementedError
-        );
+    it('Session.restore returns a session with a copyable token', () => {
+        const session = Session.restore({
+            token: 't',
+            key: 'k',
+            userId: '1',
+            domain: 'https://example.com',
+            mqttDomain: 'mqtt.example.com'
+        });
+        assert.equal(session.getToken().token, 't');
+        assert.deepEqual(session.inventory.endpoints(), []);
     });
 
     it('SwitchTrait.setOn rejects with NotImplementedError', async () => {
@@ -44,6 +37,10 @@ describe('public API', () => {
             () => trait.setOn(true),
             (err: unknown) => err instanceof NotImplementedError
         );
+    });
+
+    it('Inventory.endpoints starts empty before graph enrollment', () => {
+        assert.deepEqual(new Inventory().endpoints(), []);
     });
 
     it('Endpoint can be constructed and emit availability', () => {

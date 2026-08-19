@@ -1,5 +1,4 @@
 import type { TraitName } from './endpoint';
-import { NotImplementedError } from './errors';
 
 export type ClassHint = 'socket' | 'light' | 'climate' | 'cover' | 'hub' | 'sensor';
 
@@ -18,10 +17,24 @@ export interface InventoryRow {
  * user-visible device, not per physical board).
  */
 export class Inventory {
+    private rows: readonly InventoryRow[] = [];
+
+    constructor(rows: readonly InventoryRow[] = []) {
+        this.rows = rows;
+    }
+
     /**
-     * Returns enrolled endpoints once login and discovery are implemented.
+     * Replaces pairing rows after graph enrollment. Session wiring will call
+     * this once Ability/System.All have been applied.
+     */
+    replace(rows: readonly InventoryRow[]): void {
+        this.rows = rows;
+    }
+
+    /**
+     * Copies rows so Homey pairing cannot mutate enrolled ids or traits.
      */
     endpoints(): InventoryRow[] {
-        throw new NotImplementedError('Inventory.endpoints');
+        return this.rows.map((row) => ({ ...row, traits: [...row.traits] }));
     }
 }
