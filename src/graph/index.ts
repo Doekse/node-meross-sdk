@@ -183,6 +183,7 @@ function enrollBoard(
 ): GraphEndpoint[] {
     const endpoints: GraphEndpoint[] = [];
     const taken = new Set<number>();
+    const hasMp3 = 'Appliance.Control.Mp3' in ability;
     const add = (channel: number, classHint: ClassHint, traits: TraitName[], on?: boolean): void => {
         if (taken.has(channel)) {
             return;
@@ -191,6 +192,13 @@ function enrollBoard(
         const named = entry && typeof entry === 'object'
             ? (entry as { devName?: unknown }).devName
             : undefined;
+        const extra: TraitName[] = [];
+        if (energy && classHint !== 'cover') {
+            extra.push('energy');
+        }
+        if (hasMp3 && channel === 0 && !traits.includes('media')) {
+            extra.push('media');
+        }
         endpoints.push({
             id: `${uuid}:${channel}`,
             uuid,
@@ -200,7 +208,7 @@ function enrollBoard(
                 : (channel === 0 ? name : `${name} ${channel}`),
             model,
             classHint,
-            traits: energy && classHint !== 'cover' ? [...traits, 'energy'] : traits,
+            traits: [...traits, ...extra],
             online,
             on
         });
@@ -234,28 +242,36 @@ function enrollBoard(
         add(0, 'sensor', ['presence']);
     }
 
-    for (const channel of all.digest.spray) {
-        taken.add(channel);
-    }
-    for (const channel of all.digest.fan) {
-        taken.add(channel);
-    }
-    if (all.digest.diffuser) {
-        for (const channel of all.digest.diffuser.light) {
-            taken.add(channel);
-        }
-        for (const channel of all.digest.diffuser.spray) {
-            taken.add(channel);
-        }
-    }
+    const diffuserChannels = new Set<number>([
+        ...(all.digest.diffuser?.light ?? []),
+        ...(all.digest.diffuser?.spray ?? [])
+    ]);
     if (
-        'Appliance.Control.Spray' in ability
-        || 'Appliance.Control.Diffuser.Light' in ability
-        || 'Appliance.Control.Diffuser.Spray' in ability
-        || 'Appliance.Control.Fan' in ability
-        || 'Appliance.Control.Mp3' in ability
+        diffuserChannels.size === 0
+        && ('Appliance.Control.Diffuser.Light' in ability || 'Appliance.Control.Diffuser.Spray' in ability)
     ) {
-        taken.add(0);
+        diffuserChannels.add(0);
+    }
+    for (const channel of diffuserChannels) {
+        add(channel, 'humidifier', ['diffuser']);
+    }
+
+    const sprayChannels = all.digest.spray.length > 0
+        ? all.digest.spray
+        : ('Appliance.Control.Spray' in ability ? [0] : []);
+    for (const channel of sprayChannels) {
+        add(channel, 'humidifier', ['spray']);
+    }
+
+    const fanChannels = all.digest.fan.length > 0
+        ? all.digest.fan
+        : ('Appliance.Control.Fan' in ability ? [0] : []);
+    for (const channel of fanChannels) {
+        add(channel, 'fan', ['fan']);
+    }
+
+    if (hasMp3 && !taken.has(0)) {
+        add(0, 'speaker', ['media']);
     }
 
     let toggles: DigestToggle[] = all.digest.togglex;

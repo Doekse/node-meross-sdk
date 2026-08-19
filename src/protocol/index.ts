@@ -379,3 +379,53 @@ export type {
     DeviceCfgGetOptions,
     DeviceCfgSetOptions
 } from './codecs/water';
+export {
+    SPRAY_NAMESPACE,
+    decodeSprayGetAck,
+    decodeSprayPush,
+    encodeSprayGet,
+    encodeSpraySet
+} from './codecs/spray';
+export type { SprayChannelState, SprayMode } from './codecs/spray';
+export {
+    FAN_NAMESPACE,
+    decodeFanGetAck,
+    decodeFanPush,
+    encodeFanGet,
+    encodeFanSet
+} from './codecs/fan';
+export type { FanChannelState, FanGetOptions, FanSetOptions } from './codecs/fan';
+export {
+    DIFFUSER_LIGHT_NAMESPACE,
+    DIFFUSER_SENSOR_NAMESPACE,
+    DIFFUSER_SPRAY_NAMESPACE,
+    decodeDiffuserLightGetAck,
+    decodeDiffuserLightPush,
+    decodeDiffuserSensorGetAck,
+    decodeDiffuserSensorPush,
+    decodeDiffuserSprayGetAck,
+    decodeDiffuserSprayPush,
+    encodeDiffuserLightGet,
+    encodeDiffuserLightSet,
+    encodeDiffuserSensorGet,
+    encodeDiffuserSprayGet,
+    encodeDiffuserSpraySet
+} from './codecs/diffuser';
+export type {
+    DiffuserLightMode,
+    DiffuserLightSetOptions,
+    DiffuserLightState,
+    DiffuserSensorState,
+    DiffuserSprayMode,
+    DiffuserSpraySetOptions,
+    DiffuserSprayState
+} from './codecs/diffuser';
+export {
+    MP3_NAMESPACE,
+    MP3_VOLUME_MAX,
+    decodeMp3GetAck,
+    decodeMp3Push,
+    encodeMp3Get,
+    encodeMp3Set
+} from './codecs/mp3';
+export type { Mp3GetOptions, Mp3SetOptions, Mp3State } from './codecs/mp3';

@@ -237,7 +237,7 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(device.endpoints[0]?.id, `${UUID}:0`);
     });
 
-    it('omits ToggleX sockets for diffuser digest channels', () => {
+    it('enrolls diffuser digest as humidifier with the diffuser trait', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: {
                 ability: {
@@ -256,10 +256,12 @@ describe('enrollPhysicalDevice', () => {
             })
         });
 
-        assert.equal(device.endpoints.length, 0);
+        assert.equal(device.endpoints.length, 1);
+        assert.equal(device.endpoints[0]?.classHint, 'humidifier');
+        assert.deepEqual(device.endpoints[0]?.traits, ['diffuser']);
     });
 
-    it('omits ToggleX channel 0 when Fan ability has no digest.fan (MAP100)', () => {
+    it('enrolls Fan ability without digest.fan as a fan (MAP100)', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: {
                 ability: {
@@ -279,10 +281,13 @@ describe('enrollPhysicalDevice', () => {
             }
         });
 
-        assert.equal(device.endpoints.length, 0);
+        assert.equal(device.endpoints.length, 1);
+        assert.equal(device.endpoints[0]?.classHint, 'fan');
+        assert.deepEqual(device.endpoints[0]?.traits, ['fan']);
+        assert.equal(device.endpoints[0]?.name, 'Air purifier');
     });
 
-    it('reserves spray digest channels before leftover ToggleX', () => {
+    it('enrolls spray digest as humidifier and leftover ToggleX as a socket', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: {
                 ability: {
@@ -296,9 +301,47 @@ describe('enrollPhysicalDevice', () => {
             })
         });
 
+        assert.equal(device.endpoints.length, 2);
+        assert.equal(device.endpoints[0]?.channel, 0);
+        assert.equal(device.endpoints[0]?.classHint, 'humidifier');
+        assert.deepEqual(device.endpoints[0]?.traits, ['spray']);
+        assert.equal(device.endpoints[1]?.channel, 1);
+        assert.equal(device.endpoints[1]?.classHint, 'socket');
+    });
+
+    it('appends media to a light board that also has Control.Mp3', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Light': {},
+                    'Appliance.Control.Mp3': {},
+                    'Appliance.Control.ToggleX': {}
+                }
+            },
+            allPayload: systemAllWithDigest({
+                light: [{ channel: 0 }],
+                togglex: [{ channel: 0, onoff: 1 }]
+            })
+        });
+
         assert.equal(device.endpoints.length, 1);
-        assert.equal(device.endpoints[0]?.channel, 1);
-        assert.equal(device.endpoints[0]?.classHint, 'socket');
+        assert.equal(device.endpoints[0]?.classHint, 'light');
+        assert.deepEqual(device.endpoints[0]?.traits, ['light', 'media']);
+    });
+
+    it('enrolls Control.Mp3 without light as a speaker', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Mp3': {}
+                }
+            },
+            allPayload: systemAllWithDigest({})
+        });
+
+        assert.equal(device.endpoints.length, 1);
+        assert.equal(device.endpoints[0]?.classHint, 'speaker');
+        assert.deepEqual(device.endpoints[0]?.traits, ['media']);
     });
 
     it('enrolls a presence board as classHint sensor with the presence trait', () => {

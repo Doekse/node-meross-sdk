@@ -33,10 +33,14 @@ import {
 import { ClimateTrait } from './traits/climate';
 import type { ThermostatGeneration } from './traits/climate';
 import { CoverTrait } from './traits/cover';
+import { DiffuserTrait } from './traits/diffuser';
 import { EnergyTrait } from './traits/energy';
+import { FanTrait } from './traits/fan';
 import { LightTrait } from './traits/light';
+import { MediaTrait } from './traits/media';
 import { PresenceTrait } from './traits/presence';
 import { SENSOR_FAMILY_MAP, SensorTrait } from './traits/sensor';
+import { SprayTrait } from './traits/spray';
 import { SprinklerTrait } from './traits/sprinkler';
 import { SwitchTrait } from './traits/switch';
 
@@ -209,6 +213,10 @@ export class Session {
             endpoint.sensor?.handlePush(message);
             endpoint.presence?.handlePush(message);
             endpoint.sprinkler?.handlePush(message);
+            endpoint.spray?.handlePush(message);
+            endpoint.fan?.handlePush(message);
+            endpoint.diffuser?.handlePush(message);
+            endpoint.media?.handlePush(message);
         }
     }
 
@@ -295,6 +303,10 @@ export class Session {
         let sensorTrait: SensorTrait | undefined;
         let presenceTrait: PresenceTrait | undefined;
         let sprinklerTrait: SprinklerTrait | undefined;
+        let sprayTrait: SprayTrait | undefined;
+        let fanTrait: FanTrait | undefined;
+        let diffuserTrait: DiffuserTrait | undefined;
+        let mediaTrait: MediaTrait | undefined;
         if (graphEndpoint.traits.includes('switch')) {
             if (graphEndpoint.subDeviceId) {
                 switchTrait = new SwitchTrait({
@@ -450,6 +462,54 @@ export class Session {
                 })
             });
         }
+        if (graphEndpoint.traits.includes('spray')) {
+            sprayTrait = new SprayTrait({
+                uuid: physical.uuid,
+                channel,
+                request,
+                emitChange: (values) => endpoint.emit('change', {
+                    trait: 'spray',
+                    values: { ...values }
+                })
+            });
+        }
+        if (graphEndpoint.traits.includes('fan')) {
+            fanTrait = new FanTrait({
+                uuid: physical.uuid,
+                channel,
+                hasToggleX: TOGGLEX_NAMESPACE in physical.ability,
+                hasToggle: !(TOGGLEX_NAMESPACE in physical.ability)
+                    && 'Appliance.Control.Toggle' in physical.ability,
+                request,
+                emitChange: (values) => endpoint.emit('change', {
+                    trait: 'fan',
+                    values: { ...values }
+                })
+            });
+        }
+        if (graphEndpoint.traits.includes('diffuser')) {
+            diffuserTrait = new DiffuserTrait({
+                uuid: physical.uuid,
+                channel,
+                namespaces,
+                request,
+                emitChange: (values) => endpoint.emit('change', {
+                    trait: 'diffuser',
+                    values: { ...values }
+                })
+            });
+        }
+        if (graphEndpoint.traits.includes('media')) {
+            mediaTrait = new MediaTrait({
+                uuid: physical.uuid,
+                channel,
+                request,
+                emitChange: (values) => endpoint.emit('change', {
+                    trait: 'media',
+                    values: { ...values }
+                })
+            });
+        }
         endpoint = new Endpoint({
             id: graphEndpoint.id,
             traits: graphEndpoint.traits,
@@ -461,6 +521,10 @@ export class Session {
             sensor: sensorTrait,
             presence: presenceTrait,
             sprinkler: sprinklerTrait,
+            spray: sprayTrait,
+            fan: fanTrait,
+            diffuser: diffuserTrait,
+            media: mediaTrait,
             initialOnline: graphEndpoint.online
         });
         energyTrait?.start();
@@ -470,6 +534,10 @@ export class Session {
         sensorTrait?.start();
         presenceTrait?.start();
         sprinklerTrait?.start();
+        sprayTrait?.start();
+        fanTrait?.start();
+        diffuserTrait?.start();
+        mediaTrait?.start();
         return endpoint;
     }
 

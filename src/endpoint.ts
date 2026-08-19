@@ -2,14 +2,20 @@ import { EventEmitter } from 'node:events';
 
 import type { ClimateTrait } from './traits/climate';
 import type { CoverTrait } from './traits/cover';
+import type { DiffuserTrait } from './traits/diffuser';
 import type { EnergyTrait } from './traits/energy';
+import type { FanTrait } from './traits/fan';
 import type { LightTrait } from './traits/light';
+import type { MediaTrait } from './traits/media';
 import type { PresenceTrait } from './traits/presence';
 import type { SensorTrait } from './traits/sensor';
+import type { SprayTrait } from './traits/spray';
 import type { SprinklerTrait } from './traits/sprinkler';
 import type { SwitchTrait } from './traits/switch';
 
-export type TraitName = 'switch' | 'energy' | 'light' | 'climate' | 'cover' | 'sensor' | 'presence' | 'sprinkler';
+export type TraitName =
+    | 'switch' | 'energy' | 'light' | 'climate' | 'cover'
+    | 'sensor' | 'presence' | 'sprinkler' | 'spray' | 'fan' | 'diffuser' | 'media';
 
 export interface EndpointChange {
     trait: TraitName;
@@ -27,6 +33,10 @@ export interface EndpointOptions {
     sensor?: SensorTrait;
     presence?: PresenceTrait;
     sprinkler?: SprinklerTrait;
+    spray?: SprayTrait;
+    fan?: FanTrait;
+    diffuser?: DiffuserTrait;
+    media?: MediaTrait;
     initialOnline?: boolean;
 }
 
@@ -50,6 +60,10 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     readonly sensor?: SensorTrait;
     readonly presence?: PresenceTrait;
     readonly sprinkler?: SprinklerTrait;
+    readonly spray?: SprayTrait;
+    readonly fan?: FanTrait;
+    readonly diffuser?: DiffuserTrait;
+    readonly media?: MediaTrait;
 
     private online: boolean;
 
@@ -65,6 +79,10 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         this.sensor = options.sensor;
         this.presence = options.presence;
         this.sprinkler = options.sprinkler;
+        this.spray = options.spray;
+        this.fan = options.fan;
+        this.diffuser = options.diffuser;
+        this.media = options.media;
         this.online = options.initialOnline ?? true;
     }
 
