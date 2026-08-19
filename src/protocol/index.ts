@@ -33,6 +33,21 @@ export type {
     ToggleXSetOptions
 } from './codecs/togglex';
 export {
+    LIGHT_NAMESPACE,
+    LIGHT_CAPACITY_RGB,
+    LIGHT_CAPACITY_TEMPERATURE,
+    LIGHT_CAPACITY_LUMINANCE,
+    LIGHT_CAPACITY_EFFECT,
+    decodeLightGetAck,
+    decodeLightPush,
+    encodeLightGet,
+    encodeLightSet
+} from './codecs/light';
+export type {
+    LightChannelWireState,
+    LightSetOptions
+} from './codecs/light';
+export {
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_NAMESPACE,
     decodeElectricityGetAck,

@@ -29,6 +29,7 @@ import {
     type RoutedRequestOptions
 } from './transport';
 import { EnergyTrait } from './traits/energy';
+import { LightTrait } from './traits/light';
 import { SwitchTrait } from './traits/switch';
 
 export interface LoginOptions {
@@ -194,6 +195,7 @@ export class Session {
         for (const endpoint of this.endpoints.values()) {
             endpoint.switch?.handlePush(message);
             endpoint.energy?.handlePush(message);
+            endpoint.light?.handlePush(message);
         }
     }
 
@@ -278,6 +280,7 @@ export class Session {
         let endpoint!: Endpoint;
         let switchTrait: SwitchTrait | undefined;
         let energyTrait: EnergyTrait | undefined;
+        let lightTrait: LightTrait | undefined;
         if (graphEndpoint.traits.includes('switch')) {
             switchTrait = new SwitchTrait({
                 uuid: physical.uuid,
@@ -305,14 +308,41 @@ export class Session {
                 })
             });
         }
+
+        if (graphEndpoint.traits.includes('light')) {
+            const abilityLight = physical.ability['Appliance.Control.Light'];
+            const guessedCapacity = abilityLight && typeof abilityLight === 'object'
+                ? typeof (abilityLight as { capacity?: unknown }).capacity === 'number'
+                    ? (abilityLight as { capacity: number }).capacity
+                    : 0
+                : 0;
+
+            const hasToggleX = TOGGLEX_NAMESPACE in physical.ability;
+            const hasToggle = !hasToggleX && 'Appliance.Control.Toggle' in physical.ability;
+
+            lightTrait = new LightTrait({
+                uuid: physical.uuid,
+                channel,
+                hasToggleX,
+                hasToggle,
+                lightCapacity: guessedCapacity,
+                request,
+                emitChange: (values) => endpoint.emit('change', {
+                    trait: 'light',
+                    values: { ...values }
+                })
+            });
+        }
         endpoint = new Endpoint({
             id: graphEndpoint.id,
             traits: graphEndpoint.traits,
             switch: switchTrait,
             energy: energyTrait,
+            light: lightTrait,
             initialOnline: graphEndpoint.online
         });
         energyTrait?.start();
+        lightTrait?.start();
         return endpoint;
     }
 

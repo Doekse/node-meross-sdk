@@ -1,0 +1,316 @@
+import {
+    LIGHT_CAPACITY_LUMINANCE,
+    LIGHT_CAPACITY_RGB,
+    LIGHT_CAPACITY_TEMPERATURE,
+    LIGHT_NAMESPACE,
+    decodeLightGetAck,
+    decodeLightPush,
+    encodeLightGet,
+    encodeLightSet,
+    TOGGLEX_NAMESPACE,
+    decodeToggleXGetAck,
+    decodeToggleXPush,
+    encodeToggleXGet,
+    encodeToggleXSet
+} from '../protocol';
+import type { LightChannelWireState } from '../protocol';
+import type { MerossMessage } from '../protocol';
+import type { RoutedRequestOptions } from '../transport/router';
+
+export interface LightRgb {
+    r: number;
+    g: number;
+    b: number;
+}
+
+export interface LightValues {
+    on?: boolean;
+    brightness?: number; // 0..1
+    temperature?: number; // 0..1
+    rgb?: LightRgb;
+    effect?: number;
+}
+
+/**
+ * Transport + channel bind for one Control.Light endpoint.
+ * Session supplies the request transport and ToggleX preference.
+ */
+export interface LightTraitBind {
+    uuid: string;
+    channel: number;
+    /** Device-level on/off via ToggleX (preferred when available). */
+    hasToggleX: boolean;
+    /** Device-level on/off via classic Toggle (only when ToggleX is absent). */
+    hasToggle: boolean;
+    /** Capacity bitmask from Ability; the trait updates it after the first GETACK. */
+    lightCapacity: number;
+    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    emitChange: (values: LightValues) => void;
+}
+
+/**
+ * Brightness, color, and power for one enrolled light endpoint. Power routes
+ * through ToggleX/Toggle when the device has it; Control.Light handles the rest.
+ */
+export class LightTrait {
+    private readonly bind: LightTraitBind;
+    private lightCapacity: number;
+
+    private on: boolean | undefined;
+    private brightness: number | undefined;
+    private temperature: number | undefined;
+    private rgb: LightRgb | undefined;
+    private effect: number | undefined;
+
+    constructor(bind: LightTraitBind) {
+        this.bind = bind;
+        this.lightCapacity = bind.lightCapacity;
+    }
+
+    /** Polls initial state. Idempotent; Session calls this once and does not await it. */
+    start(): void {
+        void this.pollInitial();
+    }
+
+    /** Last known on/off. Undefined until initial GET or PUSH fills it. */
+    isOn(): boolean | undefined {
+        return this.on;
+    }
+
+    /** Last known brightness in `0..1`. */
+    getBrightness(): number | undefined {
+        return this.brightness;
+    }
+
+    /** Last known color temperature in `0..1`. */
+    getTemperature(): number | undefined {
+        return this.temperature;
+    }
+
+    /** Last known RGB color. */
+    getRgb(): LightRgb | undefined {
+        return this.rgb && { ...this.rgb };
+    }
+
+    /**
+     * Turns the bound channel on or off.
+     */
+    async setOn(on: boolean): Promise<{ on: boolean }> {
+        if (this.bind.hasToggleX) {
+            await this.bind.request({
+                namespace: TOGGLEX_NAMESPACE,
+                method: 'SET',
+                payload: encodeToggleXSet({ channel: this.bind.channel, on })
+            });
+        } else if (this.bind.hasToggle) {
+            await this.bind.request({
+                namespace: 'Appliance.Control.Toggle',
+                method: 'SET',
+                payload: { toggle: { onoff: on ? 1 : 0 } }
+            });
+        } else {
+            await this.bind.request({
+                namespace: LIGHT_NAMESPACE,
+                method: 'SET',
+                payload: encodeLightSet({ channel: this.bind.channel, capacity: this.lightCapacity, onoff: on })
+            });
+        }
+        this.applyOn(on);
+        return { on };
+    }
+
+    /**
+     * Sets brightness in `0..1`.
+     */
+    async setBrightness(brightness: number): Promise<{ brightness: number }> {
+        const luminance = hostToWire01(brightness);
+        const reply = await this.bind.request({
+            namespace: LIGHT_NAMESPACE,
+            method: 'SET',
+            payload: encodeLightSet({ channel: this.bind.channel, capacity: LIGHT_CAPACITY_LUMINANCE, luminance })
+        });
+        this.applyLight(decodeLightGetAck(reply.payload));
+        return { brightness: this.brightness ?? brightness };
+    }
+
+    /**
+     * Sets color temperature in `0..1`.
+     */
+    async setTemperature(temperature: number): Promise<{ temperature: number }> {
+        const wire = hostToWire01(temperature);
+        const reply = await this.bind.request({
+            namespace: LIGHT_NAMESPACE,
+            method: 'SET',
+            payload: encodeLightSet({ channel: this.bind.channel, capacity: LIGHT_CAPACITY_TEMPERATURE, temperature: wire })
+        });
+        this.applyLight(decodeLightGetAck(reply.payload));
+        return { temperature: this.temperature ?? temperature };
+    }
+
+    /**
+     * Sets RGB color.
+     */
+    async setRgb(rgb: LightRgb): Promise<{ rgb: LightRgb }> {
+        const reply = await this.bind.request({
+            namespace: LIGHT_NAMESPACE,
+            method: 'SET',
+            payload: encodeLightSet({ channel: this.bind.channel, capacity: LIGHT_CAPACITY_RGB, rgb: rgbToWire(rgb) })
+        });
+        this.applyLight(decodeLightGetAck(reply.payload));
+        return { rgb: this.rgb ?? rgb };
+    }
+
+    /**
+     * Applies a firmware PUSH for this endpoint.
+     */
+    handlePush(message: MerossMessage): void {
+        const uuid = message.header.uuid ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
+        if (!uuid || uuid !== this.bind.uuid) {
+            return;
+        }
+
+        if (message.header.namespace === TOGGLEX_NAMESPACE && this.bind.hasToggleX) {
+            for (const entry of decodeToggleXPush(message.payload)) {
+                if (entry.channel === this.bind.channel) {
+                    this.applyOn(entry.on);
+                    return;
+                }
+            }
+            return;
+        }
+
+        if (message.header.namespace === 'Appliance.Control.Toggle' && this.bind.hasToggle) {
+            if (this.bind.channel === 0) {
+                const toggle = message.payload.toggle as { onoff?: unknown } | undefined;
+                if (toggle && typeof toggle.onoff === 'number') {
+                    this.applyOn(toggle.onoff === 1);
+                }
+            }
+            return;
+        }
+
+        if (message.header.namespace === LIGHT_NAMESPACE) {
+            const decoded = decodeLightPush(message.payload);
+            if (decoded.channel === this.bind.channel) {
+                this.applyLight(decoded, !this.bind.hasToggleX && !this.bind.hasToggle);
+            }
+        }
+    }
+
+    private async pollInitial(): Promise<void> {
+        try {
+            const lightReply = await this.bind.request({
+                namespace: LIGHT_NAMESPACE,
+                method: 'GET',
+                payload: encodeLightGet()
+            });
+            const light = decodeLightGetAck(lightReply.payload);
+            this.lightCapacity = light.capacity;
+            this.applyLight(light, !this.bind.hasToggleX && !this.bind.hasToggle);
+
+            if (this.bind.hasToggleX) {
+                const toggleReply = await this.bind.request({
+                    namespace: TOGGLEX_NAMESPACE,
+                    method: 'GET',
+                    payload: encodeToggleXGet({ channel: this.bind.channel })
+                });
+                const toggle = decodeToggleXGetAck(toggleReply.payload)
+                    .find((entry) => entry.channel === this.bind.channel);
+                if (toggle) {
+                    this.on = toggle.on;
+                }
+            }
+        } catch {
+            // Next PUSH or setter call will recover.
+        }
+    }
+
+    private applyOn(on: boolean): void {
+        if (this.on === on) {
+            return;
+        }
+        this.on = on;
+        this.bind.emitChange({ on });
+    }
+
+    private applyLight(decoded: LightChannelWireState, applyOnoff = false): void {
+        const patch: LightValues = {};
+
+        if (decoded.capacity !== 0) {
+            this.lightCapacity = decoded.capacity;
+        }
+        if (decoded.luminance !== undefined) {
+            this.brightness = wireToHost01(decoded.luminance);
+            patch.brightness = this.brightness;
+        }
+        if (decoded.temperature !== undefined) {
+            this.temperature = wireToHost01(decoded.temperature);
+            patch.temperature = this.temperature;
+        }
+        if (decoded.rgb !== undefined) {
+            this.rgb = wireToRgb(decoded.rgb);
+            patch.rgb = this.rgb;
+        }
+        if (decoded.effect !== undefined) {
+            this.effect = decoded.effect;
+            patch.effect = this.effect;
+        }
+        if (applyOnoff && typeof decoded.onoff === 'boolean') {
+            this.on = decoded.onoff;
+            patch.on = this.on;
+        }
+
+        if (Object.keys(patch).length > 0) {
+            this.bind.emitChange(patch);
+        }
+    }
+}
+
+/**
+ * Converts firmware packed `rgb` (0xRRGGBB) into a host RGB object.
+ */
+function wireToRgb(rgbWire: number): LightRgb {
+    const r = (rgbWire >> 16) & 0xff;
+    const g = (rgbWire >> 8) & 0xff;
+    const b = rgbWire & 0xff;
+    return { r, g, b };
+}
+
+/**
+ * Packs host RGB into firmware packed `rgb` (0xRRGGBB).
+ */
+function rgbToWire(rgb: LightRgb): number {
+    const r = clampInt(rgb.r, 0, 0xff);
+    const g = clampInt(rgb.g, 0, 0xff);
+    const b = clampInt(rgb.b, 0, 0xff);
+    return (r << 16) | (g << 8) | b;
+}
+
+/**
+ * Converts host brightness/temperature in `0..1` into firmware `1..100`.
+ */
+function hostToWire01(value: number): number {
+    const clamped = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+    return Math.round(clamped * 99) + 1; // 0..1 -> 1..100
+}
+
+/**
+ * Converts firmware `1..100` (yellow->cold for temperature) into host `0..1`.
+ */
+function wireToHost01(value: number): number {
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
+    if (value <= 0) {
+        return 0;
+    }
+    return (value - 1) / 99; // 1..100 -> 0..1
+}
+
+/**
+ * Converts values into a safe integer range for firmware payloads.
+ */
+function clampInt(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+

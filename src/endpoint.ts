@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 
 import type { EnergyTrait } from './traits/energy';
+import type { LightTrait } from './traits/light';
 import type { SwitchTrait } from './traits/switch';
 
 export type TraitName = 'switch' | 'energy' | 'light' | 'climate' | 'cover';
@@ -15,6 +16,7 @@ export interface EndpointOptions {
     traits?: readonly TraitName[];
     switch?: SwitchTrait;
     energy?: EnergyTrait;
+    light?: LightTrait;
     initialOnline?: boolean;
 }
 
@@ -32,6 +34,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     readonly traits: readonly TraitName[];
     readonly switch?: SwitchTrait;
     readonly energy?: EnergyTrait;
+    readonly light?: LightTrait;
 
     private online: boolean;
 
@@ -41,6 +44,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         this.traits = options.traits ?? [];
         this.switch = options.switch;
         this.energy = options.energy;
+        this.light = options.light;
         this.online = options.initialOnline ?? true;
     }
 
