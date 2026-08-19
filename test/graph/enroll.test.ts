@@ -77,6 +77,21 @@ describe('System.All GETACK', () => {
             (err: unknown) => err instanceof ProtocolError
         );
     });
+
+    it('decodes spray, fan, and diffuser digest channel lists', () => {
+        const all = decodeSystemAllGetAck(systemAllWithDigest({
+            spray: [{ channel: 0, mode: 0 }],
+            fan: [{ channel: 2, speed: 3 }],
+            diffuser: {
+                type: 'mod100',
+                light: [{ channel: 0, onoff: 0 }],
+                spray: [{ channel: 0, mode: 2 }]
+            }
+        }));
+        assert.deepEqual(all.digest.spray, [0]);
+        assert.deepEqual(all.digest.fan, [2]);
+        assert.deepEqual(all.digest.diffuser, { light: [0], spray: [0] });
+    });
 });
 
 describe('enrollPhysicalDevice', () => {
@@ -220,6 +235,70 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(device.endpoints[0]?.classHint, 'light');
         assert.deepEqual(device.endpoints[0]?.traits, ['light']);
         assert.equal(device.endpoints[0]?.id, `${UUID}:0`);
+    });
+
+    it('omits ToggleX sockets for diffuser digest channels', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Diffuser.Light': {},
+                    'Appliance.Control.Diffuser.Spray': {},
+                    'Appliance.Control.ToggleX': {}
+                }
+            },
+            allPayload: systemAllWithDigest({
+                diffuser: {
+                    type: 'mod100',
+                    light: [{ channel: 0, onoff: 0 }],
+                    spray: [{ channel: 0, mode: 2 }]
+                },
+                togglex: [{ channel: 0, onoff: 1 }]
+            })
+        });
+
+        assert.equal(device.endpoints.length, 0);
+    });
+
+    it('omits ToggleX channel 0 when Fan ability has no digest.fan (MAP100)', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Fan': {},
+                    'Appliance.Control.ToggleX': {}
+                }
+            },
+            allPayload: systemAllWithDigest({
+                togglex: [{ channel: 0, onoff: 1 }]
+            }),
+            cloud: {
+                uuid: UUID,
+                devName: 'Air purifier',
+                deviceType: 'map100',
+                onlineStatus: 1,
+                channels: [{ channel: 0, devName: 'Air purifier' }]
+            }
+        });
+
+        assert.equal(device.endpoints.length, 0);
+    });
+
+    it('reserves spray digest channels before leftover ToggleX', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Spray': {},
+                    'Appliance.Control.ToggleX': {}
+                }
+            },
+            allPayload: systemAllWithDigest({
+                spray: [{ channel: 0, mode: 0 }],
+                togglex: [{ channel: 0, onoff: 1 }, { channel: 1, onoff: 0 }]
+            })
+        });
+
+        assert.equal(device.endpoints.length, 1);
+        assert.equal(device.endpoints[0]?.channel, 1);
+        assert.equal(device.endpoints[0]?.classHint, 'socket');
     });
 
     it('enrolls a presence board as classHint sensor with the presence trait', () => {

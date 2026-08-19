@@ -26,6 +26,9 @@ export interface SystemAll {
         light: number[];
         garageDoor: number[];
         rollerShutter: number[];
+        spray: number[];
+        fan: number[];
+        diffuser?: { light: number[]; spray: number[] };
         hub?: { subdevice: Array<{ id: string; status?: number; model?: string }> };
         thermostat?: unknown;
     };
@@ -82,6 +85,9 @@ export function decodeSystemAllGetAck(payload: MerossPayload): SystemAll {
             light: channelList(d.light, 'light'),
             garageDoor: channelList(d.garageDoor, 'garageDoor'),
             rollerShutter: channelList(d.rollerShutter, 'rollerShutter'),
+            spray: channelList(d.spray, 'spray'),
+            fan: channelList(d.fan, 'fan'),
+            diffuser: d.diffuser !== undefined ? decodeDiffuser(d.diffuser) : undefined,
             hub: d.hub !== undefined ? decodeHub(d.hub) : undefined,
             thermostat: d.thermostat && typeof d.thermostat === 'object' ? d.thermostat : undefined
         }
@@ -122,6 +128,17 @@ function channelList(raw: unknown, field: string): number[] {
         }
         return channel;
     });
+}
+
+function decodeDiffuser(raw: unknown): { light: number[]; spray: number[] } {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        throw new ProtocolError('System.All digest.diffuser must be an object');
+    }
+    const entry = raw as Record<string, unknown>;
+    return {
+        light: channelList(entry.light, 'diffuser.light'),
+        spray: channelList(entry.spray, 'diffuser.spray')
+    };
 }
 
 function decodeHub(raw: unknown): { subdevice: Array<{ id: string; status?: number; model?: string }> } {

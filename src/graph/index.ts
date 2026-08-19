@@ -234,6 +234,30 @@ function enrollBoard(
         add(0, 'sensor', ['presence']);
     }
 
+    for (const channel of all.digest.spray) {
+        taken.add(channel);
+    }
+    for (const channel of all.digest.fan) {
+        taken.add(channel);
+    }
+    if (all.digest.diffuser) {
+        for (const channel of all.digest.diffuser.light) {
+            taken.add(channel);
+        }
+        for (const channel of all.digest.diffuser.spray) {
+            taken.add(channel);
+        }
+    }
+    if (
+        'Appliance.Control.Spray' in ability
+        || 'Appliance.Control.Diffuser.Light' in ability
+        || 'Appliance.Control.Diffuser.Spray' in ability
+        || 'Appliance.Control.Fan' in ability
+        || 'Appliance.Control.Mp3' in ability
+    ) {
+        taken.add(0);
+    }
+
     let toggles: DigestToggle[] = all.digest.togglex;
     if (toggles.length === 0 && cloud?.channels?.length) {
         toggles = cloud.channels.map((_, channel) => ({ channel }));
