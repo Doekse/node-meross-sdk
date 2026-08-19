@@ -28,6 +28,8 @@ import {
     type MqttConnectFn,
     type RoutedRequestOptions
 } from './transport';
+import { ClimateTrait } from './traits/climate';
+import type { ThermostatGeneration } from './traits/climate';
 import { CoverTrait } from './traits/cover';
 import { EnergyTrait } from './traits/energy';
 import { LightTrait } from './traits/light';
@@ -198,6 +200,7 @@ export class Session {
             endpoint.energy?.handlePush(message);
             endpoint.light?.handlePush(message);
             endpoint.cover?.handlePush(message);
+            endpoint.climate?.handlePush(message);
         }
     }
 
@@ -284,6 +287,7 @@ export class Session {
         let energyTrait: EnergyTrait | undefined;
         let lightTrait: LightTrait | undefined;
         let coverTrait: CoverTrait | undefined;
+        let climateTrait: ClimateTrait | undefined;
         if (graphEndpoint.traits.includes('switch')) {
             switchTrait = new SwitchTrait({
                 uuid: physical.uuid,
@@ -351,6 +355,39 @@ export class Session {
                 })
             });
         }
+        if (graphEndpoint.traits.includes('climate')) {
+            const namespaces = new Set(Object.keys(physical.ability));
+            if (graphEndpoint.subDeviceId) {
+                climateTrait = new ClimateTrait({
+                    kind: 'hub',
+                    uuid: physical.uuid,
+                    subDeviceId: graphEndpoint.subDeviceId,
+                    namespaces,
+                    request,
+                    emitChange: (values) => endpoint.emit('change', {
+                        trait: 'climate',
+                        values: { ...values }
+                    })
+                });
+            } else {
+                const generation: ThermostatGeneration =
+                    'Appliance.Control.Thermostat.ModeC' in physical.ability ? 'modeC'
+                        : 'Appliance.Control.Thermostat.ModeB' in physical.ability ? 'modeB'
+                            : 'mode';
+                climateTrait = new ClimateTrait({
+                    kind: 'board',
+                    uuid: physical.uuid,
+                    channel,
+                    generation,
+                    namespaces,
+                    request,
+                    emitChange: (values) => endpoint.emit('change', {
+                        trait: 'climate',
+                        values: { ...values }
+                    })
+                });
+            }
+        }
         endpoint = new Endpoint({
             id: graphEndpoint.id,
             traits: graphEndpoint.traits,
@@ -358,11 +395,13 @@ export class Session {
             energy: energyTrait,
             light: lightTrait,
             cover: coverTrait,
+            climate: climateTrait,
             initialOnline: graphEndpoint.online
         });
         energyTrait?.start();
         lightTrait?.start();
         coverTrait?.start();
+        climateTrait?.start();
         return endpoint;
     }
 

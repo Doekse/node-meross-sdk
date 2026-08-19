@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 
+import type { ClimateTrait } from './traits/climate';
 import type { CoverTrait } from './traits/cover';
 import type { EnergyTrait } from './traits/energy';
 import type { LightTrait } from './traits/light';
@@ -19,6 +20,7 @@ export interface EndpointOptions {
     energy?: EnergyTrait;
     light?: LightTrait;
     cover?: CoverTrait;
+    climate?: ClimateTrait;
     initialOnline?: boolean;
 }
 
@@ -38,6 +40,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     readonly energy?: EnergyTrait;
     readonly light?: LightTrait;
     readonly cover?: CoverTrait;
+    readonly climate?: ClimateTrait;
 
     private online: boolean;
 
@@ -49,6 +52,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         this.energy = options.energy;
         this.light = options.light;
         this.cover = options.cover;
+        this.climate = options.climate;
         this.online = options.initialOnline ?? true;
     }
 

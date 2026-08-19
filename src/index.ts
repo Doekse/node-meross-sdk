@@ -9,4 +9,4 @@ export { Inventory } from './inventory';
 export type { ClassHint, InventoryRow } from './inventory';
 export { Endpoint } from './endpoint';
 export type { EndpointChange, TraitName } from './endpoint';
-export { SwitchTrait, EnergyTrait, LightTrait, CoverTrait } from './traits';
+export { SwitchTrait, EnergyTrait, LightTrait, CoverTrait, ClimateTrait } from './traits';
