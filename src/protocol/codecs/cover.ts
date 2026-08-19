@@ -6,6 +6,8 @@ export const GARAGE_CONFIG_NAMESPACE = 'Appliance.GarageDoor.Config';
 export const GARAGE_MULTIPLE_CONFIG_NAMESPACE = 'Appliance.GarageDoor.MultipleConfig';
 export const SHUTTER_POSITION_NAMESPACE = 'Appliance.RollerShutter.Position';
 export const SHUTTER_STATE_NAMESPACE = 'Appliance.RollerShutter.State';
+export const SHUTTER_CONFIG_NAMESPACE = 'Appliance.RollerShutter.Config';
+export const SHUTTER_ADJUST_NAMESPACE = 'Appliance.RollerShutter.Adjust';
 
 export interface GarageChannelState {
     channel: number;
@@ -217,6 +219,125 @@ function decodeGarageMultipleConfig(payload: MerossPayload): GarageMultipleConfi
             ...(typeof doorCloseDuration === 'number' ? { doorCloseDuration } : {}),
             ...(typeof buzzerEnable === 'number' ? { buzzerEnable } : {})
         };
+    });
+}
+
+/**
+ * Per-channel config entry returned by RollerShutter.Config GETACK/PUSH.
+ * Travel times are in milliseconds.
+ */
+export interface ShutterConfig {
+    channel: number;
+    /** Travel time from fully closed to fully open, in ms. */
+    signalOpen: number;
+    /** Travel time from fully open to fully closed, in ms. */
+    signalClose: number;
+    /** Travel time from fully closed to the midpoint, in ms. Optional. */
+    signalMiddle?: number;
+    /** 1 = forward (default), 2 = reverse. Optional. */
+    direction?: number;
+    /** 1 = current value is from automatic calibration. Optional. */
+    autoAdjust?: number;
+    /** Unix timestamp of the last auto-calibration. Optional. */
+    lmTime?: number;
+}
+
+/** Fields accepted by RollerShutter.Config SET. */
+export interface ShutterConfigSetOptions {
+    channel: number;
+    signalOpen: number;
+    signalClose: number;
+    direction?: number;
+}
+
+/** Calibration action values for RollerShutter.Adjust SET. */
+export type ShutterAdjustValue = 0 | 1 | 2 | 3 | 4;
+
+export interface ShutterAdjustStatus {
+    channel: number;
+    /** Status code from GETACK/PUSH. 0 = success, 7 = not calibrated. */
+    status: number;
+}
+
+/** GET payload for RollerShutter.Config — empty body returns all channels. */
+export function encodeShutterConfigGet(): MerossPayload {
+    return {};
+}
+
+/** SET payload for RollerShutter.Config — single-channel object in `config`. */
+export function encodeShutterConfigSet(options: ShutterConfigSetOptions): MerossPayload {
+    const { channel, signalOpen, signalClose, direction } = options;
+    return {
+        config: {
+            channel,
+            signalOpen,
+            signalClose,
+            ...(direction !== undefined ? { direction } : {})
+        }
+    };
+}
+
+export function decodeShutterConfigGetAck(payload: MerossPayload): ShutterConfig[] {
+    return decodeShutterConfig(payload);
+}
+
+export function decodeShutterConfigPush(payload: MerossPayload): ShutterConfig[] {
+    return decodeShutterConfig(payload);
+}
+
+function decodeShutterConfig(payload: MerossPayload): ShutterConfig[] {
+    const raw = payload.config;
+    if (!Array.isArray(raw)) {
+        throw new ProtocolError('RollerShutter.Config payload must contain a config array');
+    }
+    return raw.map((item) => {
+        if (typeof item !== 'object' || item === null) {
+            throw new ProtocolError('RollerShutter.Config entry must be an object');
+        }
+        const { channel, signalOpen, signalClose, signalMiddle, direction, autoAdjust, lmTime } =
+            item as Record<string, unknown>;
+        if (typeof channel !== 'number' || typeof signalOpen !== 'number' || typeof signalClose !== 'number') {
+            throw new ProtocolError('RollerShutter.Config channel, signalOpen, and signalClose are required');
+        }
+        return {
+            channel,
+            signalOpen,
+            signalClose,
+            ...(typeof signalMiddle === 'number' ? { signalMiddle } : {}),
+            ...(typeof direction === 'number' ? { direction } : {}),
+            ...(typeof autoAdjust === 'number' ? { autoAdjust } : {}),
+            ...(typeof lmTime === 'number' ? { lmTime } : {})
+        };
+    });
+}
+
+/** SET payload for RollerShutter.Adjust — single-channel object in `adjust`. */
+export function encodeShutterAdjustSet(channel: number, value: ShutterAdjustValue): MerossPayload {
+    return { adjust: { channel, value } };
+}
+
+export function decodeShutterAdjustGetAck(payload: MerossPayload): ShutterAdjustStatus[] {
+    return decodeShutterAdjust(payload);
+}
+
+export function decodeShutterAdjustPush(payload: MerossPayload): ShutterAdjustStatus[] {
+    return decodeShutterAdjust(payload);
+}
+
+function decodeShutterAdjust(payload: MerossPayload): ShutterAdjustStatus[] {
+    const raw = payload.adjust;
+    if (!Array.isArray(raw)) {
+        throw new ProtocolError('RollerShutter.Adjust payload must contain an adjust array');
+    }
+    return raw.map((item) => {
+        if (typeof item !== 'object' || item === null) {
+            throw new ProtocolError('RollerShutter.Adjust entry must be an object');
+        }
+        const { channel, status } = item as Record<string, unknown>;
+        if (typeof channel !== 'number' || typeof status !== 'number') {
+            throw new ProtocolError('RollerShutter.Adjust channel and status are required');
+        }
+        return { channel, status };
     });
 }
 

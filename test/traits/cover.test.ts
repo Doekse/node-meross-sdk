@@ -6,10 +6,14 @@ import {
     GARAGE_CONFIG_NAMESPACE,
     GARAGE_MULTIPLE_CONFIG_NAMESPACE,
     GARAGE_STATE_NAMESPACE,
+    SHUTTER_ADJUST_NAMESPACE,
+    SHUTTER_CONFIG_NAMESPACE,
     SHUTTER_POSITION_NAMESPACE,
     SHUTTER_STATE_NAMESPACE,
     encodeGarageSet,
     encodeMessage,
+    encodeShutterAdjustSet,
+    encodeShutterConfigSet,
     encodeShutterPositionSet,
     type MerossMessage
 } from '../../src/protocol';
@@ -331,3 +335,159 @@ describe('CoverTrait.getConfig / setConfig (GarageDoor.MultipleConfig)', () => {
         });
     });
 });
+
+describe('CoverTrait.getShutterConfig / setTravelTimes / setDirection', () => {
+    const shutterConfigPayload = {
+        config: [
+            { channel: 0, signalOpen: 20000, signalClose: 20000, signalMiddle: 10000, autoAdjust: 1 },
+            { channel: 1, signalOpen: 10000, signalClose: 10000 }
+        ]
+    };
+
+    it('getShutterConfig() sends RollerShutter.Config GET and returns matching channel', async () => {
+        const { trait, requests } = createCoverHarness(
+            'shutter',
+            new Set([SHUTTER_CONFIG_NAMESPACE]),
+            { [SHUTTER_CONFIG_NAMESPACE]: shutterConfigPayload }
+        );
+
+        const result = await trait.getShutterConfig();
+
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.header.namespace, SHUTTER_CONFIG_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'GET');
+        assert.deepEqual(result, {
+            channel: 0, signalOpen: 20000, signalClose: 20000, signalMiddle: 10000, autoAdjust: 1
+        });
+    });
+
+    it('getShutterConfig() returns undefined when namespace is not advertised', async () => {
+        const { trait, requests } = createCoverHarness('shutter');
+        const result = await trait.getShutterConfig();
+        assert.equal(result, undefined);
+        assert.equal(requests.length, 0);
+    });
+
+    it('getShutterConfig() returns undefined for garage kind', async () => {
+        const { trait, requests } = createCoverHarness(
+            'garage',
+            new Set([SHUTTER_CONFIG_NAMESPACE])
+        );
+        const result = await trait.getShutterConfig();
+        assert.equal(result, undefined);
+        assert.equal(requests.length, 0);
+    });
+
+    it('setTravelTimes() sends RollerShutter.Config SET with travel times', async () => {
+        const { trait, requests } = createCoverHarness(
+            'shutter',
+            new Set([SHUTTER_CONFIG_NAMESPACE])
+        );
+
+        await trait.setTravelTimes({ signalOpen: 15000, signalClose: 12000 });
+
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.header.namespace, SHUTTER_CONFIG_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(requests[0]?.payload,
+            encodeShutterConfigSet({ channel: CHANNEL, signalOpen: 15000, signalClose: 12000 })
+        );
+    });
+
+    it('setTravelTimes() includes direction when provided', async () => {
+        const { trait, requests } = createCoverHarness(
+            'shutter',
+            new Set([SHUTTER_CONFIG_NAMESPACE])
+        );
+
+        await trait.setTravelTimes({ signalOpen: 15000, signalClose: 12000, direction: 2 });
+
+        assert.deepEqual(requests[0]?.payload,
+            encodeShutterConfigSet({ channel: CHANNEL, signalOpen: 15000, signalClose: 12000, direction: 2 })
+        );
+    });
+
+    it('setTravelTimes() is a no-op on garages', async () => {
+        const { trait, requests } = createCoverHarness(
+            'garage',
+            new Set([SHUTTER_CONFIG_NAMESPACE])
+        );
+        await trait.setTravelTimes({ signalOpen: 15000, signalClose: 12000 });
+        assert.equal(requests.length, 0);
+    });
+
+    it('setTravelTimes() is a no-op when namespace is not advertised', async () => {
+        const { trait, requests } = createCoverHarness('shutter');
+        await trait.setTravelTimes({ signalOpen: 15000, signalClose: 12000 });
+        assert.equal(requests.length, 0);
+    });
+
+});
+
+describe('CoverTrait.calibrate', () => {
+    it('calibrate("auto") sends RollerShutter.Adjust SET with value 1', async () => {
+        const { trait, requests } = createCoverHarness(
+            'shutter',
+            new Set([SHUTTER_ADJUST_NAMESPACE])
+        );
+
+        await trait.calibrate('auto');
+
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.header.namespace, SHUTTER_ADJUST_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(requests[0]?.payload, encodeShutterAdjustSet(CHANNEL, 1));
+    });
+
+    it('calibrate("stop") sends value 0', async () => {
+        const { trait, requests } = createCoverHarness(
+            'shutter',
+            new Set([SHUTTER_ADJUST_NAMESPACE])
+        );
+        await trait.calibrate('stop');
+        assert.deepEqual(requests[0]?.payload, encodeShutterAdjustSet(CHANNEL, 0));
+    });
+
+    it('calibrate("manualClosed") sends value 2', async () => {
+        const { trait, requests } = createCoverHarness(
+            'shutter',
+            new Set([SHUTTER_ADJUST_NAMESPACE])
+        );
+        await trait.calibrate('manualClosed');
+        assert.deepEqual(requests[0]?.payload, encodeShutterAdjustSet(CHANNEL, 2));
+    });
+
+    it('calibrate("manualClosedStop") sends value 3', async () => {
+        const { trait, requests } = createCoverHarness(
+            'shutter',
+            new Set([SHUTTER_ADJUST_NAMESPACE])
+        );
+        await trait.calibrate('manualClosedStop');
+        assert.deepEqual(requests[0]?.payload, encodeShutterAdjustSet(CHANNEL, 3));
+    });
+
+    it('calibrate("manualOpenStop") sends value 4', async () => {
+        const { trait, requests } = createCoverHarness(
+            'shutter',
+            new Set([SHUTTER_ADJUST_NAMESPACE])
+        );
+        await trait.calibrate('manualOpenStop');
+        assert.deepEqual(requests[0]?.payload, encodeShutterAdjustSet(CHANNEL, 4));
+    });
+
+    it('calibrate() is a no-op on garages', async () => {
+        const { trait, requests } = createCoverHarness(
+            'garage',
+            new Set([SHUTTER_ADJUST_NAMESPACE])
+        );
+        await trait.calibrate('auto');
+        assert.equal(requests.length, 0);
+    });
+
+    it('calibrate() is a no-op when namespace is not advertised', async () => {
+        const { trait, requests } = createCoverHarness('shutter');
+        await trait.calibrate('auto');
+        assert.equal(requests.length, 0);
+    });
+});
+

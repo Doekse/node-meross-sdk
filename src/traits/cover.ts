@@ -2,12 +2,15 @@ import {
     GARAGE_CONFIG_NAMESPACE,
     GARAGE_MULTIPLE_CONFIG_NAMESPACE,
     GARAGE_STATE_NAMESPACE,
+    SHUTTER_ADJUST_NAMESPACE,
+    SHUTTER_CONFIG_NAMESPACE,
     SHUTTER_POSITION_NAMESPACE,
     SHUTTER_STATE_NAMESPACE,
     decodeGarageConfigGetAck,
     decodeGarageGetAck,
     decodeGarageMultipleConfigGetAck,
     decodeGaragePush,
+    decodeShutterConfigGetAck,
     decodeShutterPositionGetAck,
     decodeShutterPositionPush,
     decodeShutterStatePush,
@@ -17,11 +20,20 @@ import {
     encodeGarageMultipleConfigGet,
     encodeGarageMultipleConfigSet,
     encodeGarageSet,
+    encodeShutterAdjustSet,
+    encodeShutterConfigGet,
+    encodeShutterConfigSet,
     encodeShutterPositionGet,
     encodeShutterPositionSet,
     type MerossMessage
 } from '../protocol';
-import type { GarageDoorConfig, GarageMultipleConfigEntry } from '../protocol';
+import type {
+    GarageDoorConfig,
+    GarageMultipleConfigEntry,
+    ShutterAdjustValue,
+    ShutterConfig,
+    ShutterConfigSetOptions
+} from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
 
 export interface CoverValues {
@@ -219,6 +231,69 @@ export class CoverTrait {
     }
 
     /**
+     * Reads the travel-time and direction config for the bound shutter channel.
+     * Returns `undefined` when the namespace is not advertised or the kind is garage.
+     */
+    async getShutterConfig(): Promise<ShutterConfig | undefined> {
+        if (this.bind.kind !== 'shutter' || !this.has(SHUTTER_CONFIG_NAMESPACE)) {
+            return undefined;
+        }
+        const reply = await this.bind.request({
+            namespace: SHUTTER_CONFIG_NAMESPACE,
+            method: 'GET',
+            payload: encodeShutterConfigGet()
+        });
+        const entries = decodeShutterConfigGetAck(reply.payload);
+        return entries.find((e) => e.channel === this.bind.channel);
+    }
+
+    /**
+     * Writes travel times and optional direction to the device.
+     * No-op on garages or when RollerShutter.Config is not advertised.
+     */
+    async setTravelTimes(options: Omit<ShutterConfigSetOptions, 'channel'>): Promise<void> {
+        if (this.bind.kind !== 'shutter' || !this.has(SHUTTER_CONFIG_NAMESPACE)) {
+            return;
+        }
+        await this.bind.request({
+            namespace: SHUTTER_CONFIG_NAMESPACE,
+            method: 'SET',
+            payload: encodeShutterConfigSet({ ...options, channel: this.bind.channel })
+        });
+    }
+
+    /**
+     * Sends a calibration command to the device.
+     * No-op on garages or when RollerShutter.Adjust is not advertised.
+     *
+     * Stage semantics follow the firmware:
+     * - `stop` — abort calibration (value 0)
+     * - `auto` — start automatic calibration (value 1)
+     * - `manualClosed` — start stage 1: move to fully closed (value 2)
+     * - `manualClosedStop` — stop stage 1, begin stage 2: move to fully open (value 3)
+     * - `manualOpenStop` — stop stage 2 (value 4)
+     */
+    async calibrate(
+        stage: 'stop' | 'auto' | 'manualClosed' | 'manualClosedStop' | 'manualOpenStop'
+    ): Promise<void> {
+        if (this.bind.kind !== 'shutter' || !this.has(SHUTTER_ADJUST_NAMESPACE)) {
+            return;
+        }
+        const valueMap: Record<typeof stage, ShutterAdjustValue> = {
+            stop: 0,
+            auto: 1,
+            manualClosed: 2,
+            manualClosedStop: 3,
+            manualOpenStop: 4
+        };
+        await this.bind.request({
+            namespace: SHUTTER_ADJUST_NAMESPACE,
+            method: 'SET',
+            payload: encodeShutterAdjustSet(this.bind.channel, valueMap[stage])
+        });
+    }
+
+    /**
      * Applies a firmware PUSH for this endpoint.
      */
     handlePush(message: MerossMessage): void {
@@ -256,6 +331,7 @@ export class CoverTrait {
                     this.applyMoving(entry.state !== 0);
                 }
             }
+            return;
         }
     }
 

@@ -78,6 +78,8 @@ export {
     GARAGE_MULTIPLE_CONFIG_NAMESPACE,
     SHUTTER_POSITION_NAMESPACE,
     SHUTTER_STATE_NAMESPACE,
+    SHUTTER_CONFIG_NAMESPACE,
+    SHUTTER_ADJUST_NAMESPACE,
     decodeGarageGetAck,
     decodeGaragePush,
     decodeGarageConfigGetAck,
@@ -86,6 +88,10 @@ export {
     decodeShutterPositionGetAck,
     decodeShutterPositionPush,
     decodeShutterStatePush,
+    decodeShutterConfigGetAck,
+    decodeShutterConfigPush,
+    decodeShutterAdjustGetAck,
+    decodeShutterAdjustPush,
     encodeGarageGet,
     encodeGarageSet,
     encodeGarageConfigGet,
@@ -93,7 +99,10 @@ export {
     encodeGarageMultipleConfigGet,
     encodeGarageMultipleConfigSet,
     encodeShutterPositionGet,
-    encodeShutterPositionSet
+    encodeShutterPositionSet,
+    encodeShutterConfigGet,
+    encodeShutterConfigSet,
+    encodeShutterAdjustSet
 } from './codecs/cover';
 export type {
     GarageChannelState,
@@ -103,7 +112,11 @@ export type {
     GarageMultipleConfigEntry,
     ShutterMoveState,
     ShutterPositionSetOptions,
-    ShutterPositionState
+    ShutterPositionState,
+    ShutterConfig,
+    ShutterConfigSetOptions,
+    ShutterAdjustValue,
+    ShutterAdjustStatus
 } from './codecs/cover';
 export {
     HUB_TOGGLEX_NAMESPACE,
