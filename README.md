@@ -1,7 +1,7 @@
 # node-meross-sdk
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)
+![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)
 ![alpha](https://img.shields.io/badge/status-bootstrap-lightgrey.svg)
 
 Node.js library for controlling Meross devices. The public API is shaped for Homey (and any similar platform): a **session**, **endpoints**, and **traits**. One endpoint is one device you would expose to a user. Transports and MQTT stay inside the package.
@@ -14,7 +14,7 @@ Bootstrap only: toolchain, CI, and the frozen public surface. Login, MQTT, LAN, 
 
 ## Requirements
 
-- Node.js >= 18
+- Node.js >= 22
 
 ## Installation
 

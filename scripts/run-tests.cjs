@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * Walks `test/` and passes an explicit file list to the runners. Node 18
- * has no `--test` glob expansion, so a quoted glob would look for a
- * literal path and fail CI.
+ * Walks `test/` so TypeScript files go through tsx and the CJS surface
+ * test stays on `node --test`. An explicit list also avoids glob quoting
+ * turning into a literal path.
  */
 
 const { spawnSync } = require('node:child_process');

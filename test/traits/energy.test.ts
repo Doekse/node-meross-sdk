@@ -296,11 +296,11 @@ describe('EnergyTrait.poll', () => {
 });
 
 describe('EnergyTrait polling timers', () => {
-    it('polls on start and again after each interval', async (t: TestContext) => {
+    it('polls electricity on start and again after each interval', async (t: TestContext) => {
         t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
         const { trait, requests } = createEnergyHarness({
-            electricityIntervalMs: 1_000,
-            consumptionIntervalMs: 2_000
+            hasConsumptionX: false,
+            electricityIntervalMs: 1_000
         });
         t.after(() => trait.stop());
 
@@ -312,10 +312,6 @@ describe('EnergyTrait polling timers', () => {
             requests.filter((r) => r.namespace === ELECTRICITY_NAMESPACE).length,
             1
         );
-        assert.equal(
-            requests.filter((r) => r.namespace === CONSUMPTIONX_NAMESPACE).length,
-            1
-        );
 
         t.mock.timers.tick(1_000);
         await Promise.resolve();
@@ -323,10 +319,6 @@ describe('EnergyTrait polling timers', () => {
         assert.equal(
             requests.filter((r) => r.namespace === ELECTRICITY_NAMESPACE).length,
             2
-        );
-        assert.equal(
-            requests.filter((r) => r.namespace === CONSUMPTIONX_NAMESPACE).length,
-            1
         );
 
         t.mock.timers.tick(1_000);
@@ -335,10 +327,6 @@ describe('EnergyTrait polling timers', () => {
         assert.equal(
             requests.filter((r) => r.namespace === ELECTRICITY_NAMESPACE).length,
             3
-        );
-        assert.equal(
-            requests.filter((r) => r.namespace === CONSUMPTIONX_NAMESPACE).length,
-            2
         );
 
         trait.stop();
@@ -347,6 +335,34 @@ describe('EnergyTrait polling timers', () => {
         assert.equal(
             requests.filter((r) => r.namespace === ELECTRICITY_NAMESPACE).length,
             3
+        );
+    });
+
+    it('polls ConsumptionX on interval when advertised', async (t: TestContext) => {
+        t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+        const { trait, requests } = createEnergyHarness({
+            hasElectricity: false,
+            hasElectricityX: false,
+            consumptionIntervalMs: 1_000
+        });
+        t.after(() => trait.stop());
+
+        trait.start();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.equal(
+            requests.filter((r) => r.namespace === CONSUMPTIONX_NAMESPACE).length,
+            1
+        );
+
+        t.mock.timers.tick(1_000);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.equal(
+            requests.filter((r) => r.namespace === CONSUMPTIONX_NAMESPACE).length,
+            2
         );
     });
 
