@@ -157,3 +157,29 @@ describe('SwitchTrait PUSH', () => {
         assert.deepEqual(changes, []);
     });
 });
+
+describe('SwitchTrait initial state', () => {
+    it('exposes digest onoff without emitting change', () => {
+        const { endpoint } = createSwitchHarness();
+        const withDigest = new SwitchTrait({
+            uuid: UUID,
+            channel: CHANNEL,
+            namespace: TOGGLEX_NAMESPACE,
+            initialOn: true,
+            request: async () => encodeMessage({
+                namespace: TOGGLEX_NAMESPACE,
+                method: 'GETACK',
+                key: KEY,
+                from: `/appliance/${UUID}/publish`,
+                uuid: UUID,
+                payload: {}
+            }),
+            emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        assert.equal(withDigest.isOn(), true);
+        assert.deepEqual(changes, []);
+    });
+});

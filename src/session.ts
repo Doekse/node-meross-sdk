@@ -8,9 +8,19 @@ import {
     SYSTEM_ALL_NAMESPACE,
     decodeAbilityGetAck
 } from './graph';
+import type { GraphEndpoint, PhysicalDevice } from './graph';
 import { DeviceAvailability } from './graph/availability';
 import { Inventory } from './inventory';
-import { ProtocolDispatcher, TOGGLEX_NAMESPACE, type MerossMessage } from './protocol';
+import {
+    CONSUMPTIONX_NAMESPACE,
+    ELECTRICITY_NAMESPACE,
+    ELECTRICITYX_NAMESPACE,
+    ProtocolDispatcher,
+    TOGGLEX_NAMESPACE,
+    deriveEncryptionKey,
+    supportsLanEncryption,
+    type MerossMessage
+} from './protocol';
 import {
     LanHttpTransport,
     MqttTransport,
@@ -38,12 +48,13 @@ export interface TokenData {
 }
 
 /**
- * Test hooks and host overrides. Transports stay internal; only cloud `fetch`
- * and MQTT connect are injectable so CI can run without a broker.
+ * Test hooks and host overrides. Transports stay internal; only cloud `fetch`,
+ * MQTT connect, and LAN `fetch` are injectable so CI can run without a broker.
  */
 export interface SessionOptions {
     cloud?: CloudClientOptions;
     mqttConnect?: MqttConnectFn;
+    lanFetch?: typeof globalThis.fetch;
 }
 
 /**
@@ -56,7 +67,8 @@ export class Session {
     private readonly cloud: CloudClient;
     private readonly token: TokenData;
     private readonly mqttConnect?: MqttConnectFn;
-    private readonly graph = new DeviceGraph();
+    private readonly lanFetch?: typeof globalThis.fetch;
+    private graph = new DeviceGraph();
     private readonly endpoints = new Map<string, Endpoint>();
     private readonly availability = new Map<string, DeviceAvailability>();
     private router: TransportRouter | undefined;
@@ -69,6 +81,7 @@ export class Session {
         this.token = token;
         this.cloud = cloud;
         this.mqttConnect = options.mqttConnect;
+        this.lanFetch = options.lanFetch;
         this.inventory = new Inventory();
     }
 
@@ -121,91 +134,33 @@ export class Session {
         const lan = new LanHttpTransport({
             key: this.token.key,
             from: mqtt.clientResponseTopic,
-            dispatcher
+            dispatcher,
+            fetch: this.lanFetch
         });
         this.router = new TransportRouter({ mqtt, lan });
         await this.router.connect();
+        await this.sync();
+    }
 
+    /**
+     * Re-lists the cloud account and protocol-enrolls boards that are not in
+     * inventory yet. Offline or unreachable boards are skipped.
+     */
+    async sync(): Promise<void> {
+        if (!this.router) {
+            throw new MerossError('Session is not connected', 'NOT_CONNECTED');
+        }
         for (const cloudDevice of await this.cloud.listDevices()) {
+            if (this.graph.getPhysical(cloudDevice.uuid) || cloudDevice.onlineStatus !== 1) {
+                continue;
+            }
             try {
                 await this.enroll(cloudDevice);
             } catch {
-                // Offline or unreachable boards stay out of inventory until a later connect.
+                // Ability / System.All timed out; leave the board out of inventory.
             }
         }
-
-        const rows = this.graph.inventoryRows();
-        this.inventory.replace(rows);
-        this.endpoints.clear();
-        this.stopAvailability();
-        const endpointsByUuid = new Map<string, Endpoint[]>();
-        for (const row of rows) {
-            let endpoint!: Endpoint;
-            let switchTrait: SwitchTrait | undefined;
-            let energyTrait: EnergyTrait | undefined;
-            const graphEndpoint = this.graph.getEndpoint(row.id)!;
-            const physical = this.graph.getPhysical(graphEndpoint.uuid)!;
-            const channel = graphEndpoint.channel ?? 0;
-            const request = (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) =>
-                this.router!.request({ uuid: physical.uuid, ip: physical.innerIp, ...options });
-            if (row.traits.includes('switch')) {
-                switchTrait = new SwitchTrait({
-                    uuid: physical.uuid,
-                    channel,
-                    namespace: 'Appliance.Control.ToggleX' in physical.ability
-                        ? TOGGLEX_NAMESPACE
-                        : 'Appliance.Control.Toggle',
-                    request,
-                    emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
-                });
-            }
-            if (row.traits.includes('energy')) {
-                energyTrait = new EnergyTrait({
-                    uuid: physical.uuid,
-                    channel,
-                    hasElectricity: 'Appliance.Control.Electricity' in physical.ability,
-                    hasConsumptionX: 'Appliance.Control.ConsumptionX' in physical.ability,
-                    request,
-                    emitChange: (values) => endpoint.emit('change', {
-                        trait: 'energy',
-                        values: { ...values }
-                    })
-                });
-            }
-            endpoint = new Endpoint({
-                id: row.id,
-                traits: row.traits,
-                switch: switchTrait,
-                energy: energyTrait,
-                initialOnline: row.online
-            });
-            this.endpoints.set(row.id, endpoint);
-            energyTrait?.start();
-            if (graphEndpoint.subDeviceId) {
-                endpoint.setAvailability(row.online, true);
-            } else {
-                const group = endpointsByUuid.get(physical.uuid) ?? [];
-                group.push(endpoint);
-                endpointsByUuid.set(physical.uuid, group);
-            }
-        }
-        for (const [uuid, endpoints] of endpointsByUuid) {
-            const physical = this.graph.getPhysical(uuid)!;
-            const monitor = new DeviceAvailability({
-                uuid,
-                initialOnline: physical.online,
-                endpoints,
-                request: (namespace, method, payload) => this.router!.request({
-                    uuid,
-                    ip: physical.innerIp,
-                    namespace,
-                    method,
-                    payload: payload ?? {}
-                })
-            });
-            this.availability.set(uuid, monitor);
-            monitor.start();
-        }
+        this.materializeEndpoints();
     }
 
     /**
@@ -215,7 +170,10 @@ export class Session {
         for (const endpoint of this.endpoints.values()) {
             endpoint.energy?.stop();
         }
+        this.endpoints.clear();
         this.stopAvailability();
+        this.graph = new DeviceGraph();
+        this.inventory.replace([]);
         const router = this.router;
         this.router = undefined;
         await router?.disconnect();
@@ -270,5 +228,104 @@ export class Session {
                 ? await this.cloud.listSubDevices(cloudDevice.uuid).catch(() => [])
                 : undefined
         });
+    }
+
+    private materializeEndpoints(): void {
+        const rows = this.graph.inventoryRows();
+        this.inventory.replace(rows);
+        for (const row of rows) {
+            if (!this.endpoints.has(row.id)) {
+                this.endpoints.set(row.id, this.createEndpoint(this.graph.getEndpoint(row.id)!));
+            }
+        }
+        const byUuid = new Map<string, Endpoint[]>();
+        for (const row of rows) {
+            const graphEndpoint = this.graph.getEndpoint(row.id)!;
+            const endpoint = this.endpoints.get(row.id)!;
+            if (graphEndpoint.subDeviceId) {
+                endpoint.setAvailability(row.online, true);
+                continue;
+            }
+            const group = byUuid.get(graphEndpoint.uuid) ?? [];
+            group.push(endpoint);
+            byUuid.set(graphEndpoint.uuid, group);
+        }
+        for (const [uuid, endpoints] of byUuid) {
+            if (this.availability.has(uuid)) {
+                continue;
+            }
+            const physical = this.graph.getPhysical(uuid)!;
+            const request = this.deviceRequest(physical);
+            const monitor = new DeviceAvailability({
+                uuid,
+                initialOnline: physical.online,
+                endpoints,
+                request: (namespace, method, payload) => request({
+                    namespace,
+                    method,
+                    payload: payload ?? {}
+                })
+            });
+            this.availability.set(uuid, monitor);
+            monitor.start();
+        }
+    }
+
+    private createEndpoint(graphEndpoint: GraphEndpoint): Endpoint {
+        const physical = this.graph.getPhysical(graphEndpoint.uuid)!;
+        const channel = graphEndpoint.channel ?? 0;
+        const request = this.deviceRequest(physical);
+        let endpoint!: Endpoint;
+        let switchTrait: SwitchTrait | undefined;
+        let energyTrait: EnergyTrait | undefined;
+        if (graphEndpoint.traits.includes('switch')) {
+            switchTrait = new SwitchTrait({
+                uuid: physical.uuid,
+                channel,
+                namespace: 'Appliance.Control.Toggle' in physical.ability && !(TOGGLEX_NAMESPACE in physical.ability)
+                    ? 'Appliance.Control.Toggle'
+                    : TOGGLEX_NAMESPACE,
+                initialOn: graphEndpoint.on,
+                request,
+                emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
+            });
+        }
+        if (graphEndpoint.traits.includes('energy')) {
+            const hasElectricity = ELECTRICITY_NAMESPACE in physical.ability;
+            energyTrait = new EnergyTrait({
+                uuid: physical.uuid,
+                channel,
+                hasElectricity,
+                hasElectricityX: !hasElectricity && ELECTRICITYX_NAMESPACE in physical.ability,
+                hasConsumptionX: CONSUMPTIONX_NAMESPACE in physical.ability,
+                request,
+                emitChange: (values) => endpoint.emit('change', {
+                    trait: 'energy',
+                    values: { ...values }
+                })
+            });
+        }
+        endpoint = new Endpoint({
+            id: graphEndpoint.id,
+            traits: graphEndpoint.traits,
+            switch: switchTrait,
+            energy: energyTrait,
+            initialOnline: graphEndpoint.online
+        });
+        energyTrait?.start();
+        return endpoint;
+    }
+
+    private deviceRequest(physical: PhysicalDevice) {
+        const encryptionKey = supportsLanEncryption(physical.ability) && physical.macAddress
+            ? deriveEncryptionKey(physical.uuid, this.token.key, physical.macAddress)
+            : undefined;
+        return (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) =>
+            this.router!.request({
+                uuid: physical.uuid,
+                ip: physical.innerIp,
+                encryptionKey,
+                ...options
+            });
     }
 }

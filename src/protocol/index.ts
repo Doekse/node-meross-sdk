@@ -34,8 +34,11 @@ export type {
 } from './codecs/togglex';
 export {
     ELECTRICITY_NAMESPACE,
+    ELECTRICITYX_NAMESPACE,
     decodeElectricityGetAck,
-    encodeElectricityGet
+    decodeElectricityXGetAck,
+    encodeElectricityGet,
+    encodeElectricityXGet
 } from './codecs/electricity';
 export type {
     ElectricityConfig,

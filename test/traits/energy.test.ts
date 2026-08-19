@@ -7,9 +7,11 @@ import { Endpoint } from '../../src/endpoint';
 import {
     CONSUMPTIONX_NAMESPACE,
     ELECTRICITY_NAMESPACE,
+    ELECTRICITYX_NAMESPACE,
     decodeMessage,
     encodeConsumptionXGet,
     encodeElectricityGet,
+    encodeElectricityXGet,
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
@@ -47,6 +49,26 @@ function electricityAck(channel = CHANNEL): MerossMessage {
     });
 }
 
+function electricityXAck(channel = CHANNEL): MerossMessage {
+    return encodeMessage({
+        namespace: ELECTRICITYX_NAMESPACE,
+        method: 'GETACK',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload: {
+            electricity: [{
+                channel,
+                power: 1500,
+                current: 2000,
+                voltage: 230000,
+                factor: 95,
+                mConsume: 12345
+            }]
+        }
+    });
+}
+
 function consumptionAck(): MerossMessage {
     return encodeMessage({
         namespace: CONSUMPTIONX_NAMESPACE,
@@ -60,6 +82,7 @@ function consumptionAck(): MerossMessage {
 
 function createEnergyHarness(options: {
     hasElectricity?: boolean;
+    hasElectricityX?: boolean;
     hasConsumptionX?: boolean;
     electricityIntervalMs?: number;
     consumptionIntervalMs?: number;
@@ -77,6 +100,7 @@ function createEnergyHarness(options: {
         uuid: UUID,
         channel: CHANNEL,
         hasElectricity: options.hasElectricity ?? true,
+        hasElectricityX: options.hasElectricityX ?? false,
         hasConsumptionX: options.hasConsumptionX ?? true,
         electricityIntervalMs: options.electricityIntervalMs ?? DEFAULT_ELECTRICITY_INTERVAL_MS,
         consumptionIntervalMs: options.consumptionIntervalMs ?? DEFAULT_CONSUMPTION_INTERVAL_MS,
@@ -88,6 +112,9 @@ function createEnergyHarness(options: {
             });
             if (opts.namespace === ELECTRICITY_NAMESPACE) {
                 return electricityAck();
+            }
+            if (opts.namespace === ELECTRICITYX_NAMESPACE) {
+                return electricityXAck();
             }
             if (opts.namespace === CONSUMPTIONX_NAMESPACE) {
                 return consumptionAck();
@@ -174,6 +201,29 @@ describe('EnergyTrait.poll', () => {
 
         assert.equal(requests.length, 1);
         assert.equal(requests[0]?.namespace, ELECTRICITY_NAMESPACE);
+    });
+
+    it('GETs ElectricityX when classic Electricity is absent', async () => {
+        const { trait, requests } = createEnergyHarness({
+            hasElectricity: false,
+            hasElectricityX: true,
+            hasConsumptionX: false
+        });
+
+        const snapshot = await trait.poll();
+
+        assert.deepEqual(requests, [{
+            namespace: ELECTRICITYX_NAMESPACE,
+            method: 'GET',
+            payload: encodeElectricityXGet()
+        }]);
+        assert.deepEqual(snapshot, {
+            power: 1.5,
+            current: 2,
+            voltage: 230,
+            consume: 12345,
+            powerFactor: 0.95
+        });
     });
 });
 

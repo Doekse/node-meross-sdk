@@ -3,6 +3,12 @@ import type { MerossPayload } from '../protocol/message';
 
 export const SYSTEM_ALL_NAMESPACE = 'Appliance.System.All';
 
+/** One `digest.togglex` row. `on` is omitted when firmware leaves `onoff` out. */
+export interface DigestToggle {
+    channel: number;
+    on?: boolean;
+}
+
 export interface SystemAll {
     hardware: {
         type: string;
@@ -16,7 +22,7 @@ export interface SystemAll {
         status: number;
     };
     digest: {
-        togglex: number[];
+        togglex: DigestToggle[];
         light: number[];
         garageDoor: number[];
         hub?: { subdevice: Array<{ id: string; status?: number; model?: string }> };
@@ -71,13 +77,33 @@ export function decodeSystemAllGetAck(payload: MerossPayload): SystemAll {
         },
         online: { status },
         digest: {
-            togglex: channelList(d.togglex, 'togglex'),
+            togglex: digestTogglex(d.togglex),
             light: channelList(d.light, 'light'),
             garageDoor: channelList(d.garageDoor, 'garageDoor'),
             hub: d.hub !== undefined ? decodeHub(d.hub) : undefined,
             thermostat: d.thermostat && typeof d.thermostat === 'object' ? d.thermostat : undefined
         }
     };
+}
+
+function digestTogglex(raw: unknown): DigestToggle[] {
+    if (raw === undefined) {
+        return [];
+    }
+    if (!Array.isArray(raw)) {
+        throw new ProtocolError('System.All digest.togglex must be an array');
+    }
+    return raw.map((item) => {
+        const { channel, onoff } = item as Record<string, unknown>;
+        if (typeof channel !== 'number') {
+            throw new ProtocolError('System.All digest.togglex channel is required');
+        }
+        const entry: DigestToggle = { channel };
+        if (typeof onoff === 'number') {
+            entry.on = onoff === 1;
+        }
+        return entry;
+    });
 }
 
 function channelList(raw: unknown, field: string): number[] {

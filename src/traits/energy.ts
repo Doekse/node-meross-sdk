@@ -1,10 +1,13 @@
 import {
     CONSUMPTIONX_NAMESPACE,
     ELECTRICITY_NAMESPACE,
+    ELECTRICITYX_NAMESPACE,
     decodeConsumptionXGetAck,
     decodeElectricityGetAck,
+    decodeElectricityXGetAck,
     encodeConsumptionXGet,
     encodeElectricityGet,
+    encodeElectricityXGet,
     type ConsumptionXDay,
     type ElectricitySample,
     type MerossMessage
@@ -19,6 +22,7 @@ export interface EnergyValues {
     current?: number;
     voltage?: number;
     consume?: number;
+    powerFactor?: number;
     consumption?: ConsumptionXDay[];
 }
 
@@ -30,6 +34,7 @@ export interface EnergyTraitBind {
     uuid: string;
     channel: number;
     hasElectricity: boolean;
+    hasElectricityX: boolean;
     hasConsumptionX: boolean;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
     emitChange: (values: EnergyValues) => void;
@@ -59,7 +64,7 @@ export class EnergyTrait {
     /** Starts trait-owned poll loops. Idempotent. */
     start(): void {
         this.stopped = false;
-        if (this.bind.hasElectricity && this.electricityTimer === undefined) {
+        if ((this.bind.hasElectricity || this.bind.hasElectricityX) && this.electricityTimer === undefined) {
             void this.pollElectricity();
             this.electricityTimer = setInterval(
                 () => void this.pollElectricity(),
@@ -90,7 +95,7 @@ export class EnergyTrait {
     }
 
     async poll(): Promise<EnergyValues> {
-        if (this.bind.hasElectricity) {
+        if (this.bind.hasElectricity || this.bind.hasElectricityX) {
             await this.pollElectricity();
         }
         if (this.bind.hasConsumptionX) {
@@ -112,6 +117,14 @@ export class EnergyTrait {
             }
             return;
         }
+        if (message.header.namespace === ELECTRICITYX_NAMESPACE && this.bind.hasElectricityX) {
+            const sample = decodeElectricityXGetAck(message.payload)
+                .find((entry) => entry.channel === this.bind.channel);
+            if (sample) {
+                this.applyElectricity(sample);
+            }
+            return;
+        }
         if (message.header.namespace === CONSUMPTIONX_NAMESPACE && this.bind.hasConsumptionX) {
             this.applyConsumption(decodeConsumptionXGetAck(message.payload));
         }
@@ -119,16 +132,32 @@ export class EnergyTrait {
 
     private async pollElectricity(): Promise<void> {
         try {
+            if (this.bind.hasElectricity) {
+                const reply = await this.bind.request({
+                    namespace: ELECTRICITY_NAMESPACE,
+                    method: 'GET',
+                    payload: encodeElectricityGet({ channel: this.bind.channel })
+                });
+                if (this.stopped) {
+                    return;
+                }
+                const sample = decodeElectricityGetAck(reply.payload);
+                if (sample.channel === this.bind.channel) {
+                    this.applyElectricity(sample);
+                }
+                return;
+            }
             const reply = await this.bind.request({
-                namespace: ELECTRICITY_NAMESPACE,
+                namespace: ELECTRICITYX_NAMESPACE,
                 method: 'GET',
-                payload: encodeElectricityGet({ channel: this.bind.channel })
+                payload: encodeElectricityXGet()
             });
             if (this.stopped) {
                 return;
             }
-            const sample = decodeElectricityGetAck(reply.payload);
-            if (sample.channel === this.bind.channel) {
+            const sample = decodeElectricityXGetAck(reply.payload)
+                .find((entry) => entry.channel === this.bind.channel);
+            if (sample) {
                 this.applyElectricity(sample);
             }
         } catch {
@@ -161,11 +190,15 @@ export class EnergyTrait {
         if (sample.consume !== undefined) {
             values.consume = sample.consume;
         }
+        if (sample.powerFactor !== undefined) {
+            values.powerFactor = sample.powerFactor;
+        }
         if (
             this.last.power === values.power
             && this.last.current === values.current
             && this.last.voltage === values.voltage
             && this.last.consume === values.consume
+            && this.last.powerFactor === values.powerFactor
         ) {
             return;
         }

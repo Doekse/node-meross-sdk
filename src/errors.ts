@@ -44,7 +44,6 @@ export class CommandError extends MerossError {
 
 /**
  * Wrong credentials, MFA, or an expired/incomplete token from the cloud HTTP API.
- * Not a public export until Session.login surfaces auth failures.
  */
 export class AuthError extends MerossError {
     readonly apiStatus?: number;
@@ -58,7 +57,6 @@ export class AuthError extends MerossError {
 
 /**
  * Cloud HTTP transport failure, region redirect exhaustion, or a non-auth apiStatus.
- * Not a public export until Session surfaces cloud failures to hosts.
  */
 export class CloudError extends MerossError {
     readonly apiStatus?: number;

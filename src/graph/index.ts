@@ -1,11 +1,14 @@
 import type { CloudDevice, CloudSubDevice } from '../cloud';
 import type { TraitName } from '../endpoint';
 import type { ClassHint, InventoryRow } from '../inventory';
+import { CONSUMPTIONX_NAMESPACE } from '../protocol/codecs/consumptionx';
+import { ELECTRICITY_NAMESPACE, ELECTRICITYX_NAMESPACE } from '../protocol/codecs/electricity';
+import { TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
 import type { MerossPayload } from '../protocol/message';
 import { abilityMaxCmdNum, decodeAbilityGetAck } from './ability';
 import type { AbilityMap } from './ability';
 import { decodeSystemAllGetAck } from './system-all';
-import type { SystemAll } from './system-all';
+import type { DigestToggle, SystemAll } from './system-all';
 
 export { ABILITY_NAMESPACE, abilityMaxCmdNum, decodeAbilityGetAck } from './ability';
 export type { AbilityMap } from './ability';
@@ -36,6 +39,8 @@ export interface GraphEndpoint {
     classHint: ClassHint;
     traits: readonly TraitName[];
     online: boolean;
+    /** Digest `togglex.onoff` when System.All carried it; switch uses this as the first tile value. */
+    on?: boolean;
 }
 
 /**
@@ -65,9 +70,9 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
     const model = input.cloud?.deviceType || all.hardware.type;
     const name = input.cloud?.devName || all.hardware.type;
     const online = all.online.status === 1 || input.cloud?.onlineStatus === 1;
-    const energy = 'Appliance.Control.Electricity' in ability
-        || 'Appliance.Control.ElectricityX' in ability
-        || 'Appliance.Control.ConsumptionX' in ability;
+    const energy = ELECTRICITY_NAMESPACE in ability
+        || ELECTRICITYX_NAMESPACE in ability
+        || CONSUMPTIONX_NAMESPACE in ability;
     const isHub = 'Appliance.Hub.SubdeviceList' in ability || all.digest.hub !== undefined;
 
     return {
@@ -86,8 +91,7 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
 }
 
 /**
- * Collects enrolled boards so Session can project pairing rows without
- * talking to MQTT.
+ * Collects protocol-enrolled boards so Session can project pairing rows.
  */
 export class DeviceGraph {
     private readonly physical = new Map<string, PhysicalDevice>();
@@ -139,7 +143,7 @@ function enrollBoard(
 ): GraphEndpoint[] {
     const endpoints: GraphEndpoint[] = [];
     const taken = new Set<number>();
-    const add = (channel: number, classHint: ClassHint, traits: TraitName[]): void => {
+    const add = (channel: number, classHint: ClassHint, traits: TraitName[], on?: boolean): void => {
         if (taken.has(channel)) {
             return;
         }
@@ -157,7 +161,8 @@ function enrollBoard(
             model,
             classHint,
             traits: energy && classHint !== 'cover' ? [...traits, 'energy'] : traits,
-            online
+            online,
+            on
         });
         taken.add(channel);
     };
@@ -183,22 +188,22 @@ function enrollBoard(
         add(0, 'climate', ['climate']);
     }
 
-    let toggleChannels = all.digest.togglex;
-    if (toggleChannels.length === 0 && cloud?.channels?.length) {
-        toggleChannels = cloud.channels.map((_, index) => index);
+    let toggles: DigestToggle[] = all.digest.togglex;
+    if (toggles.length === 0 && cloud?.channels?.length) {
+        toggles = cloud.channels.map((_, channel) => ({ channel }));
     }
     if (
-        toggleChannels.length === 0
-        && ('Appliance.Control.ToggleX' in ability || 'Appliance.Control.Toggle' in ability)
+        toggles.length === 0
+        && (TOGGLEX_NAMESPACE in ability || 'Appliance.Control.Toggle' in ability)
     ) {
-        toggleChannels = [0];
+        toggles = [{ channel: 0 }];
     }
     // Channel 0 is "all outlets" on strips (3+ channels). 2-gang walls keep 0 and 1.
-    if (toggleChannels.length >= 3 && toggleChannels.includes(0)) {
-        toggleChannels = toggleChannels.filter((channel) => channel !== 0);
+    if (toggles.length >= 3 && toggles.some((entry) => entry.channel === 0)) {
+        toggles = toggles.filter((entry) => entry.channel !== 0);
     }
-    for (const channel of toggleChannels) {
-        add(channel, 'socket', ['switch']);
+    for (const entry of toggles) {
+        add(entry.channel, 'socket', ['switch'], entry.on);
     }
 
     return endpoints;

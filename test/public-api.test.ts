@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+    AuthError,
+    CloudError,
     Endpoint,
     Inventory,
     Session,
@@ -18,6 +20,15 @@ describe('public API', () => {
         assert.equal(typeof Session.prototype.disconnect, 'function');
         assert.equal(typeof Session.prototype.endpoint, 'function');
         assert.equal(typeof Session.prototype.getToken, 'function');
+        assert.equal(typeof Session.prototype.sync, 'function');
+    });
+
+    it('exposes AuthError and CloudError for login and token failures', () => {
+        assert.equal(typeof AuthError, 'function');
+        assert.equal(typeof CloudError, 'function');
+        const expired = new AuthError('Unauthorized', 'TOKEN_EXPIRED');
+        assert.ok(expired instanceof AuthError);
+        assert.equal(expired.code, 'TOKEN_EXPIRED');
     });
 
     it('Session.restore returns a session with a copyable token', () => {

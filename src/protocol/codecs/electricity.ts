@@ -16,6 +16,7 @@ export interface ElectricitySample {
     current: number;
     voltage: number;
     consume?: number;
+    powerFactor?: number;
     config?: ElectricityConfig;
 }
 
@@ -67,4 +68,51 @@ export function decodeElectricityGetAck(payload: MerossPayload): ElectricitySamp
         }
     }
     return sample;
+}
+
+export const ELECTRICITYX_NAMESPACE = 'Appliance.Control.ElectricityX';
+
+/** GET is an empty payload; GETACK lists every channel. */
+export function encodeElectricityXGet(): MerossPayload {
+    return {};
+}
+
+/**
+ * Voltage is millivolts. `electricity` is an array (or a single object).
+ */
+export function decodeElectricityXGetAck(payload: MerossPayload): ElectricitySample[] {
+    const raw = payload.electricity;
+    const items = Array.isArray(raw)
+        ? raw
+        : (raw && typeof raw === 'object' ? [raw] : null);
+    if (!items) {
+        throw new ProtocolError('ElectricityX GETACK electricity must be an object or array');
+    }
+    return items.map((entry) => {
+        if (typeof entry !== 'object' || entry === null) {
+            throw new ProtocolError('ElectricityX channel entry must be an object');
+        }
+        const { channel, power, current, voltage, mConsume, factor } = entry as Record<string, unknown>;
+        if (
+            typeof channel !== 'number'
+            || typeof power !== 'number'
+            || typeof current !== 'number'
+            || typeof voltage !== 'number'
+        ) {
+            throw new ProtocolError('ElectricityX channel, power, current, and voltage are required');
+        }
+        const sample: ElectricitySample = {
+            channel,
+            power: power / 1000,
+            current: current / 1000,
+            voltage: voltage / 1000
+        };
+        if (typeof mConsume === 'number') {
+            sample.consume = mConsume;
+        }
+        if (typeof factor === 'number') {
+            sample.powerFactor = factor / 100;
+        }
+        return sample;
+    });
 }

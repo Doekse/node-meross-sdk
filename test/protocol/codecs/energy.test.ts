@@ -10,7 +10,9 @@ import {
 } from '../../../src/protocol/codecs/consumptionx';
 import {
     decodeElectricityGetAck,
-    encodeElectricityGet
+    decodeElectricityXGetAck,
+    encodeElectricityGet,
+    encodeElectricityXGet
 } from '../../../src/protocol/codecs/electricity';
 import { decodeMessage } from '../../../src/protocol/message';
 
@@ -73,6 +75,54 @@ describe('Electricity codec', () => {
         assert.throws(
             () => decodeElectricityGetAck({ electricity: [] }),
             (err: unknown) => err instanceof ProtocolError
+        );
+    });
+});
+
+describe('ElectricityX codec', () => {
+    it('encodes GET as an empty payload', () => {
+        assert.deepEqual(encodeElectricityXGet(), {});
+    });
+
+    it('decodes millivolt GETACK arrays into host units', () => {
+        assert.deepEqual(
+            decodeElectricityXGetAck({
+                electricity: [{
+                    channel: 0,
+                    current: 2000,
+                    voltage: 230000,
+                    power: 1500,
+                    factor: 95,
+                    mConsume: 12345
+                }]
+            }),
+            [{
+                channel: 0,
+                current: 2,
+                voltage: 230,
+                power: 1.5,
+                consume: 12345,
+                powerFactor: 0.95
+            }]
+        );
+    });
+
+    it('accepts a single-channel object GETACK', () => {
+        assert.deepEqual(
+            decodeElectricityXGetAck({
+                electricity: {
+                    channel: 1,
+                    power: 600,
+                    current: 500,
+                    voltage: 120000
+                }
+            }),
+            [{
+                channel: 1,
+                power: 0.6,
+                current: 0.5,
+                voltage: 120
+            }]
         );
     });
 });

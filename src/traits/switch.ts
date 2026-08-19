@@ -6,8 +6,6 @@ import {
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
 
-const TOGGLE_NAMESPACE = 'Appliance.Control.Toggle';
-
 /**
  * Transport + channel bind for one switch endpoint. Session supplies this;
  * trait tests inject a fake request/emit pair.
@@ -15,9 +13,11 @@ const TOGGLE_NAMESPACE = 'Appliance.Control.Toggle';
 export interface SwitchTraitBind {
     uuid: string;
     channel: number;
-    namespace: typeof TOGGLEX_NAMESPACE | typeof TOGGLE_NAMESPACE;
+    namespace: typeof TOGGLEX_NAMESPACE | 'Appliance.Control.Toggle';
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
     emitChange: (on: boolean) => void;
+    /** System.All digest `onoff` so Homey can read the tile before the first PUSH. */
+    initialOn?: boolean;
 }
 
 /**
@@ -30,6 +30,14 @@ export class SwitchTrait {
 
     constructor(bind: SwitchTraitBind) {
         this.bind = bind;
+        this.on = bind.initialOn;
+    }
+
+    /**
+     * Last known on/off. Undefined until digest, SET, or PUSH fills it.
+     */
+    isOn(): boolean | undefined {
+        return this.on;
     }
 
     /**

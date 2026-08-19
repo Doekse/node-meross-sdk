@@ -71,7 +71,7 @@ describe('System.All GETACK', () => {
         assert.equal(all.hardware.type, 'mss110');
         assert.equal(all.online.status, 1);
         assert.equal(all.firmware.innerIp, '192.168.201.190');
-        assert.deepEqual(all.digest.togglex, [0]);
+        assert.deepEqual(all.digest.togglex, [{ channel: 0, on: true }]);
         assert.throws(
             () => decodeSystemAllGetAck({}),
             (err: unknown) => err instanceof ProtocolError
@@ -108,6 +108,7 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(endpoint?.classHint, 'socket');
         assert.deepEqual(endpoint?.traits, ['switch', 'energy']);
         assert.equal(endpoint?.online, true);
+        assert.equal(endpoint?.on, true);
         assert.equal(endpoint?.parentId, undefined);
     });
 
@@ -165,6 +166,8 @@ describe('enrollPhysicalDevice', () => {
             [`${UUID}:0`, `${UUID}:1`]
         );
         assert.equal(device.endpoints[0]?.classHint, 'socket');
+        assert.equal(device.endpoints[0]?.on, true);
+        assert.equal(device.endpoints[1]?.on, false);
     });
 
     it('sets classHint light when Control.Light is in Ability', () => {

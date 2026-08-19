@@ -6,7 +6,14 @@ import { describe, it } from 'node:test';
 
 import { ABILITY_NAMESPACE, SYSTEM_ALL_NAMESPACE } from '../src/graph';
 import { MerossError } from '../src/errors';
-import { encodeMessage, type MerossMessage } from '../src/protocol';
+import {
+    decodeMessage,
+    decryptPayload,
+    deriveEncryptionKey,
+    encodeMessage,
+    encryptPayload,
+    type MerossMessage
+} from '../src/protocol';
 import { Session } from '../src/session';
 import type { MqttBrokerClient } from '../src/transport';
 
@@ -87,19 +94,21 @@ function ackFor(
     method: 'GETACK' | 'SETACK' | 'ERROR',
     payload: MerossMessage['payload'] = {}
 ): MerossMessage {
+    const uuid = request.header.uuid ?? UUID;
     return encodeMessage({
         namespace: request.header.namespace,
         method,
         key: KEY,
-        from: `/appliance/${UUID}/publish`,
+        from: `/appliance/${uuid}/publish`,
         messageId: request.header.messageId,
         timestamp: request.header.timestamp,
-        uuid: UUID,
+        uuid,
         payload
     });
 }
 
-function enrollmentAck(sent: MerossMessage): MerossMessage {
+function enrollmentAck(sent: MerossMessage, options: { innerIp?: boolean; encrypt?: boolean } = {}): MerossMessage {
+    const uuid = sent.header.uuid ?? UUID;
     if (sent.header.namespace === ABILITY_NAMESPACE) {
         return ackFor(sent, 'GETACK', {
             payloadVersion: 1,
@@ -107,16 +116,24 @@ function enrollmentAck(sent: MerossMessage): MerossMessage {
                 'Appliance.Control.ToggleX': {},
                 'Appliance.Control.Multiple': { maxCmdNum: 5 },
                 'Appliance.Control.Electricity': {},
-                'Appliance.Control.ConsumptionX': {}
+                'Appliance.Control.ConsumptionX': {},
+                ...(options.encrypt ? { 'Appliance.Encrypt.ECDHE': {} } : {})
             }
         });
     }
     if (sent.header.namespace === SYSTEM_ALL_NAMESPACE) {
         const payload = structuredClone(loadFixture('system-all-getack.json')) as {
-            all: { system: { firmware: { innerIp?: string } } };
+            all: {
+                system: {
+                    hardware: { uuid: string };
+                    firmware: { innerIp?: string };
+                };
+            };
         };
-        // Session tests have no LAN HTTP server; drop innerIp so energy polls stay on MQTT.
-        delete payload.all.system.firmware.innerIp;
+        payload.all.system.hardware.uuid = uuid;
+        if (!options.innerIp) {
+            delete payload.all.system.firmware.innerIp;
+        }
         return ackFor(sent, 'GETACK', payload);
     }
     if (sent.header.namespace === 'Appliance.Control.Electricity') {
@@ -135,7 +152,7 @@ function enrollmentAck(sent: MerossMessage): MerossMessage {
     return ackFor(sent, 'GETACK');
 }
 
-function createCloudFetch() {
+function createCloudFetch(devices: unknown[] = [DEVICE_ROW]) {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const fetchImpl = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
         calls.push({ url: String(url), init: init ?? {} });
@@ -143,11 +160,11 @@ function createCloudFetch() {
             return ok(LOGIN_DATA);
         }
         if (String(url).endsWith('/v1/Device/devList')) {
-            return ok([DEVICE_ROW]);
+            return ok(devices);
         }
         return jsonResponse({ apiStatus: 999, info: 'unexpected' }, 500);
     };
-    return { fetchImpl, calls };
+    return { fetchImpl, calls, devices };
 }
 
 function createMqttConnect(clientRef: { current?: FakeMqttClient }) {
@@ -159,7 +176,11 @@ function createMqttConnect(clientRef: { current?: FakeMqttClient }) {
     };
 }
 
-async function ackNextGet(client: FakeMqttClient, alreadyAcked: Set<string>): Promise<void> {
+async function ackNextGet(
+    client: FakeMqttClient,
+    alreadyAcked: Set<string>,
+    options?: { innerIp?: boolean; encrypt?: boolean }
+): Promise<void> {
     for (let attempt = 0; attempt < 50; attempt++) {
         await Promise.resolve();
         for (const entry of client.published) {
@@ -168,7 +189,7 @@ async function ackNextGet(client: FakeMqttClient, alreadyAcked: Set<string>): Pr
                 continue;
             }
             alreadyAcked.add(sent.header.messageId);
-            client.deliver(enrollmentAck(sent));
+            client.deliver(enrollmentAck(sent, options));
             return;
         }
     }
@@ -263,6 +284,7 @@ describe('Session.connect', () => {
         assert.equal(endpoint.id, `${UUID}:0`);
         assert.ok(endpoint.switch);
         assert.ok(endpoint.energy);
+        assert.equal(endpoint.switch.isOn(), true);
         assert.throws(
             () => session.endpoint('missing'),
             (err: unknown) => err instanceof MerossError && err.code === 'ENDPOINT_NOT_FOUND'
@@ -320,6 +342,122 @@ describe('Session.connect', () => {
         assert.equal(client.published.length, publishedBefore);
 
         await session.disconnect();
+        await session.disconnect();
+    });
+
+    it('skips offline cloud boards until they answer Ability and System.All', async () => {
+        const shed = {
+            uuid: 'offline00000000000000000000000001',
+            devName: 'Shed plug',
+            deviceType: 'mss110',
+            onlineStatus: 2,
+            channels: [{ channel: 0, devName: 'Shed plug' }]
+        };
+        const { fetchImpl } = createCloudFetch([DEVICE_ROW, shed]);
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+
+        await connectSession(session, clientRef);
+
+        const rows = session.inventory.endpoints();
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0]?.id, `${UUID}:0`);
+        assert.throws(
+            () => session.endpoint(`${shed.uuid}:0`),
+            (error: unknown) => error instanceof MerossError && error.code === 'ENDPOINT_NOT_FOUND'
+        );
+        await session.disconnect();
+    });
+
+    it('sync enrolls boards added to the account after connect', async () => {
+        const devices: unknown[] = [DEVICE_ROW];
+        const { fetchImpl } = createCloudFetch(devices);
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+
+        await connectSession(session, clientRef);
+
+        const added = {
+            uuid: 'added0000000000000000000000000001',
+            devName: 'Porch plug',
+            deviceType: 'mss110',
+            onlineStatus: 1,
+            channels: [{ channel: 0, devName: 'Porch plug' }]
+        };
+        devices.push(added);
+
+        const client = clientRef.current!;
+        const acked = new Set(client.published.map((entry) => (
+            JSON.parse(entry.payload) as MerossMessage
+        ).header.messageId));
+        const syncPromise = session.sync();
+        await ackNextGet(client, acked);
+        await ackNextGet(client, acked);
+        await syncPromise;
+        await ackNextGet(client, acked);
+        await ackNextGet(client, acked);
+
+        assert.equal(session.inventory.endpoints().length, 2);
+        assert.equal(session.endpoint(`${added.uuid}:0`).id, `${added.uuid}:0`);
+        await session.disconnect();
+    });
+
+    it('encrypts LAN bodies when Ability advertises Encrypt.ECDHE', async () => {
+        const mac = '48:e1:e9:97:05:a4';
+        const encryptionKey = deriveEncryptionKey(UUID, KEY, mac);
+        const lanCalls: RequestInit[] = [];
+        const lanFetch: typeof fetch = async (_url, init) => {
+            lanCalls.push(init ?? {});
+            const plain = decryptPayload(String(init?.body), encryptionKey);
+            const sent = decodeMessage(plain, KEY);
+            const ack = enrollmentAck(sent, { innerIp: true, encrypt: true });
+            return {
+                status: 200,
+                statusText: 'OK',
+                ok: true,
+                async text() {
+                    return encryptPayload(JSON.stringify(ack), encryptionKey);
+                }
+            } as Response;
+        };
+
+        const { fetchImpl } = createCloudFetch();
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef),
+                lanFetch
+            }
+        );
+
+        const connectPromise = session.connect();
+        await Promise.resolve();
+        const client = clientRef.current!;
+        const acked = new Set<string>();
+        await ackNextGet(client, acked, { encrypt: true });
+        await ackNextGet(client, acked, { innerIp: true, encrypt: true });
+        await connectPromise;
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.ok(lanCalls.length >= 1);
+        const headers = lanCalls[0]!.headers as Record<string, string>;
+        assert.equal(headers['Content-Type'], 'application/octet-stream');
+        assert.equal(String(lanCalls[0]!.body).startsWith('{'), false);
         await session.disconnect();
     });
 });

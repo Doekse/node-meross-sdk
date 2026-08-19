@@ -6,8 +6,6 @@ import {
 } from '../protocol/codecs/online';
 import { Heartbeat } from './heartbeat';
 
-const RUNTIME_NAMESPACE = 'Appliance.System.Runtime';
-
 export interface DeviceAvailabilityOptions {
     uuid: string;
     initialOnline: boolean;
@@ -75,7 +73,7 @@ export class DeviceAvailability {
             return;
         }
 
-        if (namespace === RUNTIME_NAMESPACE && method === 'GETACK') {
+        if (namespace === 'Appliance.System.Runtime' && method === 'GETACK') {
             const runtime = message.payload.runtime;
             if (runtime && typeof runtime === 'object' && !Array.isArray(runtime)) {
                 const iotStatus = (runtime as { iotStatus?: unknown }).iotStatus;
