@@ -30,6 +30,7 @@ import {
     type MqttConnectFn,
     type RoutedRequestOptions
 } from './transport';
+import { AlarmTrait } from './traits/alarm';
 import { ClimateTrait } from './traits/climate';
 import type { ThermostatGeneration } from './traits/climate';
 import { CoverTrait } from './traits/cover';
@@ -218,6 +219,7 @@ export class Session {
             endpoint.fan?.handlePush(message);
             endpoint.diffuser?.handlePush(message);
             endpoint.media?.handlePush(message);
+            endpoint.alarm?.handlePush(message);
             endpoint.dnd?.handlePush(message);
         }
     }
@@ -311,6 +313,7 @@ export class Session {
         let fanTrait: FanTrait | undefined;
         let diffuserTrait: DiffuserTrait | undefined;
         let mediaTrait: MediaTrait | undefined;
+        let alarmTrait: AlarmTrait | undefined;
         let dndTrait: DndTrait | undefined;
         if (graphEndpoint.traits.includes('switch')) {
             if (graphEndpoint.subDeviceId) {
@@ -515,6 +518,17 @@ export class Session {
                 })
             });
         }
+        if (graphEndpoint.traits.includes('alarm')) {
+            alarmTrait = new AlarmTrait({
+                uuid: physical.uuid,
+                channel,
+                request,
+                emitChange: (values) => endpoint.emit('change', {
+                    trait: 'alarm',
+                    values: { ...values }
+                })
+            });
+        }
         if (graphEndpoint.traits.includes('dnd')) {
             dndTrait = new DndTrait({
                 uuid: physical.uuid,
@@ -537,6 +551,7 @@ export class Session {
             fan: fanTrait,
             diffuser: diffuserTrait,
             media: mediaTrait,
+            alarm: alarmTrait,
             dnd: dndTrait,
             initialOnline: graphEndpoint.online
         });
@@ -551,6 +566,7 @@ export class Session {
         fanTrait?.start();
         diffuserTrait?.start();
         mediaTrait?.start();
+        alarmTrait?.start();
         dndTrait?.start();
         return endpoint;
     }

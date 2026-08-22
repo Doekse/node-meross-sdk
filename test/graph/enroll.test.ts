@@ -522,6 +522,46 @@ describe('enrollPhysicalDevice', () => {
         assert.ok(graph.inventoryRows().some((row) => row.id === HUB_UUID && row.traits.includes('dnd')));
     });
 
+    it('pairs the hub parent with alarm when Control.Alarm is advertised', () => {
+        const graph = new DeviceGraph();
+        const device = graph.enroll({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Hub.SubdeviceList': {},
+                    'Appliance.Control.Alarm': {},
+                    'Appliance.System.DNDMode': {}
+                }
+            },
+            allPayload: {
+                all: {
+                    system: {
+                        hardware: { type: 'msh300', uuid: HUB_UUID },
+                        firmware: {},
+                        online: { status: 1 }
+                    },
+                    digest: {
+                        hub: {
+                            subdevice: [
+                                { id: '01008C11', status: 1, onoff: 1, mts100v3: { mode: 0 } }
+                            ]
+                        }
+                    }
+                }
+            }
+        });
+
+        const hub = device.endpoints[0];
+        assert.equal(hub?.classHint, 'hub');
+        assert.deepEqual(hub?.traits, ['alarm', 'dnd']);
+        assert.ok(graph.inventoryRows().some(
+            (row) => row.id === HUB_UUID && row.traits.includes('alarm')
+        ));
+        assert.equal(
+            device.endpoints.find((endpoint) => endpoint.id === `${HUB_UUID}#01008C11`)?.traits.includes('alarm'),
+            false
+        );
+    });
+
     it('enrolls MST100 sprinklers with sprinkler trait and omits unknown hub children without onoff', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: {

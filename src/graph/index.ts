@@ -90,6 +90,7 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
         || CONSUMPTIONX_NAMESPACE in ability
         || CONSUMPTIONH_NAMESPACE in ability;
     const hasDnd = 'Appliance.System.DNDMode' in ability;
+    const hasAlarm = 'Appliance.Control.Alarm' in ability;
     const isHub = 'Appliance.Hub.SubdeviceList' in ability || all.digest.hub !== undefined;
 
     return {
@@ -102,7 +103,7 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
         macAddress: all.hardware.macAddress,
         online,
         endpoints: isHub
-            ? enrollHub(uuid, name, model, online, hasDnd, all, input.subDevices ?? [])
+            ? enrollHub(uuid, name, model, online, hasDnd, hasAlarm, all, input.subDevices ?? [])
             : enrollBoard(uuid, name, model, online, energy, hasDnd, ability, all, input.cloud)
     };
 }
@@ -310,16 +311,24 @@ function enrollHub(
     model: string,
     online: boolean,
     hasDnd: boolean,
+    hasAlarm: boolean,
     all: SystemAll,
     cloudSubs: CloudSubDevice[]
 ): GraphEndpoint[] {
+    const hubTraits: TraitName[] = [];
+    if (hasAlarm) {
+        hubTraits.push('alarm');
+    }
+    if (hasDnd) {
+        hubTraits.push('dnd');
+    }
     const endpoints: GraphEndpoint[] = [{
         id: uuid,
         uuid,
         name,
         model,
         classHint: 'hub',
-        traits: hasDnd ? ['dnd'] : [],
+        traits: hubTraits,
         online
     }];
 

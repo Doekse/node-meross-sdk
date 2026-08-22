@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 
+import type { AlarmTrait } from './traits/alarm';
 import type { ClimateTrait } from './traits/climate';
 import type { CoverTrait } from './traits/cover';
 import type { DiffuserTrait } from './traits/diffuser';
@@ -16,7 +17,7 @@ import type { SwitchTrait } from './traits/switch';
 
 export type TraitName =
     | 'switch' | 'energy' | 'light' | 'climate' | 'cover'
-    | 'sensor' | 'presence' | 'sprinkler' | 'spray' | 'fan' | 'diffuser' | 'media' | 'dnd';
+    | 'sensor' | 'presence' | 'sprinkler' | 'spray' | 'fan' | 'diffuser' | 'media' | 'alarm' | 'dnd';
 
 export interface EndpointChange {
     trait: TraitName;
@@ -38,6 +39,7 @@ export interface EndpointOptions {
     fan?: FanTrait;
     diffuser?: DiffuserTrait;
     media?: MediaTrait;
+    alarm?: AlarmTrait;
     dnd?: DndTrait;
     initialOnline?: boolean;
 }
@@ -66,6 +68,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     readonly fan?: FanTrait;
     readonly diffuser?: DiffuserTrait;
     readonly media?: MediaTrait;
+    readonly alarm?: AlarmTrait;
     readonly dnd?: DndTrait;
 
     private online: boolean;
@@ -86,6 +89,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         this.fan = options.fan;
         this.diffuser = options.diffuser;
         this.media = options.media;
+        this.alarm = options.alarm;
         this.dnd = options.dnd;
         this.online = options.initialOnline ?? true;
     }

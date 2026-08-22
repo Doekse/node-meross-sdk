@@ -437,3 +437,17 @@ export {
     encodeDndSet
 } from './codecs/dnd';
 export type { DndState } from './codecs/dnd';
+export {
+    CONTROL_ALARM_NAMESPACE,
+    decodeAlarmGetAck,
+    decodeAlarmPush,
+    encodeAlarmGet,
+    encodeAlarmLinkedSet,
+    encodeAlarmSet
+} from './codecs/alarm';
+export type {
+    AlarmChannelState,
+    AlarmGetOptions,
+    AlarmLinkedSetOptions,
+    AlarmSetOptions
+} from './codecs/alarm';
