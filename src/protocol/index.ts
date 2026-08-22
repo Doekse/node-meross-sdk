@@ -429,3 +429,11 @@ export {
     encodeMp3Set
 } from './codecs/mp3';
 export type { Mp3GetOptions, Mp3SetOptions, Mp3State } from './codecs/mp3';
+export {
+    DND_MODE_NAMESPACE,
+    decodeDndGetAck,
+    decodeDndPush,
+    encodeDndGet,
+    encodeDndSet
+} from './codecs/dnd';
+export type { DndState } from './codecs/dnd';

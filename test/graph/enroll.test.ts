@@ -138,6 +138,41 @@ describe('enrollPhysicalDevice', () => {
         assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'energy']);
     });
 
+    it('adds the dnd trait on channel 0 when System.DNDMode is advertised', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.Control.Electricity': {},
+                'Appliance.Control.ConsumptionX': {},
+                'Appliance.System.DNDMode': {}
+            }),
+            allPayload: payload('system-all-getack.json'),
+            cloud: {
+                uuid: UUID,
+                devName: 'Kitchen plug',
+                deviceType: 'mss110',
+                onlineStatus: 1,
+                channels: [{ channel: 0, devName: 'Kitchen plug' }]
+            }
+        });
+
+        assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'energy', 'dnd']);
+    });
+
+    it('creates a channel 0 dnd endpoint when master 0 is skipped on a strip', () => {
+        const strip = loadFixture('togglex-getack-all.json');
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.System.DNDMode': {}
+            }),
+            allPayload: systemAllWithDigest({ togglex: strip.payload.togglex })
+        });
+
+        const dndEndpoint = device.endpoints.find((endpoint) => endpoint.channel === 0);
+        assert.ok(dndEndpoint);
+        assert.deepEqual(dndEndpoint?.traits, ['dnd']);
+        assert.equal(dndEndpoint?.classHint, 'socket');
+    });
+
     it('turns a 4-gang ToggleX digest into four switch endpoints and skips master 0', () => {
         const strip = loadFixture('togglex-getack-all.json');
         const device = enrollPhysicalDevice({
@@ -452,6 +487,39 @@ describe('enrollPhysicalDevice', () => {
             `${HUB_UUID}#120027D21C19`
         ]);
         assert.equal(graph.getPhysical(HUB_UUID)?.endpoints.length, 3);
+    });
+
+    it('pairs the hub parent with dnd when System.DNDMode is advertised', () => {
+        const graph = new DeviceGraph();
+        const device = graph.enroll({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Hub.SubdeviceList': {},
+                    'Appliance.System.DNDMode': {}
+                }
+            },
+            allPayload: {
+                all: {
+                    system: {
+                        hardware: { type: 'msh300', uuid: HUB_UUID },
+                        firmware: {},
+                        online: { status: 1 }
+                    },
+                    digest: {
+                        hub: {
+                            subdevice: [
+                                { id: '01008C11', status: 1, onoff: 1, mts100v3: { mode: 0 } }
+                            ]
+                        }
+                    }
+                }
+            }
+        });
+
+        const hub = device.endpoints[0];
+        assert.equal(hub?.classHint, 'hub');
+        assert.deepEqual(hub?.traits, ['dnd']);
+        assert.ok(graph.inventoryRows().some((row) => row.id === HUB_UUID && row.traits.includes('dnd')));
     });
 
     it('enrolls MST100 sprinklers with sprinkler trait and omits unknown hub children without onoff', () => {

@@ -34,6 +34,7 @@ import { ClimateTrait } from './traits/climate';
 import type { ThermostatGeneration } from './traits/climate';
 import { CoverTrait } from './traits/cover';
 import { DiffuserTrait } from './traits/diffuser';
+import { DndTrait } from './traits/dnd';
 import { EnergyTrait } from './traits/energy';
 import { FanTrait } from './traits/fan';
 import { LightTrait } from './traits/light';
@@ -217,6 +218,7 @@ export class Session {
             endpoint.fan?.handlePush(message);
             endpoint.diffuser?.handlePush(message);
             endpoint.media?.handlePush(message);
+            endpoint.dnd?.handlePush(message);
         }
     }
 
@@ -309,6 +311,7 @@ export class Session {
         let fanTrait: FanTrait | undefined;
         let diffuserTrait: DiffuserTrait | undefined;
         let mediaTrait: MediaTrait | undefined;
+        let dndTrait: DndTrait | undefined;
         if (graphEndpoint.traits.includes('switch')) {
             if (graphEndpoint.subDeviceId) {
                 switchTrait = new SwitchTrait({
@@ -512,6 +515,13 @@ export class Session {
                 })
             });
         }
+        if (graphEndpoint.traits.includes('dnd')) {
+            dndTrait = new DndTrait({
+                uuid: physical.uuid,
+                request,
+                emitChange: (on) => endpoint.emit('change', { trait: 'dnd', values: { on } })
+            });
+        }
         endpoint = new Endpoint({
             id: graphEndpoint.id,
             traits: graphEndpoint.traits,
@@ -527,6 +537,7 @@ export class Session {
             fan: fanTrait,
             diffuser: diffuserTrait,
             media: mediaTrait,
+            dnd: dndTrait,
             initialOnline: graphEndpoint.online
         });
         energyTrait?.start();
@@ -540,6 +551,7 @@ export class Session {
         fanTrait?.start();
         diffuserTrait?.start();
         mediaTrait?.start();
+        dndTrait?.start();
         return endpoint;
     }
 

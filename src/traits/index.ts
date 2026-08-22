@@ -17,3 +17,4 @@ export { DiffuserTrait } from './diffuser';
 export type { DiffuserValues, DiffuserLightMode, DiffuserSprayMode } from './diffuser';
 export { MediaTrait } from './media';
 export type { MediaValues } from './media';
+export { DndTrait } from './dnd';

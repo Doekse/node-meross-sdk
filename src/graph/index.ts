@@ -89,6 +89,7 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
         || ELECTRICITYX_NAMESPACE in ability
         || CONSUMPTIONX_NAMESPACE in ability
         || CONSUMPTIONH_NAMESPACE in ability;
+    const hasDnd = 'Appliance.System.DNDMode' in ability;
     const isHub = 'Appliance.Hub.SubdeviceList' in ability || all.digest.hub !== undefined;
 
     return {
@@ -101,8 +102,8 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
         macAddress: all.hardware.macAddress,
         online,
         endpoints: isHub
-            ? enrollHub(uuid, name, model, online, all, input.subDevices ?? [])
-            : enrollBoard(uuid, name, model, online, energy, ability, all, input.cloud)
+            ? enrollHub(uuid, name, model, online, hasDnd, all, input.subDevices ?? [])
+            : enrollBoard(uuid, name, model, online, energy, hasDnd, ability, all, input.cloud)
     };
 }
 
@@ -177,6 +178,7 @@ function enrollBoard(
     model: string,
     online: boolean,
     energy: boolean,
+    hasDnd: boolean,
     ability: AbilityMap,
     all: SystemAll,
     cloud: CloudDevice | undefined
@@ -198,6 +200,9 @@ function enrollBoard(
         }
         if (hasMp3 && channel === 0 && !traits.includes('media')) {
             extra.push('media');
+        }
+        if (hasDnd && channel === 0 && !traits.includes('dnd')) {
+            extra.push('dnd');
         }
         endpoints.push({
             id: `${uuid}:${channel}`,
@@ -292,6 +297,10 @@ function enrollBoard(
         add(entry.channel, 'socket', ['switch'], entry.on);
     }
 
+    if (hasDnd && !taken.has(0)) {
+        add(0, 'socket', ['dnd']);
+    }
+
     return endpoints;
 }
 
@@ -300,6 +309,7 @@ function enrollHub(
     name: string,
     model: string,
     online: boolean,
+    hasDnd: boolean,
     all: SystemAll,
     cloudSubs: CloudSubDevice[]
 ): GraphEndpoint[] {
@@ -309,7 +319,7 @@ function enrollHub(
         name,
         model,
         classHint: 'hub',
-        traits: [],
+        traits: hasDnd ? ['dnd'] : [],
         online
     }];
 
