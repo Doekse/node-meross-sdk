@@ -9,10 +9,17 @@ import {
     encodeTimerXDelete,
     encodeTimerXGet,
     encodeTimerXSet,
+    type DigestTimerXRow,
     type MerossMessage,
     type TimerXEntry
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
+
+/**
+ * Digest.TimerX is board-wide. Share one in-flight GET across channels so a
+ * strip does not query the same index once per outlet.
+ */
+const digestInflight = new Map<string, Promise<DigestTimerXRow[]>>();
 
 export type TimerEntry = TimerXEntry;
 
@@ -22,11 +29,13 @@ export interface TimerValues {
 
 /**
  * Partial row for {@link TimerTrait.set}. Missing required wire fields get defaults;
- * `id` is generated when omitted.
+ * `id` is generated when omitted. `on` is required so a "turn off" timer cannot
+ * silently default to on.
  */
 export type TimerSetInput = Partial<TimerEntry> & {
     time: number;
     week: number;
+    on: boolean;
 };
 
 /**
@@ -88,7 +97,7 @@ export class TimerTrait {
         if (!existing) {
             throw new MerossError(`Unknown timer id: ${id}`, 'TIMER_NOT_FOUND');
         }
-        return this.set({ ...existing, enabled });
+        return this.set({ ...existing, enabled, on: existing.on !== false });
     }
 
     /**
@@ -158,12 +167,7 @@ export class TimerTrait {
             return;
         }
         try {
-            const digestReply = await this.bind.request({
-                namespace: DIGEST_TIMERX_NAMESPACE,
-                method: 'GET',
-                payload: encodeDigestTimerXGet()
-            });
-            const ids = decodeDigestTimerXGetAck(digestReply.payload)
+            const ids = (await loadDigest(this.bind.uuid, this.bind.request))
                 .filter((row) => row.channel === this.bind.channel)
                 .map((row) => row.id);
             const groups = await Promise.all(ids.map(async (id) => {
@@ -186,6 +190,27 @@ export class TimerTrait {
     }
 }
 
+function loadDigest(
+    uuid: string,
+    request: TimerTraitBind['request']
+): Promise<DigestTimerXRow[]> {
+    const existing = digestInflight.get(uuid);
+    if (existing) {
+        return existing;
+    }
+    const pending = request({
+        namespace: DIGEST_TIMERX_NAMESPACE,
+        method: 'GET',
+        payload: encodeDigestTimerXGet()
+    })
+        .then((reply) => decodeDigestTimerXGetAck(reply.payload))
+        .finally(() => {
+            digestInflight.delete(uuid);
+        });
+    digestInflight.set(uuid, pending);
+    return pending;
+}
+
 function normalizeSet(input: TimerSetInput, channel: number): TimerEntry {
     return {
         id: input.id ?? generateTimerId(),
@@ -198,7 +223,7 @@ function normalizeSet(input: TimerSetInput, channel: number): TimerEntry {
         duration: input.duration ?? 0,
         sunOffset: input.sunOffset ?? 0,
         createTime: input.createTime ?? Math.floor(Date.now() / 1000),
-        on: input.on !== false
+        on: input.on
     };
 }
 

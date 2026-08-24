@@ -257,7 +257,7 @@ describe('enrollPhysicalDevice', () => {
         );
     });
 
-    it('appends timer to every board channel when Control.TimerX is advertised', () => {
+    it('appends timer to each strip socket when Control.TimerX is advertised', () => {
         const strip = loadFixture('togglex-getack-all.json');
         const device = enrollPhysicalDevice({
             abilityPayload: socketAbility({
@@ -279,6 +279,93 @@ describe('enrollPhysicalDevice', () => {
                 }))
             ]
         );
+    });
+
+    it('does not append timer to cover channels when Control.TimerX is advertised', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.GarageDoor.State': {},
+                    'Appliance.Control.TimerX': {},
+                    'Appliance.Control.ToggleX': {}
+                }
+            },
+            allPayload: systemAllWithDigest({
+                garageDoor: [{ channel: 1 }, { channel: 2 }],
+                togglex: [
+                    { channel: 0, onoff: 0 },
+                    { channel: 1, onoff: 0 },
+                    { channel: 2, onoff: 0 }
+                ]
+            })
+        });
+
+        assert.equal(
+            device.endpoints.some((endpoint) => endpoint.traits.includes('timer')),
+            false
+        );
+        assert.deepEqual(
+            device.endpoints.map((endpoint) => endpoint.classHint),
+            ['cover', 'cover']
+        );
+    });
+
+    it('appends timer to a light board when Control.TimerX is advertised', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Light': {},
+                    'Appliance.Control.ToggleX': {},
+                    'Appliance.Control.TimerX': {}
+                }
+            },
+            allPayload: systemAllWithDigest({
+                light: [{ channel: 0 }],
+                togglex: [{ channel: 0, onoff: 1 }]
+            })
+        });
+
+        assert.deepEqual(device.endpoints[0]?.traits, ['light', 'timer']);
+    });
+
+    it('does not append timer when Control.Mp3 already takes the light endpoint', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Light': {},
+                    'Appliance.Control.Mp3': {},
+                    'Appliance.Control.ToggleX': {},
+                    'Appliance.Control.TimerX': {}
+                }
+            },
+            allPayload: systemAllWithDigest({
+                light: [{ channel: 0 }],
+                togglex: [{ channel: 0, onoff: 1 }]
+            })
+        });
+
+        assert.deepEqual(device.endpoints[0]?.traits, ['light', 'media']);
+    });
+
+    it('appends timer to leftover spray sockets, not the humidifier', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Spray': {},
+                    'Appliance.Control.ToggleX': {},
+                    'Appliance.Control.TimerX': {}
+                }
+            },
+            allPayload: systemAllWithDigest({
+                spray: [{ channel: 0, mode: 0 }],
+                togglex: [{ channel: 0, onoff: 1 }, { channel: 1, onoff: 0 }]
+            })
+        });
+
+        const humidifier = device.endpoints.find((endpoint) => endpoint.classHint === 'humidifier');
+        const socket = device.endpoints.find((endpoint) => endpoint.classHint === 'socket');
+        assert.deepEqual(humidifier?.traits, ['spray']);
+        assert.deepEqual(socket?.traits, ['switch', 'timer']);
     });
 
     it('does not append timer to hub parents or children when Control.TimerX is advertised', () => {

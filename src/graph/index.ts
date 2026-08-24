@@ -249,7 +249,14 @@ function enrollBoard(
         if (hasDnd && channel === 0 && !traits.includes('dnd')) {
             extra.push('dnd');
         }
-        if (hasTimerX && !traits.includes('timer')) {
+        // ToggleX-shaped TimerX extend only; cover/climate/humidifier/speaker use other extend objects.
+        if (
+            hasTimerX
+            && (classHint === 'socket' || classHint === 'light' || classHint === 'fan')
+            && !traits.includes('timer')
+            && !traits.includes('media')
+            && !extra.includes('media')
+        ) {
             extra.push('timer');
         }
         endpoints.push({

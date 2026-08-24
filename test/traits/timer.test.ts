@@ -152,6 +152,78 @@ describe('TimerTrait', () => {
         assert.equal(changes.length, 0);
     });
 
+    it('shares one Digest.TimerX GET across channels on the same uuid', async () => {
+        const requests: MerossMessage[] = [];
+        const namespaces = new Set([TIMERX_NAMESPACE, DIGEST_TIMERX_NAMESPACE]);
+        const request: TimerTraitBind['request'] = async (requestOptions) => {
+            const message = encodeMessage({
+                namespace: requestOptions.namespace,
+                method: requestOptions.method,
+                key: KEY,
+                from: '/app/test/subscribe',
+                payload: requestOptions.payload,
+                uuid: UUID
+            });
+            requests.push(message);
+            if (requestOptions.namespace === DIGEST_TIMERX_NAMESPACE) {
+                return encodeMessage({
+                    namespace: requestOptions.namespace,
+                    method: 'GETACK',
+                    key: KEY,
+                    from: `/appliance/${UUID}/publish`,
+                    messageId: message.header.messageId,
+                    uuid: UUID,
+                    payload: {
+                        digest: [
+                            { channel: 0, id: 'timer-ch0', count: 1 },
+                            { channel: 1, id: 'timer-ch1', count: 1 }
+                        ]
+                    }
+                });
+            }
+            const raw = requestOptions.payload.timerx;
+            const id = typeof raw === 'object' && raw !== null && typeof (raw as { id?: unknown }).id === 'string'
+                ? (raw as { id: string }).id
+                : WIRE_ENTRY.id;
+            const channel = id === 'timer-ch1' ? 1 : 0;
+            return encodeMessage({
+                namespace: requestOptions.namespace,
+                method: 'GETACK',
+                key: KEY,
+                from: `/appliance/${UUID}/publish`,
+                messageId: message.header.messageId,
+                uuid: UUID,
+                payload: {
+                    timerx: { ...WIRE_ENTRY, id, channel }
+                }
+            });
+        };
+        const trait0 = new TimerTrait({
+            uuid: UUID,
+            channel: 0,
+            namespaces,
+            request,
+            emitChange: () => {}
+        });
+        const trait1 = new TimerTrait({
+            uuid: UUID,
+            channel: 1,
+            namespaces,
+            request,
+            emitChange: () => {}
+        });
+        trait0.start();
+        trait1.start();
+        await flush();
+        await flush();
+        assert.equal(
+            requests.filter((message) => message.header.namespace === DIGEST_TIMERX_NAMESPACE).length,
+            1
+        );
+        assert.equal(trait0.list()[0]?.id, 'timer-ch0');
+        assert.equal(trait1.list()[0]?.id, 'timer-ch1');
+    });
+
     it('set SETs a toggle-shaped timerx object and updates the list', async () => {
         const { trait, requests, changes } = createHarness({ getAck: { timerx: [] } });
         const entry = await trait.set({
