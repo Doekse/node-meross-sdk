@@ -354,6 +354,7 @@ export class Session {
                 hasElectricityX: !hasElectricity && ELECTRICITYX_NAMESPACE in physical.ability,
                 hasConsumptionX: CONSUMPTIONX_NAMESPACE in physical.ability,
                 hasConsumptionH: CONSUMPTIONH_NAMESPACE in physical.ability,
+                namespaces,
                 request,
                 emitChange: (values) => endpoint.emit('change', {
                     trait: 'energy',

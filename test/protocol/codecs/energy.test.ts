@@ -52,6 +52,21 @@ describe('Electricity codec', () => {
         });
     });
 
+    it('accepts nested config without maxElectricityCurrent', () => {
+        assert.deepEqual(
+            decodeElectricityGetAck({
+                electricity: {
+                    channel: 0,
+                    power: 1,
+                    current: 0,
+                    voltage: 1,
+                    config: { voltageRatio: 186, electricityRatio: 121 }
+                }
+            }).config,
+            { voltageRatio: 186, electricityRatio: 121 }
+        );
+    });
+
     it('scales classic field readings (mW, mA, deci-volts)', () => {
         assert.deepEqual(
             decodeElectricityGetAck({

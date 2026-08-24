@@ -7,8 +7,11 @@ import { Endpoint } from '../../src/endpoint';
 import {
     CONSUMPTIONH_NAMESPACE,
     CONSUMPTIONX_NAMESPACE,
+    CONSUMPTION_CONFIG_NAMESPACE,
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_NAMESPACE,
+    encodeConsumptionConfigGet,
+    encodeConsumptionConfigSet,
     encodeConsumptionHGet,
     decodeMessage,
     encodeConsumptionXGet,
@@ -108,6 +111,7 @@ function createEnergyHarness(options: {
     hasElectricityX?: boolean;
     hasConsumptionX?: boolean;
     hasConsumptionH?: boolean;
+    namespaces?: ReadonlySet<string>;
     electricityIntervalMs?: number;
     consumptionIntervalMs?: number;
 } = {}): {
@@ -127,6 +131,7 @@ function createEnergyHarness(options: {
         hasElectricityX: options.hasElectricityX ?? false,
         hasConsumptionX: options.hasConsumptionX ?? true,
         hasConsumptionH: options.hasConsumptionH ?? false,
+        namespaces: options.namespaces ?? new Set(),
         electricityIntervalMs: options.electricityIntervalMs ?? DEFAULT_ELECTRICITY_INTERVAL_MS,
         consumptionIntervalMs: options.consumptionIntervalMs ?? DEFAULT_CONSUMPTION_INTERVAL_MS,
         request: async (opts) => {
@@ -146,6 +151,22 @@ function createEnergyHarness(options: {
             }
             if (opts.namespace === CONSUMPTIONH_NAMESPACE) {
                 return consumptionHAck();
+            }
+            if (opts.namespace === CONSUMPTION_CONFIG_NAMESPACE) {
+                return encodeMessage({
+                    namespace: CONSUMPTION_CONFIG_NAMESPACE,
+                    method: opts.method === 'SET' ? 'SETACK' : 'GETACK',
+                    key: KEY,
+                    from: `/appliance/${UUID}/publish`,
+                    uuid: UUID,
+                    payload: {
+                        config: {
+                            voltageRatio: 186,
+                            electricityRatio: 121,
+                            maxElectricityCurrent: 16_000
+                        }
+                    }
+                });
             }
             throw new Error(`unexpected namespace ${opts.namespace}`);
         },
@@ -445,5 +466,123 @@ describe('EnergyTrait PUSH', () => {
                 ]
             }
         }]);
+    });
+});
+
+describe('EnergyTrait calibration', () => {
+    const configNamespaces = new Set([CONSUMPTION_CONFIG_NAMESPACE]);
+
+    it('GETs ConsumptionConfig on demand when advertised', async () => {
+        const { trait, requests } = createEnergyHarness({
+            hasConsumptionX: false,
+            namespaces: configNamespaces
+        });
+
+        const calibration = await trait.getCalibration();
+
+        assert.deepEqual(requests, [{
+            namespace: CONSUMPTION_CONFIG_NAMESPACE,
+            method: 'GET',
+            payload: encodeConsumptionConfigGet()
+        }]);
+        assert.deepEqual(calibration, {
+            voltageRatio: 186,
+            electricityRatio: 121,
+            maxElectricityCurrent: 16_000
+        });
+    });
+
+    it('returns undefined from getCalibration when ConsumptionConfig is absent', async () => {
+        const { trait, requests } = createEnergyHarness({
+            hasConsumptionX: false
+        });
+
+        const calibration = await trait.getCalibration();
+
+        assert.equal(calibration, undefined);
+        assert.equal(requests.length, 0);
+    });
+
+    it('SETs ConsumptionConfig on demand when advertised', async () => {
+        const { trait, requests } = createEnergyHarness({
+            hasConsumptionX: false,
+            namespaces: configNamespaces
+        });
+        const patch = {
+            voltageRatio: 190,
+            electricityRatio: 110,
+            maxElectricityCurrent: 15_000
+        };
+
+        const result = await trait.setCalibration(patch);
+
+        assert.deepEqual(result, patch);
+        assert.deepEqual(requests[0], {
+            namespace: CONSUMPTION_CONFIG_NAMESPACE,
+            method: 'SET',
+            payload: encodeConsumptionConfigSet(patch)
+        });
+    });
+
+    it('no-ops setCalibration when ConsumptionConfig is absent', async () => {
+        const { trait, requests } = createEnergyHarness({
+            hasConsumptionX: false
+        });
+        const patch = {
+            voltageRatio: 190,
+            electricityRatio: 110,
+            maxElectricityCurrent: 15_000
+        };
+
+        const result = await trait.setCalibration(patch);
+
+        assert.deepEqual(result, patch);
+        assert.equal(requests.length, 0);
+    });
+
+    it('does not poll ConsumptionConfig on start', async (t) => {
+        t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+        const { trait, requests } = createEnergyHarness({
+            namespaces: configNamespaces,
+            electricityIntervalMs: 1_000,
+            consumptionIntervalMs: 1_000
+        });
+        t.after(() => trait.stop());
+
+        trait.start();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.equal(
+            requests.filter((r) => r.namespace === CONSUMPTION_CONFIG_NAMESPACE).length,
+            0
+        );
+    });
+
+    it('does not emit energy values for ConsumptionConfig PUSH', () => {
+        const { endpoint, trait } = createEnergyHarness({
+            hasConsumptionX: false,
+            namespaces: configNamespaces
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const push = encodeMessage({
+            namespace: CONSUMPTION_CONFIG_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                config: {
+                    voltageRatio: 188,
+                    electricityRatio: 102,
+                    maxElectricityCurrent: 11_000
+                }
+            }
+        });
+        trait.handlePush(push);
+
+        assert.deepEqual(changes, []);
     });
 });

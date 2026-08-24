@@ -15,6 +15,7 @@ export {
     AlarmTrait, DndTrait, TimerTrait, TriggerTrait
 } from './traits';
 export type {
+    ElectricityConfig,
     SensorFamily, SensorValues, SensorSmokeStatus, SensorAlertBand,
     PresenceValues, SprinklerValues, SprinklerScheduleEntry, SprayValues, SprayMode, FanValues,
     FanButtonConfig, FanButtonConfigSetOptions,

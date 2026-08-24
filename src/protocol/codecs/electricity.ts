@@ -3,10 +3,27 @@ import type { MerossPayload } from '../message';
 
 export const ELECTRICITY_NAMESPACE = 'Appliance.Control.Electricity';
 
+/** Voltage/current coefficients. `maxElectricityCurrent` is milliamps when present. */
 export interface ElectricityConfig {
     voltageRatio: number;
     electricityRatio: number;
-    maxElectricityCurrent: number;
+    maxElectricityCurrent?: number;
+}
+
+/** Parses a `{ voltageRatio, electricityRatio, maxElectricityCurrent? }` object. */
+export function parseElectricityConfig(raw: unknown): ElectricityConfig | undefined {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        return undefined;
+    }
+    const { voltageRatio, electricityRatio, maxElectricityCurrent } = raw as Record<string, unknown>;
+    if (typeof voltageRatio !== 'number' || typeof electricityRatio !== 'number') {
+        return undefined;
+    }
+    const config: ElectricityConfig = { voltageRatio, electricityRatio };
+    if (typeof maxElectricityCurrent === 'number') {
+        config.maxElectricityCurrent = maxElectricityCurrent;
+    }
+    return config;
 }
 
 /** Instantaneous metrics in host units (W, A, V, Wh). */
@@ -53,19 +70,9 @@ export function decodeElectricityGetAck(payload: MerossPayload): ElectricitySamp
     if (typeof consume === 'number') {
         sample.consume = consume;
     }
-    if (config && typeof config === 'object') {
-        const c = config as Record<string, unknown>;
-        if (
-            typeof c.voltageRatio === 'number'
-            && typeof c.electricityRatio === 'number'
-            && typeof c.maxElectricityCurrent === 'number'
-        ) {
-            sample.config = {
-                voltageRatio: c.voltageRatio,
-                electricityRatio: c.electricityRatio,
-                maxElectricityCurrent: c.maxElectricityCurrent
-            };
-        }
+    const parsedConfig = parseElectricityConfig(config);
+    if (parsedConfig) {
+        sample.config = parsedConfig;
     }
     return sample;
 }

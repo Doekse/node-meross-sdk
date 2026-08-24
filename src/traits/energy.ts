@@ -1,18 +1,23 @@
 import {
     CONSUMPTIONH_NAMESPACE,
     CONSUMPTIONX_NAMESPACE,
+    CONSUMPTION_CONFIG_NAMESPACE,
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_NAMESPACE,
+    decodeConsumptionConfigGetAck,
     decodeConsumptionHGetAck,
     decodeConsumptionXGetAck,
     decodeElectricityGetAck,
     decodeElectricityXGetAck,
+    encodeConsumptionConfigGet,
+    encodeConsumptionConfigSet,
     encodeConsumptionHGet,
     encodeConsumptionXGet,
     encodeElectricityGet,
     encodeElectricityXGet,
     type ConsumptionHHour,
     type ConsumptionXDay,
+    type ElectricityConfig,
     type ElectricitySample,
     type MerossMessage
 } from '../protocol';
@@ -42,11 +47,15 @@ export interface EnergyTraitBind {
     hasElectricityX: boolean;
     hasConsumptionX: boolean;
     hasConsumptionH: boolean;
+    /** Ability keys; extras no-op when the namespace is absent. */
+    namespaces?: ReadonlySet<string>;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
     emitChange: (values: EnergyValues) => void;
     electricityIntervalMs?: number;
     consumptionIntervalMs?: number;
 }
+
+export type { ElectricityConfig };
 
 /**
  * Power plus consumption samples for one enrolled endpoint. Electricity and
@@ -54,6 +63,7 @@ export interface EnergyTraitBind {
  */
 export class EnergyTrait {
     private readonly bind: EnergyTraitBind;
+    private readonly namespaces: ReadonlySet<string>;
     private readonly electricityIntervalMs: number;
     private readonly consumptionIntervalMs: number;
     private electricityTimer: ReturnType<typeof setInterval> | undefined;
@@ -63,8 +73,13 @@ export class EnergyTrait {
 
     constructor(bind: EnergyTraitBind) {
         this.bind = bind;
+        this.namespaces = bind.namespaces ?? new Set();
         this.electricityIntervalMs = bind.electricityIntervalMs ?? DEFAULT_ELECTRICITY_INTERVAL_MS;
         this.consumptionIntervalMs = bind.consumptionIntervalMs ?? DEFAULT_CONSUMPTION_INTERVAL_MS;
+    }
+
+    private has(namespace: string): boolean {
+        return this.namespaces.has(namespace);
     }
 
     /** Starts trait-owned poll loops. Idempotent. */
@@ -127,6 +142,38 @@ export class EnergyTrait {
         }
         await this.pollHourlyConsumption();
         return this.last.hourly;
+    }
+
+    /**
+     * Fetches plug calibration coefficients. On-demand only; returns
+     * `undefined` when ConsumptionConfig is not advertised.
+     */
+    async getCalibration(): Promise<ElectricityConfig | undefined> {
+        if (!this.has(CONSUMPTION_CONFIG_NAMESPACE)) {
+            return undefined;
+        }
+        const reply = await this.bind.request({
+            namespace: CONSUMPTION_CONFIG_NAMESPACE,
+            method: 'GET',
+            payload: encodeConsumptionConfigGet()
+        });
+        return decodeConsumptionConfigGetAck(reply.payload);
+    }
+
+    /**
+     * Writes plug calibration coefficients. No-op when ConsumptionConfig
+     * is not advertised. `maxElectricityCurrent` stays milliamps.
+     */
+    async setCalibration(config: ElectricityConfig): Promise<ElectricityConfig> {
+        if (!this.has(CONSUMPTION_CONFIG_NAMESPACE)) {
+            return config;
+        }
+        await this.bind.request({
+            namespace: CONSUMPTION_CONFIG_NAMESPACE,
+            method: 'SET',
+            payload: encodeConsumptionConfigSet(config)
+        });
+        return config;
     }
 
     handlePush(message: MerossMessage): void {

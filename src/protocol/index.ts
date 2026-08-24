@@ -79,6 +79,13 @@ export {
 } from './codecs/consumptionx';
 export type { ConsumptionXDay } from './codecs/consumptionx';
 export {
+    CONSUMPTION_CONFIG_NAMESPACE,
+    decodeConsumptionConfigGetAck,
+    decodeConsumptionConfigPush,
+    encodeConsumptionConfigGet,
+    encodeConsumptionConfigSet
+} from './codecs/consumptionconfig';
+export {
     GARAGE_STATE_NAMESPACE,
     GARAGE_CONFIG_NAMESPACE,
     GARAGE_MULTIPLE_CONFIG_NAMESPACE,
