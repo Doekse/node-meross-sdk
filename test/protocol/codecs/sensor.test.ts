@@ -5,9 +5,12 @@ import { ProtocolError } from '../../../src/errors';
 import {
     decodeSensorHistoryGetAck,
     decodeSensorHistoryPush,
+    decodeSensorHistoryXGetAck,
+    decodeSensorHistoryXPush,
     decodeSensorLatestGetAck,
     decodeSensorLatestPush,
     encodeSensorHistoryGet,
+    encodeSensorHistoryXGet,
     encodeSensorLatestGet,
     decodeSmokeConfigGetAck,
     decodeSmokeConfigPush,
@@ -111,6 +114,72 @@ describe('Control.Sensor.History codec', () => {
 
     it('rejects a non-array history payload', () => {
         assert.throws(() => decodeSensorHistoryGetAck({ history: {} }, 10), ProtocolError);
+    });
+});
+
+describe('Control.Sensor.HistoryX codec', () => {
+    it('encodes GET with channel and requested sensor keys', () => {
+        assert.deepEqual(encodeSensorHistoryXGet({ channel: 0, keys: [] }), {
+            history: [{ channel: 0, data: [] }]
+        });
+        assert.deepEqual(encodeSensorHistoryXGet({ channel: 0, keys: ['temp', 'humi'] }), {
+            history: [{ channel: 0, data: ['temp', 'humi'] }]
+        });
+        assert.deepEqual(encodeSensorHistoryXGet({ channel: 0, subId: '00000101', keys: ['temp'] }), {
+            history: [{ channel: 0, subId: '00000101', data: ['temp'] }]
+        });
+    });
+
+    it('decodes LatestX-shaped history series', () => {
+        const [entry] = decodeSensorHistoryXGetAck({
+            history: [{
+                channel: 0,
+                data: {
+                    temp: [
+                        { timestamp: 1718222159, value: 2397 },
+                        { timestamp: 1718225759, value: 2405 }
+                    ],
+                    humi: [
+                        { timestamp: 1718222159, value: 607 },
+                        { timestamp: 1718225759, value: 616 }
+                    ],
+                    light: [{ timestamp: 1725907912, value: 24 }],
+                    presence: [{
+                        timestamp: 1725907895,
+                        times: 0,
+                        distance: 760,
+                        value: 2
+                    }]
+                }
+            }]
+        }, 100);
+        assert.equal(entry.channel, 0);
+        assert.equal(entry.temperature?.length, 2);
+        assert.equal(entry.temperature?.[0]?.timestamp, 1718222159);
+        assert.equal(entry.temperature?.[0]?.temperature, 23.97);
+        assert.equal(entry.humidity?.[1]?.humidity, 61.6);
+        assert.equal(entry.light?.[0]?.light, 24);
+        assert.equal(entry.presence?.[0]?.present, true);
+        assert.equal(entry.presence?.[0]?.distance, 0.76);
+    });
+
+    it('uses PUSH decoder interchangeably with GETACK', () => {
+        const payload = {
+            history: [{
+                channel: 0,
+                data: {
+                    temp: [{ timestamp: 1, value: 166 }]
+                }
+            }]
+        };
+        assert.deepEqual(
+            decodeSensorHistoryXPush(payload, 10),
+            decodeSensorHistoryXGetAck(payload, 10)
+        );
+    });
+
+    it('rejects a non-array history payload', () => {
+        assert.throws(() => decodeSensorHistoryXGetAck({ history: {} }, 10), ProtocolError);
     });
 });
 

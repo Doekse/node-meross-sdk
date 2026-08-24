@@ -118,11 +118,15 @@ import {
     type MerossPayload,
     SENSOR_LATEST_NAMESPACE,
     SENSOR_HISTORY_NAMESPACE,
+    SENSOR_HISTORYX_NAMESPACE,
     decodeSensorLatestGetAck,
     decodeSensorLatestPush,
     encodeSensorHistoryGet,
     decodeSensorHistoryGetAck,
+    encodeSensorHistoryXGet,
+    decodeSensorHistoryXGetAck,
     type SensorHistorySample,
+    type SensorHistoryXState,
     type SensorLatestState
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
@@ -889,6 +893,27 @@ export class ClimateTrait {
         const match = decodeSensorHistoryGetAck(reply.payload, this.boardScale())
             .find((entry) => entry.channel === channel);
         return match?.samples;
+    }
+
+    /**
+     * Fetches extended sensor history. On-demand only; returns
+     * `undefined` when Sensor.HistoryX is not advertised or the bind is a hub valve.
+     */
+    async getHistoryX(options?: { keys?: string[] }): Promise<SensorHistoryXState | undefined> {
+        if (!this.has(SENSOR_HISTORYX_NAMESPACE) || this.bind.kind !== 'board') {
+            return undefined;
+        }
+        const channel = this.bind.channel;
+        const reply = await this.bind.request({
+            namespace: SENSOR_HISTORYX_NAMESPACE,
+            method: 'GET',
+            payload: encodeSensorHistoryXGet({
+                channel,
+                keys: options?.keys ?? ['temp', 'humi']
+            })
+        });
+        return decodeSensorHistoryXGetAck(reply.payload, this.boardScale())
+            .find((entry) => entry.channel === channel);
     }
 
     /**

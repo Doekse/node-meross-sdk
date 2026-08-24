@@ -18,6 +18,7 @@ import {
     SCREEN_BRIGHTNESS_NAMESPACE,
     SENSOR_LATEST_NAMESPACE,
     SENSOR_HISTORY_NAMESPACE,
+    SENSOR_HISTORYX_NAMESPACE,
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
@@ -629,6 +630,22 @@ describe('ClimateTrait board sensor readings', () => {
         }]
     };
 
+    const HISTORYX_ACK = {
+        history: [{
+            channel: CHANNEL,
+            data: {
+                temp: [
+                    { timestamp: 1718222159, value: 166 },
+                    { timestamp: 1718225759, value: 172 }
+                ],
+                humi: [
+                    { timestamp: 1718222159, value: 607 },
+                    { timestamp: 1718225759, value: 616 }
+                ]
+            }
+        }]
+    };
+
     function createSensorHarness(namespaces: readonly string[]): {
         endpoint: Endpoint;
         trait: ClimateTrait;
@@ -661,6 +678,8 @@ describe('ClimateTrait board sensor readings', () => {
                     replyPayload = LATEST_ACK;
                 } else if (options.namespace === SENSOR_HISTORY_NAMESPACE) {
                     replyPayload = HISTORY_ACK;
+                } else if (options.namespace === SENSOR_HISTORYX_NAMESPACE) {
+                    replyPayload = HISTORYX_ACK;
                 }
                 return encodeMessage({
                     namespace: options.namespace,
@@ -731,5 +750,51 @@ describe('ClimateTrait board sensor readings', () => {
         assert.equal(samples?.length, 2);
         assert.equal(samples?.[0]?.temperature, 16.6);
         assert.equal(samples?.[0]?.humidity, 60.7);
+    });
+
+    it('getHistoryX returns undefined when Sensor.HistoryX is not advertised', async () => {
+        const { trait, requests } = createBoardHarness('mode');
+
+        const history = await trait.getHistoryX();
+
+        assert.equal(history, undefined);
+        assert.equal(requests.length, 0);
+    });
+
+    it('getHistoryX returns undefined for hub valves', async () => {
+        const { trait, requests } = createHubHarness([SENSOR_HISTORYX_NAMESPACE]);
+
+        const history = await trait.getHistoryX();
+
+        assert.equal(history, undefined);
+        assert.equal(requests.length, 0);
+    });
+
+    it('getHistoryX returns decoded series when advertised', async () => {
+        const { trait, requests } = createSensorHarness([SENSOR_HISTORYX_NAMESPACE]);
+
+        const history = await trait.getHistoryX();
+
+        assert.equal(requests[0]?.header.namespace, SENSOR_HISTORYX_NAMESPACE);
+        assert.deepEqual(
+            (requests[0]?.payload as { history: Array<{ channel: number; data: string[] }> }).history[0],
+            { channel: CHANNEL, data: ['temp', 'humi'] }
+        );
+        assert.equal(history?.temperature?.length, 2);
+        assert.equal(history?.temperature?.[0]?.temperature, 16.6);
+        assert.equal(history?.humidity?.[0]?.humidity, 60.7);
+    });
+
+    it('does not GET Sensor.HistoryX on start when advertised', async () => {
+        const { trait, requests } = createSensorHarness([SENSOR_HISTORYX_NAMESPACE]);
+
+        trait.start();
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+
+        assert.equal(
+            requests.some((r) => r.header.namespace === SENSOR_HISTORYX_NAMESPACE),
+            false
+        );
     });
 });

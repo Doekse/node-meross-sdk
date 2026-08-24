@@ -12,6 +12,7 @@ export const HUB_BATTERY_NAMESPACE = 'Appliance.Hub.Battery';
 export const SENSOR_LATESTX_NAMESPACE = 'Appliance.Control.Sensor.LatestX';
 export const SENSOR_LATEST_NAMESPACE = 'Appliance.Control.Sensor.Latest';
 export const SENSOR_HISTORY_NAMESPACE = 'Appliance.Control.Sensor.History';
+export const SENSOR_HISTORYX_NAMESPACE = 'Appliance.Control.Sensor.HistoryX';
 export const SMOKE_CONFIG_NAMESPACE = 'Appliance.Control.Smoke.Config';
 
 export interface SensorTempHumState {
@@ -135,6 +136,44 @@ export interface SensorHistoryState {
 export interface SensorHistoryGetOptions {
     channel: number;
     capacity?: number;
+}
+
+export interface SensorHistoryXGetOptions {
+    channel: number;
+    subId?: string;
+    keys: string[];
+}
+
+export interface SensorHistoryXTempSample {
+    timestamp?: number;
+    temperature?: number;
+}
+
+export interface SensorHistoryXHumiditySample {
+    timestamp?: number;
+    humidity?: number;
+}
+
+export interface SensorHistoryXLightSample {
+    timestamp?: number;
+    light?: number;
+}
+
+export interface SensorHistoryXPresenceSample {
+    timestamp?: number;
+    present?: boolean;
+    /** Distance in meters. */
+    distance?: number;
+    times?: number;
+}
+
+export interface SensorHistoryXState {
+    channel: number;
+    subId?: string;
+    temperature?: SensorHistoryXTempSample[];
+    humidity?: SensorHistoryXHumiditySample[];
+    light?: SensorHistoryXLightSample[];
+    presence?: SensorHistoryXPresenceSample[];
 }
 
 export interface SmokeConfigGetOptions {
@@ -492,18 +531,32 @@ function decodeLatestX(payload: MerossPayload): LatestXState[] {
         }
         const presence = latestObject(block.presence);
         if (presence) {
-            if (typeof presence.value === 'number') {
-                result.present = presence.value === 2;
+            const decoded = decodeLatestXPresence(presence);
+            if (decoded.present !== undefined) {
+                result.present = decoded.present;
             }
-            if (typeof presence.distance === 'number') {
-                result.distance = presence.distance / 1000;
+            if (decoded.distance !== undefined) {
+                result.distance = decoded.distance;
             }
-            if (typeof presence.times === 'number') {
-                result.times = presence.times;
+            if (decoded.times !== undefined) {
+                result.times = decoded.times;
             }
         }
         return result;
     });
+}
+
+function latestEntries(raw: unknown): Record<string, unknown>[] {
+    if (!Array.isArray(raw)) {
+        return [];
+    }
+    const entries: Record<string, unknown>[] = [];
+    for (const item of raw) {
+        if (typeof item === 'object' && item !== null) {
+            entries.push(item as Record<string, unknown>);
+        }
+    }
+    return entries;
 }
 
 function latestValue(raw: unknown): number | undefined {
@@ -512,10 +565,21 @@ function latestValue(raw: unknown): number | undefined {
 }
 
 function latestObject(raw: unknown): Record<string, unknown> | undefined {
-    if (!Array.isArray(raw) || raw.length === 0 || typeof raw[0] !== 'object' || raw[0] === null) {
-        return undefined;
+    return latestEntries(raw)[0];
+}
+
+function decodeLatestXPresence(obj: Record<string, unknown>): Pick<LatestXState, 'present' | 'distance' | 'times'> {
+    const result: Pick<LatestXState, 'present' | 'distance' | 'times'> = {};
+    if (typeof obj.value === 'number') {
+        result.present = obj.value === 2;
     }
-    return raw[0] as Record<string, unknown>;
+    if (typeof obj.distance === 'number') {
+        result.distance = obj.distance / 1000;
+    }
+    if (typeof obj.times === 'number') {
+        result.times = obj.times;
+    }
+    return result;
 }
 
 function decodeSensorSampleFields(
@@ -618,6 +682,92 @@ function decodeSensorHistory(payload: MerossPayload, tempScale: number): SensorH
         }
         return result;
     });
+}
+
+export function encodeSensorHistoryXGet(options: SensorHistoryXGetOptions): MerossPayload {
+    const entry: Record<string, unknown> = { channel: options.channel, data: options.keys };
+    if (options.subId) {
+        entry.subId = options.subId;
+    }
+    return encodeArray('history', entry);
+}
+
+export function decodeSensorHistoryXGetAck(payload: MerossPayload, tempScale: number): SensorHistoryXState[] {
+    return decodeSensorHistoryX(payload, tempScale);
+}
+
+export function decodeSensorHistoryXPush(payload: MerossPayload, tempScale: number): SensorHistoryXState[] {
+    return decodeSensorHistoryX(payload, tempScale);
+}
+
+function decodeSensorHistoryX(payload: MerossPayload, tempScale: number): SensorHistoryXState[] {
+    return decodeArray(payload, 'history', 'Control.Sensor.HistoryX').map((item) => {
+        const channel = typeof item.channel === 'number' ? item.channel : 0;
+        const result: SensorHistoryXState = { channel };
+        if (typeof item.subId === 'string') {
+            result.subId = item.subId;
+        }
+        const data = item.data;
+        if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+            return result;
+        }
+        const block = data as Record<string, unknown>;
+        const temperature = mapLatestXEntries(block.temp, (obj) => {
+            const sample: SensorHistoryXTempSample = {};
+            if (typeof obj.timestamp === 'number') {
+                sample.timestamp = obj.timestamp;
+            }
+            if (typeof obj.value === 'number') {
+                sample.temperature = obj.value / tempScale;
+            }
+            return sample;
+        });
+        const humidity = mapLatestXEntries(block.humi, (obj) => {
+            const sample: SensorHistoryXHumiditySample = {};
+            if (typeof obj.timestamp === 'number') {
+                sample.timestamp = obj.timestamp;
+            }
+            if (typeof obj.value === 'number') {
+                sample.humidity = obj.value / 10;
+            }
+            return sample;
+        });
+        const light = mapLatestXEntries(block.light, (obj) => {
+            const sample: SensorHistoryXLightSample = {};
+            if (typeof obj.timestamp === 'number') {
+                sample.timestamp = obj.timestamp;
+            }
+            if (typeof obj.value === 'number') {
+                sample.light = obj.value;
+            }
+            return sample;
+        });
+        const presence = mapLatestXEntries(block.presence, (obj) => {
+            const sample: SensorHistoryXPresenceSample = decodeLatestXPresence(obj);
+            if (typeof obj.timestamp === 'number') {
+                sample.timestamp = obj.timestamp;
+            }
+            return sample;
+        });
+        if (temperature) {
+            result.temperature = temperature;
+        }
+        if (humidity) {
+            result.humidity = humidity;
+        }
+        if (light) {
+            result.light = light;
+        }
+        if (presence) {
+            result.presence = presence;
+        }
+        return result;
+    });
+}
+
+function mapLatestXEntries<T>(raw: unknown, map: (obj: Record<string, unknown>) => T): T[] | undefined {
+    const mapped = latestEntries(raw).map(map);
+    return mapped.length > 0 ? mapped : undefined;
 }
 
 export function encodeSmokeConfigGet(options: SmokeConfigGetOptions): MerossPayload {
