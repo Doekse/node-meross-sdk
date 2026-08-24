@@ -53,7 +53,7 @@ const { Session } = require('node-meross-sdk');
 ```
 
 - **`Session.login` / `Session.restore`** — cloud credentials or a stored token (`storeData`-friendly).
-- **`session.endpoint(id)`** — one Homey device. A 4-gang strip is four switch endpoints; channel is not a method argument. Hub children use the same `Endpoint` type (`parentId` is metadata).
+- **`session.endpoint(id)`** — one Homey device. A 4-gang strip is a master endpoint (switch + energy) plus four switch children with `parentId`; channel is not a method argument. Hub children use the same `Endpoint` type (`parentId` is metadata).
 - **Traits** (`switch`, `light`, `climate`, `energy`, …) are platform-agnostic. Homey capability tables belong in a later `meross-homey` helper, not here.
 - LAN HTTP is preferred automatically, with MQTT failover. There is no public `transportMode`.
 

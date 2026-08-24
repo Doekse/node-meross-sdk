@@ -50,8 +50,8 @@ interface EndpointEvents {
 }
 
 /**
- * One Homey-facing device. A multi-gang strip is several endpoints; hub
- * children use this same type with `parentId` kept as inventory metadata.
+ * One Homey-facing device. A strip is a master plus child sockets; hub
+ * children use this same type. `parentId` stays inventory metadata.
  */
 export class Endpoint extends EventEmitter<EndpointEvents> {
     readonly id: string;

@@ -158,7 +158,7 @@ describe('enrollPhysicalDevice', () => {
         assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'energy', 'dnd']);
     });
 
-    it('creates a channel 0 dnd endpoint when master 0 is skipped on a strip', () => {
+    it('keeps dnd on the strip master when System.DNDMode is advertised', () => {
         const strip = loadFixture('togglex-getack-all.json');
         const device = enrollPhysicalDevice({
             abilityPayload: socketAbility({
@@ -167,16 +167,24 @@ describe('enrollPhysicalDevice', () => {
             allPayload: systemAllWithDigest({ togglex: strip.payload.togglex })
         });
 
-        const dndEndpoint = device.endpoints.find((endpoint) => endpoint.channel === 0);
-        assert.ok(dndEndpoint);
-        assert.deepEqual(dndEndpoint?.traits, ['dnd']);
-        assert.equal(dndEndpoint?.classHint, 'socket');
+        const master = device.endpoints.find((endpoint) => endpoint.channel === 0);
+        assert.ok(master);
+        assert.deepEqual(master?.traits, ['switch', 'dnd']);
+        assert.equal(master?.classHint, 'socket');
+        assert.equal(master?.parentId, undefined);
+        assert.equal(
+            device.endpoints.some((endpoint) => endpoint.channel !== 0 && endpoint.traits.includes('dnd')),
+            false
+        );
     });
 
-    it('turns a 4-gang ToggleX digest into four switch endpoints and skips master 0', () => {
+    it('keeps the strip master as switch + energy and links extra outlets via parentId', () => {
         const strip = loadFixture('togglex-getack-all.json');
         const device = enrollPhysicalDevice({
-            abilityPayload: socketAbility(),
+            abilityPayload: socketAbility({
+                'Appliance.Control.Electricity': {},
+                'Appliance.Control.ConsumptionX': {}
+            }),
             allPayload: systemAllWithDigest({ togglex: strip.payload.togglex }),
             cloud: {
                 uuid: UUID,
@@ -197,17 +205,55 @@ describe('enrollPhysicalDevice', () => {
             device.endpoints.map((endpoint) => ({
                 id: endpoint.id,
                 channel: endpoint.channel,
+                parentId: endpoint.parentId,
                 name: endpoint.name,
                 classHint: endpoint.classHint,
                 traits: [...endpoint.traits]
             })),
-            [1, 2, 3, 4].map((channel) => ({
-                id: `${UUID}:${channel}`,
-                channel,
-                name: `Outlet ${channel}`,
-                classHint: 'socket',
-                traits: ['switch']
-            }))
+            [
+                {
+                    id: `${UUID}:0`,
+                    channel: 0,
+                    parentId: undefined,
+                    name: 'Strip',
+                    classHint: 'socket',
+                    traits: ['switch', 'energy']
+                },
+                ...[1, 2, 3, 4].map((channel) => ({
+                    id: `${UUID}:${channel}`,
+                    channel,
+                    parentId: `${UUID}:0`,
+                    name: `Outlet ${channel}`,
+                    classHint: 'socket',
+                    traits: ['switch']
+                }))
+            ]
+        );
+    });
+
+    it('puts ElectricityX energy on every strip socket including children', () => {
+        const strip = loadFixture('togglex-getack-all.json');
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.Control.ElectricityX': {}
+            }),
+            allPayload: systemAllWithDigest({ togglex: strip.payload.togglex })
+        });
+
+        assert.deepEqual(
+            device.endpoints.map((endpoint) => ({
+                channel: endpoint.channel,
+                parentId: endpoint.parentId,
+                traits: [...endpoint.traits]
+            })),
+            [
+                { channel: 0, parentId: undefined, traits: ['switch', 'energy'] },
+                ...[1, 2, 3, 4].map((channel) => ({
+                    channel,
+                    parentId: `${UUID}:0`,
+                    traits: ['switch', 'energy']
+                }))
+            ]
         );
     });
 
@@ -228,7 +274,9 @@ describe('enrollPhysicalDevice', () => {
         );
         assert.equal(device.endpoints[0]?.classHint, 'socket');
         assert.equal(device.endpoints[0]?.on, true);
+        assert.equal(device.endpoints[0]?.parentId, undefined);
         assert.equal(device.endpoints[1]?.on, false);
+        assert.equal(device.endpoints[1]?.parentId, undefined);
     });
 
     it('enrolls multi-channel roller shutter from digest.rollerShutter', () => {
@@ -250,6 +298,38 @@ describe('enrollPhysicalDevice', () => {
         assert.deepEqual(device.endpoints[0]?.traits, ['cover']);
         assert.equal(device.endpoints[0]?.channel, 0);
         assert.equal(device.endpoints[1]?.channel, 1);
+    });
+
+    it('omits ToggleX channel 0 when garage doors already occupy 1-n', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.GarageDoor.State': {}
+            }),
+            allPayload: systemAllWithDigest({
+                garageDoor: [{ channel: 1 }, { channel: 2 }, { channel: 3 }],
+                togglex: [
+                    { channel: 0, onoff: 0 },
+                    { channel: 1, onoff: 0 },
+                    { channel: 2, onoff: 0 },
+                    { channel: 3, onoff: 0 }
+                ]
+            })
+        });
+
+        assert.deepEqual(
+            device.endpoints.map((endpoint) => ({
+                id: endpoint.id,
+                channel: endpoint.channel,
+                classHint: endpoint.classHint,
+                traits: [...endpoint.traits]
+            })),
+            [1, 2, 3].map((channel) => ({
+                id: `${UUID}:${channel}`,
+                channel,
+                classHint: 'cover',
+                traits: ['cover']
+            }))
+        );
     });
 
     it('sets classHint light when Control.Light is in Ability', () => {

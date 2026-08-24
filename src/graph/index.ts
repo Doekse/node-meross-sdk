@@ -48,6 +48,10 @@ export interface GraphEndpoint {
     uuid: string;
     channel?: number;
     subDeviceId?: string;
+    /**
+     * Hub child or extra strip outlet. Homey groups under this id instead of
+     * merging those sockets into the parent device.
+     */
     parentId?: string;
     name: string;
     model: string;
@@ -85,10 +89,8 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
     const model = input.cloud?.deviceType || all.hardware.type;
     const name = input.cloud?.devName || all.hardware.type;
     const online = all.online.status === 1 || input.cloud?.onlineStatus === 1;
-    const energy = ELECTRICITY_NAMESPACE in ability
-        || ELECTRICITYX_NAMESPACE in ability
-        || CONSUMPTIONX_NAMESPACE in ability
-        || CONSUMPTIONH_NAMESPACE in ability;
+    const boardEnergy = ELECTRICITY_NAMESPACE in ability || CONSUMPTIONX_NAMESPACE in ability;
+    const channelEnergy = ELECTRICITYX_NAMESPACE in ability || CONSUMPTIONH_NAMESPACE in ability;
     const hasDnd = 'Appliance.System.DNDMode' in ability;
     const hasAlarm = 'Appliance.Control.Alarm' in ability;
     const isHub = 'Appliance.Hub.SubdeviceList' in ability || all.digest.hub !== undefined;
@@ -104,7 +106,9 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
         online,
         endpoints: isHub
             ? enrollHub(uuid, name, model, online, hasDnd, hasAlarm, all, input.subDevices ?? [])
-            : enrollBoard(uuid, name, model, online, energy, hasDnd, ability, all, input.cloud)
+            : enrollBoard(
+                uuid, name, model, online, boardEnergy, channelEnergy, hasDnd, ability, all, input.cloud
+            )
     };
 }
 
@@ -114,16 +118,27 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
 export class DeviceGraph {
     private readonly physical = new Map<string, PhysicalDevice>();
 
+    /**
+     * Replaces the board for this uuid so a later Ability/System.All refresh
+     * keeps the same physical entry.
+     */
     enroll(input: EnrollInput): PhysicalDevice {
         const device = enrollPhysicalDevice(input);
         this.physical.set(device.uuid, device);
         return device;
     }
 
+    /**
+     * Session needs the board (LAN IP, ability, maxCmdNum), not the pairing row.
+     */
     getPhysical(uuid: string): PhysicalDevice | undefined {
         return this.physical.get(uuid);
     }
 
+    /**
+     * Inventory ids are `{uuid}:{channel}` or `{uuid}#{subDeviceId}`; lookup
+     * walks boards because those ids are not the physical map key.
+     */
     getEndpoint(id: string): GraphEndpoint | undefined {
         for (const device of this.physical.values()) {
             const endpoint = device.endpoints.find((entry) => entry.id === id);
@@ -134,6 +149,10 @@ export class DeviceGraph {
         return undefined;
     }
 
+    /**
+     * Drops trait-less rows so a hub board with no alarm/dnd does not show up
+     * in pairing.
+     */
     inventoryRows(): InventoryRow[] {
         return [...this.physical.values()].flatMap((device) =>
             device.endpoints
@@ -151,6 +170,10 @@ export class DeviceGraph {
     }
 }
 
+/**
+ * Unknown digest types return undefined so enrollHub can fall back to onoff
+ * or omit the row.
+ */
 function classifyHubChild(raw: string | undefined): {
     model: string;
     classHint: ClassHint;
@@ -173,12 +196,21 @@ function classifyHubChild(raw: string | undefined): {
     return undefined;
 }
 
+/**
+ * Extra strip sockets get parentId because firmware channel 0 is the "all
+ * outlets" switch; two-gang walls keep 0 and 1 independent so neither is a
+ * parent. Classic Electricity stays on the master because it reports the
+ * whole board; ElectricityX/ConsumptionH also land on children because those
+ * namespaces are per outlet. MSG200 ToggleX 0 is omitted because the doors
+ * live on 1-n.
+ */
 function enrollBoard(
     uuid: string,
     name: string,
     model: string,
     online: boolean,
-    energy: boolean,
+    boardEnergy: boolean,
+    channelEnergy: boolean,
     hasDnd: boolean,
     ability: AbilityMap,
     all: SystemAll,
@@ -187,7 +219,13 @@ function enrollBoard(
     const endpoints: GraphEndpoint[] = [];
     const taken = new Set<number>();
     const hasMp3 = 'Appliance.Control.Mp3' in ability;
-    const add = (channel: number, classHint: ClassHint, traits: TraitName[], on?: boolean): void => {
+    const add = (
+        channel: number,
+        classHint: ClassHint,
+        traits: TraitName[],
+        on?: boolean,
+        parentId?: string
+    ): void => {
         if (taken.has(channel)) {
             return;
         }
@@ -196,7 +234,10 @@ function enrollBoard(
             ? (entry as { devName?: unknown }).devName
             : undefined;
         const extra: TraitName[] = [];
-        if (energy && classHint !== 'cover') {
+        if (
+            (channelEnergy && classHint === 'socket')
+            || (boardEnergy && classHint !== 'cover' && parentId === undefined)
+        ) {
             extra.push('energy');
         }
         if (hasMp3 && channel === 0 && !traits.includes('media')) {
@@ -209,6 +250,7 @@ function enrollBoard(
             id: `${uuid}:${channel}`,
             uuid,
             channel,
+            ...(parentId ? { parentId } : {}),
             name: typeof named === 'string' && named
                 ? named
                 : (channel === 0 ? name : `${name} ${channel}`),
@@ -290,12 +332,19 @@ function enrollBoard(
     ) {
         toggles = [{ channel: 0 }];
     }
-    // Channel 0 is "all outlets" on strips (3+ channels). 2-gang walls keep 0 and 1.
-    if (toggles.length >= 3 && toggles.some((entry) => entry.channel === 0)) {
+    if (all.digest.garageDoor.some((channel) => channel !== 0)) {
         toggles = toggles.filter((entry) => entry.channel !== 0);
     }
+    const masterId = `${uuid}:0`;
+    const isStrip = toggles.length >= 3 && toggles.some((entry) => entry.channel === 0);
     for (const entry of toggles) {
-        add(entry.channel, 'socket', ['switch'], entry.on);
+        add(
+            entry.channel,
+            'socket',
+            ['switch'],
+            entry.on,
+            isStrip && entry.channel !== 0 ? masterId : undefined
+        );
     }
 
     if (hasDnd && !taken.has(0)) {
@@ -305,6 +354,10 @@ function enrollBoard(
     return endpoints;
 }
 
+/**
+ * parentId is the hub uuid so Homey can group children without treating the
+ * board as the only pairable device.
+ */
 function enrollHub(
     uuid: string,
     name: string,
