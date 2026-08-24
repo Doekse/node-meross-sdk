@@ -57,9 +57,12 @@ export class PendingRequests {
         clearTimeout(entry.timer);
         this.entries.delete(message.header.messageId);
         if (message.header.method === 'ERROR') {
+            const rawCode = (message.payload as { error?: { code?: unknown } }).error?.code;
+            const deviceCode = typeof rawCode === 'number' ? rawCode : undefined;
             entry.reject(new CommandError(
                 `Device returned error: ${JSON.stringify(message.payload)}`,
-                'COMMAND_FAILED'
+                'COMMAND_FAILED',
+                deviceCode
             ));
         } else {
             entry.resolve(message);

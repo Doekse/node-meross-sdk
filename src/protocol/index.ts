@@ -362,6 +362,7 @@ export type {
 export {
     CONTROL_WATER_NAMESPACE,
     DEVICE_CFG_NAMESPACE,
+    WATER_PLAN_NAMESPACE,
     encodeWaterGet,
     encodeWaterSet,
     decodeWaterGetAck,
@@ -369,15 +370,21 @@ export {
     encodeDeviceCfgGet,
     encodeDeviceCfgSet,
     decodeDeviceCfgGetAck,
-    decodeDeviceCfgPush
+    decodeDeviceCfgPush,
+    encodeWaterPlanGet,
+    encodeWaterPlanSet,
+    decodeWaterPlanGetAck,
+    decodeWaterPlanPush
 } from './codecs/water';
 export type {
     WaterControlState,
     MstDeviceCfgState,
+    WaterPlanEntry,
     WaterGetOptions,
     WaterSetOptions,
     DeviceCfgGetOptions,
-    DeviceCfgSetOptions
+    DeviceCfgSetOptions,
+    WaterPlanGetOptions
 } from './codecs/water';
 export {
     SPRAY_NAMESPACE,

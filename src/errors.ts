@@ -36,9 +36,13 @@ export class ProtocolError extends MerossError {
  * Not a public export until Session surfaces command failures to hosts.
  */
 export class CommandError extends MerossError {
-    constructor(message: string, code = 'COMMAND_FAILED') {
+    /** Firmware `payload.error.code` when the device replied with method ERROR. */
+    readonly deviceCode?: number;
+
+    constructor(message: string, code = 'COMMAND_FAILED', deviceCode?: number) {
         super(message, code);
         this.name = 'CommandError';
+        this.deviceCode = deviceCode;
     }
 }
 

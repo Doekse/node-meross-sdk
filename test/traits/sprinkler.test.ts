@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { CommandError } from '../../src/errors';
 import { Endpoint } from '../../src/endpoint';
 import {
     CONTROL_WATER_NAMESPACE,
     DEVICE_CFG_NAMESPACE,
     HUB_TOGGLEX_NAMESPACE,
+    WATER_PLAN_NAMESPACE,
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
@@ -18,12 +20,16 @@ const SUB_DEVICE_ID = 'aabbcc';
 
 const SPRINKLER_NAMESPACES = new Set([
     CONTROL_WATER_NAMESPACE,
-    DEVICE_CFG_NAMESPACE
+    DEVICE_CFG_NAMESPACE,
+    WATER_PLAN_NAMESPACE
 ]);
 
 function createHarness(
     getAckByNamespace: Record<string, Record<string, unknown>> = {},
-    namespaces: ReadonlySet<string> = SPRINKLER_NAMESPACES
+    namespaces: ReadonlySet<string> = SPRINKLER_NAMESPACES,
+    harnessOptions: {
+        errorByNamespace?: Record<string, CommandError>;
+    } = {}
 ): {
     endpoint: Endpoint;
     trait: SprinklerTrait;
@@ -37,24 +43,28 @@ function createHarness(
         uuid: UUID,
         subDeviceId: SUB_DEVICE_ID,
         namespaces,
-        request: async (options) => {
+        request: async (requestOptions) => {
             const message = encodeMessage({
-                namespace: options.namespace,
-                method: options.method,
+                namespace: requestOptions.namespace,
+                method: requestOptions.method,
                 key: KEY,
                 from: '/app/test/subscribe',
-                payload: options.payload,
+                payload: requestOptions.payload,
                 uuid: UUID
             });
             requests.push(message);
+            const error = harnessOptions.errorByNamespace?.[requestOptions.namespace];
+            if (error) {
+                throw error;
+            }
             return encodeMessage({
-                namespace: options.namespace,
+                namespace: requestOptions.namespace,
                 method: 'GETACK',
                 key: KEY,
                 from: `/appliance/${UUID}/publish`,
                 messageId: message.header.messageId,
                 uuid: UUID,
-                payload: getAckByNamespace[options.namespace] ?? {}
+                payload: getAckByNamespace[requestOptions.namespace] ?? {}
             });
         },
         emitChange: (values) => {
@@ -77,7 +87,7 @@ function pushMessage(namespace: string, payload: Record<string, unknown>): Meros
 }
 
 describe('SprinklerTrait', () => {
-    it('polls Control.Water and DeviceCfg on start', async () => {
+    it('polls Control.Water and DeviceCfg on start but not WaterPlan', async () => {
         const { trait, requests, changes } = createHarness({
             [CONTROL_WATER_NAMESPACE]: {
                 control: [{ channel: 0, subId: SUB_DEVICE_ID, onoff: 2, dura: 7200 }]
@@ -142,5 +152,85 @@ describe('SprinklerTrait', () => {
 
         assert.equal(trait.isOn(), true);
         assert.deepEqual(changes, [{ on: true, duration: 900 }]);
+    });
+
+    it('getSchedule returns rows for this subId via Config.WaterPlan', async () => {
+        const { trait, requests } = createHarness({
+            [WATER_PLAN_NAMESPACE]: {
+                waterPlan: [
+                    {
+                        channel: 0,
+                        subId: SUB_DEVICE_ID,
+                        enable: 1,
+                        week: 127,
+                        time: 360,
+                        dura: 900
+                    },
+                    {
+                        channel: 0,
+                        subId: 'other-id',
+                        enable: 0
+                    }
+                ]
+            }
+        });
+
+        const schedule = await trait.getSchedule();
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.header.namespace, WATER_PLAN_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'GET');
+        assert.deepEqual(requests[0]?.payload, {
+            waterPlan: [{ subId: SUB_DEVICE_ID, channel: 0 }]
+        });
+        assert.deepEqual(schedule, [{
+            subId: SUB_DEVICE_ID,
+            channel: 0,
+            schedule: { enable: 1, week: 127, time: 360, dura: 900 }
+        }]);
+    });
+
+    it('getSchedule returns undefined when Ability lacks Config.WaterPlan', async () => {
+        const { trait, requests } = createHarness({}, new Set([CONTROL_WATER_NAMESPACE]));
+        assert.equal(await trait.getSchedule(), undefined);
+        assert.equal(requests.length, 0);
+    });
+
+    it('getSchedule treats device error 5000 as unsupported', async () => {
+        const { trait } = createHarness({}, SPRINKLER_NAMESPACES, {
+            errorByNamespace: {
+                [WATER_PLAN_NAMESPACE]: new CommandError(
+                    'Device returned error: {"error":{"code":5000}}',
+                    'COMMAND_FAILED',
+                    5000
+                )
+            }
+        });
+        assert.equal(await trait.getSchedule(), undefined);
+    });
+
+    it('setSchedule writes Config.WaterPlan and no-ops without Ability', async () => {
+        const entries = [{
+            subId: SUB_DEVICE_ID,
+            channel: 0,
+            schedule: { enable: 1, week: 1, time: 0, dura: 600 }
+        }];
+        const withAbility = createHarness();
+        assert.deepEqual(await withAbility.trait.setSchedule(entries), entries);
+        assert.equal(withAbility.requests[0]?.header.namespace, WATER_PLAN_NAMESPACE);
+        assert.equal(withAbility.requests[0]?.header.method, 'SET');
+        assert.deepEqual(withAbility.requests[0]?.payload, {
+            waterPlan: [{
+                subId: SUB_DEVICE_ID,
+                channel: 0,
+                enable: 1,
+                week: 1,
+                time: 0,
+                dura: 600
+            }]
+        });
+
+        const without = createHarness({}, new Set([CONTROL_WATER_NAMESPACE]));
+        assert.equal(await without.trait.setSchedule(entries), undefined);
+        assert.equal(without.requests.length, 0);
     });
 });

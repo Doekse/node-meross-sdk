@@ -1,20 +1,26 @@
+import { CommandError } from '../errors';
 import {
     CONTROL_WATER_NAMESPACE,
     DEVICE_CFG_NAMESPACE,
     HUB_BATTERY_NAMESPACE,
+    WATER_PLAN_NAMESPACE,
     decodeBatteryGetAck,
     decodeBatteryPush,
     decodeDeviceCfgGetAck,
     decodeDeviceCfgPush,
     decodeWaterGetAck,
+    decodeWaterPlanGetAck,
     decodeWaterPush,
     encodeBatteryGet,
     encodeDeviceCfgGet,
     encodeDeviceCfgSet,
     encodeWaterGet,
+    encodeWaterPlanGet,
+    encodeWaterPlanSet,
     encodeWaterSet,
     type MerossMessage,
-    type WaterControlState
+    type WaterControlState,
+    type WaterPlanEntry
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
 
@@ -25,6 +31,8 @@ export interface SprinklerValues {
     battery?: number;
 }
 
+export type SprinklerScheduleEntry = WaterPlanEntry;
+
 /**
  * Transport + sub-device bind for a hub sprinkler child. Session supplies this;
  * trait tests inject a fake request/emit pair.
@@ -32,7 +40,7 @@ export interface SprinklerValues {
 export interface SprinklerTraitBind {
     uuid: string;
     subDeviceId: string;
-    /** Ability keys; DeviceCfg and Battery no-op when absent. */
+    /** Ability keys; DeviceCfg, Battery, and WaterPlan no-op when absent. */
     namespaces?: ReadonlySet<string>;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
     emitChange: (values: SprinklerValues) => void;
@@ -40,7 +48,8 @@ export interface SprinklerTraitBind {
 
 /**
  * Hub child sprinkler (MST100). On/off uses Control.Water onoff 1/2; default
- * duration lives in DeviceCfg mstCfg.dura.
+ * duration lives in DeviceCfg mstCfg.dura. Schedules use Config.WaterPlan when
+ * the hub actually answers (many reply error 5000).
  */
 export class SprinklerTrait {
     private readonly bind: SprinklerTraitBind;
@@ -94,6 +103,54 @@ export class SprinklerTrait {
         });
         this.applyChange({ duration: seconds });
         return { duration: seconds };
+    }
+
+    /**
+     * Fetches watering schedules for this sub-device via Config.WaterPlan.
+     * On-demand only (never Digest.WaterPlan). Returns `undefined` when the
+     * namespace is absent or the hub replies with error 5000.
+     */
+    async getSchedule(): Promise<SprinklerScheduleEntry[] | undefined> {
+        if (!this.has(WATER_PLAN_NAMESPACE)) {
+            return undefined;
+        }
+        try {
+            const reply = await this.bind.request({
+                namespace: WATER_PLAN_NAMESPACE,
+                method: 'GET',
+                payload: encodeWaterPlanGet({ subId: this.bind.subDeviceId })
+            });
+            return decodeWaterPlanGetAck(reply.payload)
+                .filter((entry) => entry.subId === this.bind.subDeviceId)
+                .map(cloneScheduleEntry);
+        } catch (error) {
+            if (isUnsupportedWaterPlan(error)) {
+                return undefined;
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Writes watering schedules via Config.WaterPlan. No-op when the namespace
+     * is absent. Entries should carry this trait's `subId`.
+     */
+    async setSchedule(
+        entries: SprinklerScheduleEntry[]
+    ): Promise<SprinklerScheduleEntry[] | undefined> {
+        if (!this.has(WATER_PLAN_NAMESPACE)) {
+            return undefined;
+        }
+        const payload = entries.map((entry) => ({
+            ...cloneScheduleEntry(entry),
+            subId: entry.subId || this.bind.subDeviceId
+        }));
+        await this.bind.request({
+            namespace: WATER_PLAN_NAMESPACE,
+            method: 'SET',
+            payload: encodeWaterPlanSet(payload)
+        });
+        return payload;
     }
 
     /**
@@ -205,4 +262,17 @@ function waterPatch(entry: WaterControlState): SprinklerValues {
         patch.duration = entry.duration;
     }
     return patch;
+}
+
+function cloneScheduleEntry(entry: SprinklerScheduleEntry): SprinklerScheduleEntry {
+    return {
+        subId: entry.subId,
+        channel: entry.channel,
+        schedule: { ...entry.schedule }
+    };
+}
+
+/** Hubs often advertise WaterPlan but reject every GET with firmware error 5000. */
+function isUnsupportedWaterPlan(error: unknown): boolean {
+    return error instanceof CommandError && error.deviceCode === 5000;
 }

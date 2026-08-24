@@ -16,7 +16,7 @@ export {
 } from './traits';
 export type {
     SensorFamily, SensorValues, SensorSmokeStatus, SensorAlertBand,
-    PresenceValues, SprinklerValues, SprayValues, SprayMode, FanValues,
+    PresenceValues, SprinklerValues, SprinklerScheduleEntry, SprayValues, SprayMode, FanValues,
     DiffuserValues, DiffuserLightMode, DiffuserSprayMode, MediaValues, AlarmValues,
     TimerEntry, TimerSetInput, TimerValues,
     TriggerEntry, TriggerRule, TriggerSetInput, TriggerValues

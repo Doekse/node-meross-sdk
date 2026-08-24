@@ -53,7 +53,9 @@ describe('PendingRequests', () => {
         assert.equal(pending.settle(reply), true);
         await assert.rejects(
             promise,
-            (err: unknown) => err instanceof CommandError && err.code === 'COMMAND_FAILED'
+            (err: unknown) => err instanceof CommandError
+                && err.code === 'COMMAND_FAILED'
+                && err.deviceCode === 5001
         );
     });
 

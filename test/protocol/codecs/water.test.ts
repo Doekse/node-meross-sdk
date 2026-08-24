@@ -6,10 +6,14 @@ import {
     decodeDeviceCfgGetAck,
     decodeDeviceCfgPush,
     decodeWaterGetAck,
+    decodeWaterPlanGetAck,
+    decodeWaterPlanPush,
     decodeWaterPush,
     encodeDeviceCfgGet,
     encodeDeviceCfgSet,
     encodeWaterGet,
+    encodeWaterPlanGet,
+    encodeWaterPlanSet,
     encodeWaterSet
 } from '../../../src/protocol/codecs/water';
 
@@ -101,5 +105,69 @@ describe('Config.DeviceCfg codec', () => {
             config: [{ channel: 0, subId: SUB_ID, mstCfg: { dura: 1800 } }]
         };
         assert.deepEqual(decodeDeviceCfgPush(payload), decodeDeviceCfgGetAck(payload));
+    });
+});
+
+describe('Config.WaterPlan codec', () => {
+    it('encodes GET with subId and channel 0 under waterPlan', () => {
+        assert.deepEqual(encodeWaterPlanGet({ subId: SUB_ID }), {
+            waterPlan: [{ subId: SUB_ID, channel: 0 }]
+        });
+    });
+
+    it('encodes SET by spreading opaque schedule fields', () => {
+        assert.deepEqual(encodeWaterPlanSet([{
+            subId: SUB_ID,
+            channel: 0,
+            schedule: { enable: 1, week: 127, time: 360, dura: 900 }
+        }]), {
+            waterPlan: [{
+                subId: SUB_ID,
+                channel: 0,
+                enable: 1,
+                week: 127,
+                time: 360,
+                dura: 900
+            }]
+        });
+    });
+
+    it('decodes GETACK rows keyed by subId with opaque schedule', () => {
+        const [entry] = decodeWaterPlanGetAck({
+            waterPlan: [{
+                channel: 0,
+                subId: SUB_ID,
+                enable: 1,
+                week: 127,
+                time: 360,
+                dura: 900
+            }]
+        });
+        assert.equal(entry.subId, SUB_ID);
+        assert.equal(entry.channel, 0);
+        assert.deepEqual(entry.schedule, {
+            enable: 1,
+            week: 127,
+            time: 360,
+            dura: 900
+        });
+    });
+
+    it('uses PUSH decoder interchangeably with GETACK', () => {
+        const payload = {
+            waterPlan: [{ channel: 0, subId: SUB_ID, enable: 0 }]
+        };
+        assert.deepEqual(decodeWaterPlanPush(payload), decodeWaterPlanGetAck(payload));
+    });
+
+    it('rejects a non-array waterPlan payload', () => {
+        assert.throws(() => decodeWaterPlanGetAck({ waterPlan: {} }), ProtocolError);
+    });
+
+    it('rejects an entry without subId', () => {
+        assert.throws(
+            () => decodeWaterPlanGetAck({ waterPlan: [{ channel: 0 }] }),
+            ProtocolError
+        );
     });
 });

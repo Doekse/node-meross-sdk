@@ -3,6 +3,8 @@ import type { MerossPayload } from '../message';
 
 export const CONTROL_WATER_NAMESPACE = 'Appliance.Control.Water';
 export const DEVICE_CFG_NAMESPACE = 'Appliance.Config.DeviceCfg';
+/** MST100 watering schedules. Not in the firmware doc; wire key is waterPlan. */
+export const WATER_PLAN_NAMESPACE = 'Appliance.Config.WaterPlan';
 
 export interface WaterControlState {
     subId: string;
@@ -17,6 +19,17 @@ export interface MstDeviceCfgState {
     channel: number;
     /** Default watering duration in seconds from mstCfg.dura. */
     duration?: number;
+}
+
+/**
+ * One Config.WaterPlan row. Schedule fields are opaque — firmware never
+ * documented them and successful GETACKs are rare (many hubs reply error 5000).
+ */
+export interface WaterPlanEntry {
+    subId: string;
+    channel: number;
+    /** Remaining wire fields preserved for SET round-trips. */
+    schedule: Record<string, unknown>;
 }
 
 export interface WaterGetOptions {
@@ -35,6 +48,10 @@ export interface DeviceCfgGetOptions {
 export interface DeviceCfgSetOptions {
     subId: string;
     duration: number;
+}
+
+export interface WaterPlanGetOptions {
+    subId: string;
 }
 
 function encodeArray(key: string, entry: Record<string, unknown>): MerossPayload {
@@ -124,4 +141,40 @@ export function decodeDeviceCfgGetAck(payload: MerossPayload): MstDeviceCfgState
 
 export function decodeDeviceCfgPush(payload: MerossPayload): MstDeviceCfgState[] {
     return decodeMstDeviceCfg(payload);
+}
+
+export function encodeWaterPlanGet(options: WaterPlanGetOptions): MerossPayload {
+    return encodeArray('waterPlan', { subId: options.subId, channel: 0 });
+}
+
+export function encodeWaterPlanSet(entries: WaterPlanEntry[]): MerossPayload {
+    return {
+        waterPlan: entries.map((entry) => ({
+            subId: entry.subId,
+            channel: entry.channel,
+            ...entry.schedule
+        }))
+    };
+}
+
+export function decodeWaterPlanGetAck(payload: MerossPayload): WaterPlanEntry[] {
+    return decodeWaterPlan(payload);
+}
+
+export function decodeWaterPlanPush(payload: MerossPayload): WaterPlanEntry[] {
+    return decodeWaterPlan(payload);
+}
+
+function decodeWaterPlan(payload: MerossPayload): WaterPlanEntry[] {
+    return decodeArray(payload, 'waterPlan', 'Config.WaterPlan').map((item) => {
+        const { subId, channel, ...rest } = item;
+        if (typeof subId !== 'string') {
+            throw new ProtocolError('Config.WaterPlan entry requires subId');
+        }
+        return {
+            subId,
+            channel: typeof channel === 'number' ? channel : 0,
+            schedule: rest
+        };
+    });
 }
