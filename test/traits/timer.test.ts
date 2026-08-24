@@ -1,0 +1,265 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import { Endpoint } from '../../src/endpoint';
+import { MerossError } from '../../src/errors';
+import {
+    DIGEST_TIMERX_NAMESPACE,
+    TIMERX_NAMESPACE,
+    encodeMessage,
+    type MerossMessage
+} from '../../src/protocol';
+import { TimerTrait } from '../../src/traits/timer';
+import type { TimerTraitBind } from '../../src/traits/timer';
+
+const KEY = 'stub-key';
+const UUID = '2201201075575151809248e1e988531b';
+const CHANNEL = 0;
+
+const WIRE_ENTRY = {
+    week: 159,
+    channel: CHANNEL,
+    type: 1,
+    sunOffset: 0,
+    duration: 0,
+    extend: { toggle: { onoff: 1, lmTime: 0 } },
+    createTime: 1658821809,
+    enable: 1,
+    alias: 'Toilet open',
+    id: 'wf3d4ewfeh7ld2pr',
+    time: 1110
+};
+
+const HOST_ENTRY = {
+    id: 'wf3d4ewfeh7ld2pr',
+    channel: CHANNEL,
+    alias: 'Toilet open',
+    enabled: true,
+    type: 1,
+    time: 1110,
+    week: 159,
+    duration: 0,
+    sunOffset: 0,
+    createTime: 1658821809,
+    on: true
+};
+
+function createHarness(options: {
+    getAck?: Record<string, unknown>;
+    namespaces?: ReadonlySet<string>;
+} = {}): {
+    trait: TimerTrait;
+    requests: MerossMessage[];
+    changes: Record<string, unknown>[];
+} {
+    const requests: MerossMessage[] = [];
+    const changes: Record<string, unknown>[] = [];
+    const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['timer'] });
+    const namespaces = options.namespaces ?? new Set([TIMERX_NAMESPACE, DIGEST_TIMERX_NAMESPACE]);
+    const bind: TimerTraitBind = {
+        uuid: UUID,
+        channel: CHANNEL,
+        namespaces,
+        request: async (requestOptions) => {
+            const message = encodeMessage({
+                namespace: requestOptions.namespace,
+                method: requestOptions.method,
+                key: KEY,
+                from: '/app/test/subscribe',
+                payload: requestOptions.payload,
+                uuid: UUID
+            });
+            requests.push(message);
+            if (requestOptions.namespace === DIGEST_TIMERX_NAMESPACE) {
+                return encodeMessage({
+                    namespace: requestOptions.namespace,
+                    method: 'GETACK',
+                    key: KEY,
+                    from: `/appliance/${UUID}/publish`,
+                    messageId: message.header.messageId,
+                    uuid: UUID,
+                    payload: {
+                        digest: [{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]
+                    }
+                });
+            }
+            if (requestOptions.method === 'GET') {
+                return encodeMessage({
+                    namespace: requestOptions.namespace,
+                    method: 'GETACK',
+                    key: KEY,
+                    from: `/appliance/${UUID}/publish`,
+                    messageId: message.header.messageId,
+                    uuid: UUID,
+                    payload: options.getAck ?? { timerx: WIRE_ENTRY }
+                });
+            }
+            return encodeMessage({
+                namespace: requestOptions.namespace,
+                method: `${requestOptions.method}ACK`,
+                key: KEY,
+                from: `/appliance/${UUID}/publish`,
+                messageId: message.header.messageId,
+                uuid: UUID,
+                payload: {}
+            });
+        },
+        emitChange: (values) => {
+            changes.push({ ...values });
+            endpoint.emit('change', { trait: 'timer', values: { ...values } });
+        }
+    };
+    return { trait: new TimerTrait(bind), requests, changes };
+}
+
+async function flush(): Promise<void> {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+function pushMessage(payload: Record<string, unknown>): MerossMessage {
+    return encodeMessage({
+        namespace: TIMERX_NAMESPACE,
+        method: 'PUSH',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload
+    });
+}
+
+describe('TimerTrait', () => {
+    it('polls Digest.TimerX then GET by id on start', async () => {
+        const { trait, requests, changes } = createHarness();
+        trait.start();
+        await flush();
+        assert.equal(requests[0]?.header.namespace, DIGEST_TIMERX_NAMESPACE);
+        assert.deepEqual(requests[0]?.payload, {});
+        assert.equal(requests[1]?.header.namespace, TIMERX_NAMESPACE);
+        assert.deepEqual(requests[1]?.payload, { timerx: { id: WIRE_ENTRY.id } });
+        assert.deepEqual(trait.list(), [HOST_ENTRY]);
+        assert.equal((changes[0]?.entries as unknown[])?.length, 1);
+    });
+
+    it('skips the initial poll when Digest.TimerX is not advertised', async () => {
+        const { trait, requests, changes } = createHarness({
+            namespaces: new Set([TIMERX_NAMESPACE])
+        });
+        trait.start();
+        await flush();
+        assert.equal(requests.length, 0);
+        assert.deepEqual(trait.list(), []);
+        assert.equal(changes.length, 0);
+    });
+
+    it('set SETs a toggle-shaped timerx object and updates the list', async () => {
+        const { trait, requests, changes } = createHarness({ getAck: { timerx: [] } });
+        const entry = await trait.set({
+            id: '14z2y0cwdi5d64vf',
+            alias: 'Fan off',
+            time: 720,
+            week: 255,
+            on: false,
+            createTime: 1673168351
+        });
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(requests[0]?.payload, {
+            timerx: {
+                id: '14z2y0cwdi5d64vf',
+                channel: CHANNEL,
+                type: 1,
+                time: 720,
+                week: 255,
+                duration: 0,
+                sunOffset: 0,
+                enable: 1,
+                alias: 'Fan off',
+                createTime: 1673168351,
+                extend: { toggle: { onoff: 0, lmTime: 0 } }
+            }
+        });
+        assert.equal(entry.on, false);
+        assert.equal(trait.list().length, 1);
+        assert.deepEqual(changes[0], { entries: trait.list() });
+    });
+
+    it('setEnabled SETs enable from a cached entry', async () => {
+        const { trait, requests } = createHarness();
+        trait.start();
+        await flush();
+        requests.length = 0;
+        await trait.setEnabled(HOST_ENTRY.id, false);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.equal((requests[0]?.payload.timerx as { enable: number }).enable, 0);
+        assert.equal(trait.list()[0]?.enabled, false);
+    });
+
+    it('setEnabled throws when the id is unknown', async () => {
+        const { trait } = createHarness({ getAck: { timerx: [] } });
+        await assert.rejects(
+            () => trait.setEnabled('missing', true),
+            (error: unknown) => error instanceof MerossError && error.code === 'TIMER_NOT_FOUND'
+        );
+    });
+
+    it('remove DELETEs by id and drops the local row without waiting for PUSH', async () => {
+        const { trait, requests, changes } = createHarness();
+        trait.start();
+        await flush();
+        changes.length = 0;
+        requests.length = 0;
+        await trait.remove(HOST_ENTRY.id);
+        assert.equal(requests[0]?.header.method, 'DELETE');
+        assert.deepEqual(requests[0]?.payload, { timerx: { id: HOST_ENTRY.id } });
+        assert.deepEqual(trait.list(), []);
+        assert.deepEqual(changes[0], { entries: [] });
+    });
+
+    it('handlePush upserts this channel only', () => {
+        const { trait, changes } = createHarness({ getAck: { timerx: [] } });
+        trait.handlePush(pushMessage({
+            timerx: [
+                {
+                    ...WIRE_ENTRY,
+                    id: '50d64c3bd2b391b0',
+                    alias: 'patio Lights off',
+                    time: 1290,
+                    week: 255,
+                    extend: { toggle: { onoff: 0, lmTime: 0 } }
+                },
+                {
+                    ...WIRE_ENTRY,
+                    channel: 1,
+                    id: 'other-channel'
+                }
+            ]
+        }));
+        assert.equal(trait.list().length, 1);
+        assert.equal(trait.list()[0]?.id, '50d64c3bd2b391b0');
+        assert.equal(trait.list()[0]?.on, false);
+        assert.equal((changes[0]?.entries as unknown[])?.length, 1);
+    });
+
+    it('handlePush does not emit when the list is unchanged', async () => {
+        const { trait, changes } = createHarness();
+        trait.start();
+        await flush();
+        changes.length = 0;
+        trait.handlePush(pushMessage({ timerx: [WIRE_ENTRY] }));
+        assert.equal(changes.length, 0);
+    });
+
+    it('ignores PUSH when uuid does not match the bind', () => {
+        const { trait, changes } = createHarness({ getAck: { timerx: [] } });
+        trait.handlePush(encodeMessage({
+            namespace: TIMERX_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: '/appliance/other/publish',
+            uuid: 'other',
+            payload: { timerx: [WIRE_ENTRY] }
+        }));
+        assert.equal(changes.length, 0);
+        assert.deepEqual(trait.list(), []);
+    });
+});

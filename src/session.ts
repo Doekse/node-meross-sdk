@@ -45,6 +45,7 @@ import { SENSOR_FAMILY_MAP, SensorTrait } from './traits/sensor';
 import { SprayTrait } from './traits/spray';
 import { SprinklerTrait } from './traits/sprinkler';
 import { SwitchTrait } from './traits/switch';
+import { TimerTrait } from './traits/timer';
 
 export interface LoginOptions {
     email: string;
@@ -221,6 +222,7 @@ export class Session {
             endpoint.media?.handlePush(message);
             endpoint.alarm?.handlePush(message);
             endpoint.dnd?.handlePush(message);
+            endpoint.timer?.handlePush(message);
         }
     }
 
@@ -315,6 +317,7 @@ export class Session {
         let mediaTrait: MediaTrait | undefined;
         let alarmTrait: AlarmTrait | undefined;
         let dndTrait: DndTrait | undefined;
+        let timerTrait: TimerTrait | undefined;
         if (graphEndpoint.traits.includes('switch')) {
             if (graphEndpoint.subDeviceId) {
                 switchTrait = new SwitchTrait({
@@ -536,6 +539,18 @@ export class Session {
                 emitChange: (on) => endpoint.emit('change', { trait: 'dnd', values: { on } })
             });
         }
+        if (graphEndpoint.traits.includes('timer')) {
+            timerTrait = new TimerTrait({
+                uuid: physical.uuid,
+                channel,
+                namespaces,
+                request,
+                emitChange: (values) => endpoint.emit('change', {
+                    trait: 'timer',
+                    values: { ...values }
+                })
+            });
+        }
         endpoint = new Endpoint({
             id: graphEndpoint.id,
             traits: graphEndpoint.traits,
@@ -553,6 +568,7 @@ export class Session {
             media: mediaTrait,
             alarm: alarmTrait,
             dnd: dndTrait,
+            timer: timerTrait,
             initialOnline: graphEndpoint.online
         });
         energyTrait?.start();
@@ -568,6 +584,7 @@ export class Session {
         mediaTrait?.start();
         alarmTrait?.start();
         dndTrait?.start();
+        timerTrait?.start();
         return endpoint;
     }
 

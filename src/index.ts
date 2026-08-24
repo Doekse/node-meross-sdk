@@ -12,10 +12,11 @@ export type { EndpointChange, TraitName } from './endpoint';
 export {
     SwitchTrait, EnergyTrait, LightTrait, CoverTrait, ClimateTrait,
     SensorTrait, PresenceTrait, SprinklerTrait, SprayTrait, FanTrait, DiffuserTrait, MediaTrait,
-    AlarmTrait, DndTrait
+    AlarmTrait, DndTrait, TimerTrait
 } from './traits';
 export type {
     SensorFamily, SensorValues, SensorSmokeStatus, SensorAlertBand,
     PresenceValues, SprinklerValues, SprayValues, SprayMode, FanValues,
-    DiffuserValues, DiffuserLightMode, DiffuserSprayMode, MediaValues, AlarmValues
+    DiffuserValues, DiffuserLightMode, DiffuserSprayMode, MediaValues, AlarmValues,
+    TimerEntry, TimerSetInput, TimerValues
 } from './traits';

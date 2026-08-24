@@ -257,6 +257,79 @@ describe('enrollPhysicalDevice', () => {
         );
     });
 
+    it('appends timer to every board channel when Control.TimerX is advertised', () => {
+        const strip = loadFixture('togglex-getack-all.json');
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.Control.TimerX': {}
+            }),
+            allPayload: systemAllWithDigest({ togglex: strip.payload.togglex })
+        });
+
+        assert.deepEqual(
+            device.endpoints.map((endpoint) => ({
+                channel: endpoint.channel,
+                traits: [...endpoint.traits]
+            })),
+            [
+                { channel: 0, traits: ['switch', 'timer'] },
+                ...[1, 2, 3, 4].map((channel) => ({
+                    channel,
+                    traits: ['switch', 'timer']
+                }))
+            ]
+        );
+    });
+
+    it('does not append timer to hub parents or children when Control.TimerX is advertised', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Hub.SubdeviceList': {},
+                    'Appliance.Control.TimerX': {},
+                    'Appliance.Control.Multiple': { maxCmdNum: 5 }
+                }
+            },
+            allPayload: {
+                all: {
+                    system: {
+                        hardware: {
+                            type: 'msh300',
+                            uuid: HUB_UUID,
+                            macAddress: 'aa:bb:cc:dd:ee:ff'
+                        },
+                        firmware: { innerIp: '10.0.0.1' },
+                        online: { status: 1 }
+                    },
+                    digest: {
+                        hub: {
+                            hubId: -381895630,
+                            mode: 0,
+                            subdevice: [{ id: '120027D21C19', status: 1 }]
+                        }
+                    }
+                }
+            },
+            cloud: {
+                uuid: HUB_UUID,
+                devName: 'Hall hub',
+                deviceType: 'msh300',
+                onlineStatus: 1,
+                channels: []
+            },
+            subDevices: [{
+                subDeviceId: '120027D21C19',
+                subDeviceType: 'ms130',
+                subDeviceName: 'Hall sensor'
+            }]
+        });
+
+        assert.equal(
+            device.endpoints.some((endpoint) => endpoint.traits.includes('timer')),
+            false
+        );
+    });
+
     it('keeps both channels on a 2-gang wall switch', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: socketAbility(),

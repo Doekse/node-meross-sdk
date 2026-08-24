@@ -4,6 +4,7 @@ import type { ClassHint, InventoryRow } from '../inventory';
 import { CONSUMPTIONH_NAMESPACE } from '../protocol/codecs/consumptionh';
 import { CONSUMPTIONX_NAMESPACE } from '../protocol/codecs/consumptionx';
 import { ELECTRICITY_NAMESPACE, ELECTRICITYX_NAMESPACE } from '../protocol/codecs/electricity';
+import { TIMERX_NAMESPACE } from '../protocol/codecs/timerx';
 import { TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
 import type { MerossPayload } from '../protocol/message';
 import { abilityMaxCmdNum, decodeAbilityGetAck } from './ability';
@@ -93,6 +94,7 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
     const channelEnergy = ELECTRICITYX_NAMESPACE in ability || CONSUMPTIONH_NAMESPACE in ability;
     const hasDnd = 'Appliance.System.DNDMode' in ability;
     const hasAlarm = 'Appliance.Control.Alarm' in ability;
+    const hasTimerX = TIMERX_NAMESPACE in ability;
     const isHub = 'Appliance.Hub.SubdeviceList' in ability || all.digest.hub !== undefined;
 
     return {
@@ -107,7 +109,7 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
         endpoints: isHub
             ? enrollHub(uuid, name, model, online, hasDnd, hasAlarm, all, input.subDevices ?? [])
             : enrollBoard(
-                uuid, name, model, online, boardEnergy, channelEnergy, hasDnd, ability, all, input.cloud
+                uuid, name, model, online, boardEnergy, channelEnergy, hasDnd, hasTimerX, ability, all, input.cloud
             )
     };
 }
@@ -212,6 +214,7 @@ function enrollBoard(
     boardEnergy: boolean,
     channelEnergy: boolean,
     hasDnd: boolean,
+    hasTimerX: boolean,
     ability: AbilityMap,
     all: SystemAll,
     cloud: CloudDevice | undefined
@@ -245,6 +248,9 @@ function enrollBoard(
         }
         if (hasDnd && channel === 0 && !traits.includes('dnd')) {
             extra.push('dnd');
+        }
+        if (hasTimerX && !traits.includes('timer')) {
+            extra.push('timer');
         }
         endpoints.push({
             id: `${uuid}:${channel}`,

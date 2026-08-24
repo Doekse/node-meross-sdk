@@ -451,3 +451,21 @@ export type {
     AlarmLinkedSetOptions,
     AlarmSetOptions
 } from './codecs/alarm';
+export {
+    DIGEST_TIMERX_NAMESPACE,
+    TIMERX_NAMESPACE,
+    decodeDigestTimerXGetAck,
+    decodeTimerXGetAck,
+    decodeTimerXPush,
+    encodeDigestTimerXGet,
+    encodeTimerXDelete,
+    encodeTimerXGet,
+    encodeTimerXSet
+} from './codecs/timerx';
+export type {
+    DigestTimerXRow,
+    TimerXDeleteOptions,
+    TimerXEntry,
+    TimerXGetOptions,
+    TimerXSetOptions
+} from './codecs/timerx';

@@ -20,3 +20,5 @@ export type { MediaValues } from './media';
 export { AlarmTrait } from './alarm';
 export type { AlarmValues } from './alarm';
 export { DndTrait } from './dnd';
+export { TimerTrait } from './timer';
+export type { TimerEntry, TimerSetInput, TimerValues } from './timer';
