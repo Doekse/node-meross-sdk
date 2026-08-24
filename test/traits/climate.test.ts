@@ -6,6 +6,7 @@ import {
     THERMOSTAT_MODE_NAMESPACE,
     THERMOSTAT_MODEB_NAMESPACE,
     THERMOSTAT_MODEC_NAMESPACE,
+    THERMOSTAT_SYSTEM_NAMESPACE,
     HUB_MTS100_ADJUST_NAMESPACE,
     HUB_MTS100_MODE_NAMESPACE,
     HUB_MTS100_TEMPERATURE_NAMESPACE,
@@ -274,6 +275,66 @@ describe('ClimateTrait board ModeC generation', () => {
         assert.equal(change.values.mode, 'heat');
         assert.equal(change.values.targetTemperature, 21);
         assert.equal(change.values.currentTemperature, 22);
+    });
+
+    it('handlePush applies Thermostat.System without GETing on start', async () => {
+        const { endpoint, trait, requests } = createBoardHarness('modeC', [THERMOSTAT_SYSTEM_NAMESPACE]);
+        const changes: unknown[] = [];
+        endpoint.on('change', (c) => changes.push(c));
+
+        trait.start();
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(
+            requests.some((r) => r.header.namespace === THERMOSTAT_SYSTEM_NAMESPACE),
+            false
+        );
+
+        trait.handlePush(push(THERMOSTAT_SYSTEM_NAMESPACE, {
+            control: [{
+                channel: CHANNEL,
+                fLevel: 1,
+                hLevel: 1,
+                cLevel: 1,
+                sysType: 0,
+                compTempEnable: 1,
+                compTemp: 150,
+                wire: { R: 2, Rh: 2, Rc: 1, C: 1, E: 2, WAux: 1 }
+            }]
+        }));
+
+        const change = changes[0] as { values: Record<string, unknown> };
+        assert.equal(change.values.compTemp, 1.5);
+        assert.equal(change.values.compTempEnable, true);
+        assert.deepEqual(change.values.wire, { R: 2, Rh: 2, Rc: 1, C: 1, E: 2, WAux: 1 });
+
+        const system = trait.getSystem();
+        assert.equal(system?.fLevel, 1);
+        assert.equal(system?.compTemp, 1.5);
+        assert.deepEqual(system?.wire, { R: 2, Rh: 2, Rc: 1, C: 1, E: 2, WAux: 1 });
+    });
+
+    it('setSystem SETs when advertised and getSystem is a no-op without Ability', async () => {
+        const missing = createBoardHarness('modeC');
+        assert.equal(missing.trait.getSystem(), undefined);
+        assert.deepEqual(await missing.trait.setSystem({ compTemp: 2 }), { compTemp: 2 });
+        assert.equal(missing.requests.length, 0);
+
+        const { trait, requests } = createBoardHarness('modeC', [THERMOSTAT_SYSTEM_NAMESPACE]);
+        const result = await trait.setSystem({
+            compTempEnable: true,
+            compTemp: 1.5,
+            wire: { R: 2, WAux: 1 }
+        });
+        assert.equal(requests[0]?.header.namespace, THERMOSTAT_SYSTEM_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'SET');
+        const payload = requests[0]?.payload as {
+            control: Array<{ compTemp: number; compTempEnable: number; wire: Record<string, number> }>
+        };
+        assert.equal(payload.control[0]?.compTemp, 150);
+        assert.equal(payload.control[0]?.compTempEnable, 1);
+        assert.deepEqual(result.wire, { R: 2, WAux: 1 });
+        assert.deepEqual(trait.getSystem(), result);
     });
 });
 

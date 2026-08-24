@@ -466,6 +466,125 @@ export const ALARM_NAMESPACE = 'Appliance.Control.Thermostat.Alarm';
 export const ALARM_CONFIG_NAMESPACE = 'Appliance.Control.Thermostat.AlarmConfig';
 export const SCHEDULE_NAMESPACE = 'Appliance.Control.Thermostat.Schedule';
 export const SCHEDULEB_NAMESPACE = 'Appliance.Control.Thermostat.ScheduleB';
+export const THERMOSTAT_SYSTEM_NAMESPACE = 'Appliance.Control.Thermostat.System';
+
+/** Firmware `wire` terminals; keys and numbers are passed through as-is. */
+export type ClimateSystemWire = Record<string, number>;
+
+export interface ClimateSystem {
+    fLevel?: number;
+    hLevel?: number;
+    cLevel?: number;
+    sysType?: number;
+    hdType?: number;
+    compTempEnable?: boolean;
+    compType?: number;
+    compTemp?: number;
+    OBType?: number;
+    AUXType?: number;
+    AUXWorkType?: number;
+    dType?: number;
+    wire?: ClimateSystemWire;
+}
+
+export interface ThermostatSystemState extends ClimateSystem {
+    channel: number;
+}
+
+export interface ThermostatSystemSetOptions extends ClimateSystem {
+    channel: number;
+}
+
+/** SET array under `control`. `compTemp` is °C ×100 (ModeC scale). */
+export function encodeThermostatSystemSet(options: ThermostatSystemSetOptions): MerossPayload {
+    const entry: Record<string, unknown> = { channel: options.channel };
+    if (options.fLevel !== undefined) {
+        entry.fLevel = options.fLevel;
+    }
+    if (options.hLevel !== undefined) {
+        entry.hLevel = options.hLevel;
+    }
+    if (options.cLevel !== undefined) {
+        entry.cLevel = options.cLevel;
+    }
+    if (options.sysType !== undefined) {
+        entry.sysType = options.sysType;
+    }
+    if (options.hdType !== undefined) {
+        entry.hdType = options.hdType;
+    }
+    if (options.compTempEnable !== undefined) {
+        entry.compTempEnable = options.compTempEnable ? 1 : 0;
+    }
+    if (options.compType !== undefined) {
+        entry.compType = options.compType;
+    }
+    if (options.compTemp !== undefined) {
+        entry.compTemp = Math.round(options.compTemp * 100);
+    }
+    if (options.OBType !== undefined) {
+        entry.OBType = options.OBType;
+    }
+    if (options.AUXType !== undefined) {
+        entry.AUXType = options.AUXType;
+    }
+    if (options.AUXWorkType !== undefined) {
+        entry.AUXWorkType = options.AUXWorkType;
+    }
+    if (options.dType !== undefined) {
+        entry.dType = options.dType;
+    }
+    if (options.wire !== undefined) {
+        entry.wire = options.wire;
+    }
+    return encodeArray('control', entry);
+}
+
+export function decodeThermostatSystemGetAck(payload: MerossPayload): ThermostatSystemState[] {
+    return decodeThermostatSystem(payload);
+}
+
+export function decodeThermostatSystemPush(payload: MerossPayload): ThermostatSystemState[] {
+    return decodeThermostatSystem(payload);
+}
+
+function decodeThermostatSystem(payload: MerossPayload): ThermostatSystemState[] {
+    return decodeArray(payload, 'control', 'Thermostat.System').map((item) => {
+        if (typeof item.channel !== 'number') {
+            throw new ProtocolError('Thermostat.System entry requires channel');
+        }
+        const wireRaw = item.wire;
+        const wire = typeof wireRaw === 'object' && wireRaw !== null
+            ? decodeSystemWire(wireRaw as Record<string, unknown>)
+            : undefined;
+        return {
+            channel: item.channel,
+            ...(typeof item.fLevel === 'number' ? { fLevel: item.fLevel } : {}),
+            ...(typeof item.hLevel === 'number' ? { hLevel: item.hLevel } : {}),
+            ...(typeof item.cLevel === 'number' ? { cLevel: item.cLevel } : {}),
+            ...(typeof item.sysType === 'number' ? { sysType: item.sysType } : {}),
+            ...(typeof item.hdType === 'number' ? { hdType: item.hdType } : {}),
+            ...(typeof item.compTempEnable === 'number' ? { compTempEnable: item.compTempEnable === 1 } : {}),
+            ...(typeof item.compType === 'number' ? { compType: item.compType } : {}),
+            ...(typeof item.compTemp === 'number' ? { compTemp: item.compTemp / 100 } : {}),
+            ...(typeof item.OBType === 'number' ? { OBType: item.OBType } : {}),
+            ...(typeof item.AUXType === 'number' ? { AUXType: item.AUXType } : {}),
+            ...(typeof item.AUXWorkType === 'number' ? { AUXWorkType: item.AUXWorkType } : {}),
+            ...(typeof item.dType === 'number' ? { dType: item.dType } : {}),
+            ...(wire !== undefined ? { wire } : {})
+        };
+    });
+}
+
+function decodeSystemWire(raw: Record<string, unknown>): ClimateSystemWire {
+    const wire: ClimateSystemWire = {};
+    for (const [terminal, value] of Object.entries(raw)) {
+        if (typeof value === 'number') {
+            wire[terminal] = value;
+        }
+    }
+    return wire;
+}
 
 export const HUB_MTS100_ALL_NAMESPACE = 'Appliance.Hub.Mts100.All';
 export const HUB_MTS100_ADJUST_NAMESPACE = 'Appliance.Hub.Mts100.Adjust';

@@ -154,6 +154,7 @@ export {
     ALARM_CONFIG_NAMESPACE,
     SCHEDULE_NAMESPACE,
     SCHEDULEB_NAMESPACE,
+    THERMOSTAT_SYSTEM_NAMESPACE,
     HUB_MTS100_ALL_NAMESPACE,
     HUB_MTS100_ADJUST_NAMESPACE,
     HUB_MTS100_CONFIG_NAMESPACE,
@@ -235,7 +236,10 @@ export {
     encodePhysicalLockSet,
     decodePhysicalLock,
     encodeScreenBrightnessSet,
-    decodeScreenBrightness
+    decodeScreenBrightness,
+    encodeThermostatSystemSet,
+    decodeThermostatSystemGetAck,
+    decodeThermostatSystemPush
 } from './codecs/climate';
 export type {
     ClimateMode,
@@ -249,6 +253,8 @@ export type {
     ClimateTimer,
     ClimateSchedule,
     ClimateTempUnit,
+    ClimateSystem,
+    ClimateSystemWire,
     HubMts100ModeSetOptions,
     HubMts100TemperatureSetOptions,
     HubMts100TemperatureState,
@@ -257,7 +263,9 @@ export type {
     ThermostatGetOptions,
     ThermostatModeBSetOptions,
     ThermostatModeSetOptions,
-    ThermostatState
+    ThermostatState,
+    ThermostatSystemSetOptions,
+    ThermostatSystemState
 } from './codecs/climate';
 export {
     ENCRYPT_ECDHE_NAMESPACE,

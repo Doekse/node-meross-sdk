@@ -25,6 +25,7 @@ import {
     THERMOSTAT_MODEB_NAMESPACE,
     THERMOSTAT_MODEC_NAMESPACE,
     THERMOSTAT_MODE_NAMESPACE,
+    THERMOSTAT_SYSTEM_NAMESPACE,
     TIMER_NAMESPACE,
     WINDOW_OPENED_NAMESPACE,
     TEMP_UNIT_NAMESPACE,
@@ -63,6 +64,7 @@ import {
     decodeThermostatModeCPush,
     decodeThermostatModeGetAck,
     decodeThermostatModePush,
+    decodeThermostatSystemPush,
     decodeTimer,
     decodeWindowOpened,
     encodeAlarmConfigSet,
@@ -98,6 +100,7 @@ import {
     encodeThermostatModeCSet,
     encodeThermostatModeGet,
     encodeThermostatModeSet,
+    encodeThermostatSystemSet,
     encodeTimerSet,
     encodeWindowOpenedSet,
     type ClimateAlarmKind,
@@ -106,6 +109,8 @@ import {
     type ClimateMode,
     type ClimateSchedule,
     type ClimateSensorMode,
+    type ClimateSystem,
+    type ClimateSystemWire,
     type ClimateTempUnit,
     type ClimateTimer,
     type ClimateWorkMode,
@@ -181,6 +186,9 @@ export interface ClimateValues {
     screenStandbyBrightness?: number;
     screenOperationBrightness?: number;
     screenStandbyView?: boolean;
+    compTemp?: number;
+    compTempEnable?: boolean;
+    wire?: ClimateSystemWire;
 }
 
 type ClimatePatch = ClimateValues & { channel?: number; id?: string };
@@ -249,6 +257,7 @@ export class ClimateTrait {
     private readonly bind: ClimateTraitBind;
     private readonly namespaces: ReadonlySet<string>;
     private last: ClimateValues = {};
+    private lastSystem: ClimateSystem | undefined;
 
     constructor(bind: ClimateTraitBind) {
         this.bind = bind;
@@ -883,6 +892,31 @@ export class ClimateTrait {
     }
 
     /**
+     * Last Thermostat.System state from PUSH or setSystem. Does not GET —
+     * MTS300 GET can disconnect.
+     */
+    getSystem(): ClimateSystem | undefined {
+        return this.lastSystem;
+    }
+
+    /**
+     * Writes Thermostat.System. No-op unless System is advertised.
+     */
+    async setSystem(patch: ClimateSystem): Promise<ClimateSystem> {
+        if (!this.has(THERMOSTAT_SYSTEM_NAMESPACE) || this.bind.kind !== 'board') {
+            return patch;
+        }
+        await this.bind.request({
+            namespace: THERMOSTAT_SYSTEM_NAMESPACE,
+            method: 'SET',
+            payload: encodeThermostatSystemSet({ channel: this.bind.channel, ...patch })
+        });
+        this.lastSystem = { ...this.lastSystem, ...patch };
+        this.applyChange(systemToClimateValues(patch));
+        return this.lastSystem;
+    }
+
+    /**
      * Sets the weekly schedule. Prefers ScheduleB when both are advertised.
      */
     async setSchedule(schedule: ClimateSchedule): Promise<{ schedule: ClimateSchedule }> {
@@ -1115,6 +1149,21 @@ export class ClimateTrait {
         }
         if (ns === SENSOR_LATEST_NAMESPACE) {
             this.applyMatching(decodeSensorLatestPush(payload, scale).map(sensorLatestToClimatePatch));
+            return;
+        }
+        if (ns === THERMOSTAT_SYSTEM_NAMESPACE) {
+            const entries = decodeThermostatSystemPush(payload);
+            this.applyMatching(entries.map((entry) => {
+                const { channel, ...system } = entry;
+                return { channel, ...systemToClimateValues(system) };
+            }));
+            for (const entry of entries) {
+                if (entry.channel !== this.bind.channel) {
+                    continue;
+                }
+                const { channel: _channel, ...system } = entry;
+                this.lastSystem = { ...this.lastSystem, ...system };
+            }
             return;
         }
     }
@@ -1375,6 +1424,14 @@ export class ClimateTrait {
     private boardScale(): number {
         return this.bind.kind === 'board' && this.bind.generation === 'mode' ? 10 : 100;
     }
+}
+
+function systemToClimateValues(system: ClimateSystem): ClimateValues {
+    return {
+        ...(system.compTemp !== undefined ? { compTemp: system.compTemp } : {}),
+        ...(system.compTempEnable !== undefined ? { compTempEnable: system.compTempEnable } : {}),
+        ...(system.wire !== undefined ? { wire: system.wire } : {})
+    };
 }
 
 function sensorLatestToClimatePatch(entry: SensorLatestState): ClimatePatch {

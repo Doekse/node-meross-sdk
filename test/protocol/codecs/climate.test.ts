@@ -31,9 +31,12 @@ import {
     encodeScreenBrightnessSet,
     encodeTempUnitSet,
     encodeWindowOpenedSet,
+    encodeThermostatSystemSet,
     decodePhysicalLock,
     decodeScreenBrightness,
-    decodeTempUnit
+    decodeTempUnit,
+    decodeThermostatSystemGetAck,
+    decodeThermostatSystemPush
 } from '../../../src/protocol/codecs/climate';
 
 describe('Thermostat.Mode codec', () => {
@@ -461,6 +464,67 @@ describe('Control.Screen.Brightness codec', () => {
         assert.deepEqual(
             encodeScreenBrightnessSet({ channel: 0, standby: 0.25, operation: 0.5, standbyView: false }),
             { brightness: [{ channel: 0, standby: 25, operation: 50, standbyView: 2 }] }
+        );
+    });
+});
+
+describe('Thermostat.System codec', () => {
+    const MTS300_CONTROL = {
+        channel: 0,
+        fLevel: 1,
+        hLevel: 1,
+        cLevel: 1,
+        sysType: 0,
+        hdType: 0,
+        compTempEnable: 1,
+        compType: 0,
+        compTemp: 150,
+        OBType: 0,
+        AUXType: 0,
+        AUXWorkType: 0,
+        dType: 0,
+        wire: { R: 2, Rh: 2, Rc: 1, C: 1, E: 2, WAux: 1 }
+    };
+
+    it('decodes an MTS300 PUSH with ModeC ×100 compTemp', () => {
+        const [entry] = decodeThermostatSystemPush({ control: [MTS300_CONTROL] });
+        assert.equal(entry?.channel, 0);
+        assert.equal(entry?.fLevel, 1);
+        assert.equal(entry?.hLevel, 1);
+        assert.equal(entry?.cLevel, 1);
+        assert.equal(entry?.sysType, 0);
+        assert.equal(entry?.compTempEnable, true);
+        assert.equal(entry?.compTemp, 1.5);
+        assert.deepEqual(entry?.wire, { R: 2, Rh: 2, Rc: 1, C: 1, E: 2, WAux: 1 });
+    });
+
+    it('passes unknown wire terminals through', () => {
+        const [entry] = decodeThermostatSystemPush({
+            control: [{ channel: 0, wire: { R: 2, Y: 1, W: 1 } }]
+        });
+        assert.deepEqual(entry?.wire, { R: 2, Y: 1, W: 1 });
+    });
+
+    it('decodes an empty GETACK control array', () => {
+        assert.deepEqual(decodeThermostatSystemGetAck({ control: [] }), []);
+    });
+
+    it('encodes SET with scaled compTemp and wire as-is', () => {
+        assert.deepEqual(
+            encodeThermostatSystemSet({
+                channel: 0,
+                compTempEnable: true,
+                compTemp: 1.5,
+                wire: { R: 2, Rh: 2, Rc: 1, C: 1, E: 2, WAux: 1 }
+            }),
+            {
+                control: [{
+                    channel: 0,
+                    compTempEnable: 1,
+                    compTemp: 150,
+                    wire: { R: 2, Rh: 2, Rc: 1, C: 1, E: 2, WAux: 1 }
+                }]
+            }
         );
     });
 });
