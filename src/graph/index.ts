@@ -5,6 +5,7 @@ import { CONSUMPTIONH_NAMESPACE } from '../protocol/codecs/consumptionh';
 import { CONSUMPTIONX_NAMESPACE } from '../protocol/codecs/consumptionx';
 import { ELECTRICITY_NAMESPACE, ELECTRICITYX_NAMESPACE } from '../protocol/codecs/electricity';
 import { TIMERX_NAMESPACE } from '../protocol/codecs/timerx';
+import { TRIGGERX_NAMESPACE } from '../protocol/codecs/triggerx';
 import { TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
 import type { MerossPayload } from '../protocol/message';
 import { abilityMaxCmdNum, decodeAbilityGetAck } from './ability';
@@ -95,6 +96,7 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
     const hasDnd = 'Appliance.System.DNDMode' in ability;
     const hasAlarm = 'Appliance.Control.Alarm' in ability;
     const hasTimerX = TIMERX_NAMESPACE in ability;
+    const hasTriggerX = TRIGGERX_NAMESPACE in ability;
     const isHub = 'Appliance.Hub.SubdeviceList' in ability || all.digest.hub !== undefined;
 
     return {
@@ -109,7 +111,8 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
         endpoints: isHub
             ? enrollHub(uuid, name, model, online, hasDnd, hasAlarm, all, input.subDevices ?? [])
             : enrollBoard(
-                uuid, name, model, online, boardEnergy, channelEnergy, hasDnd, hasTimerX, ability, all, input.cloud
+                uuid, name, model, online, boardEnergy, channelEnergy, hasDnd, hasTimerX, hasTriggerX,
+                ability, all, input.cloud
             )
     };
 }
@@ -215,6 +218,7 @@ function enrollBoard(
     channelEnergy: boolean,
     hasDnd: boolean,
     hasTimerX: boolean,
+    hasTriggerX: boolean,
     ability: AbilityMap,
     all: SystemAll,
     cloud: CloudDevice | undefined
@@ -258,6 +262,16 @@ function enrollBoard(
             && !extra.includes('media')
         ) {
             extra.push('timer');
+        }
+        // Same board endpoints as timer (socket/light/fan); skip media speakers.
+        if (
+            hasTriggerX
+            && (classHint === 'socket' || classHint === 'light' || classHint === 'fan')
+            && !traits.includes('trigger')
+            && !traits.includes('media')
+            && !extra.includes('media')
+        ) {
+            extra.push('trigger');
         }
         endpoints.push({
             id: `${uuid}:${channel}`,

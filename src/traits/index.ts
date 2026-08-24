@@ -22,3 +22,5 @@ export type { AlarmValues } from './alarm';
 export { DndTrait } from './dnd';
 export { TimerTrait } from './timer';
 export type { TimerEntry, TimerSetInput, TimerValues } from './timer';
+export { TriggerTrait } from './trigger';
+export type { TriggerEntry, TriggerRule, TriggerSetInput, TriggerValues } from './trigger';

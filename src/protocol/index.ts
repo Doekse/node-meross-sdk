@@ -469,3 +469,22 @@ export type {
     TimerXGetOptions,
     TimerXSetOptions
 } from './codecs/timerx';
+export {
+    DIGEST_TRIGGERX_NAMESPACE,
+    TRIGGERX_NAMESPACE,
+    decodeDigestTriggerXGetAck,
+    decodeTriggerXGetAck,
+    decodeTriggerXPush,
+    encodeDigestTriggerXGet,
+    encodeTriggerXDelete,
+    encodeTriggerXGet,
+    encodeTriggerXSet
+} from './codecs/triggerx';
+export type {
+    DigestTriggerXRow,
+    TriggerXDeleteOptions,
+    TriggerXEntry,
+    TriggerXGetOptions,
+    TriggerXRule,
+    TriggerXSetOptions
+} from './codecs/triggerx';

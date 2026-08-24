@@ -46,6 +46,7 @@ import { SprayTrait } from './traits/spray';
 import { SprinklerTrait } from './traits/sprinkler';
 import { SwitchTrait } from './traits/switch';
 import { TimerTrait } from './traits/timer';
+import { TriggerTrait } from './traits/trigger';
 
 export interface LoginOptions {
     email: string;
@@ -223,6 +224,7 @@ export class Session {
             endpoint.alarm?.handlePush(message);
             endpoint.dnd?.handlePush(message);
             endpoint.timer?.handlePush(message);
+            endpoint.trigger?.handlePush(message);
         }
     }
 
@@ -318,6 +320,7 @@ export class Session {
         let alarmTrait: AlarmTrait | undefined;
         let dndTrait: DndTrait | undefined;
         let timerTrait: TimerTrait | undefined;
+        let triggerTrait: TriggerTrait | undefined;
         if (graphEndpoint.traits.includes('switch')) {
             if (graphEndpoint.subDeviceId) {
                 switchTrait = new SwitchTrait({
@@ -551,6 +554,18 @@ export class Session {
                 })
             });
         }
+        if (graphEndpoint.traits.includes('trigger')) {
+            triggerTrait = new TriggerTrait({
+                uuid: physical.uuid,
+                channel,
+                namespaces,
+                request,
+                emitChange: (values) => endpoint.emit('change', {
+                    trait: 'trigger',
+                    values: { ...values }
+                })
+            });
+        }
         endpoint = new Endpoint({
             id: graphEndpoint.id,
             traits: graphEndpoint.traits,
@@ -569,6 +584,7 @@ export class Session {
             alarm: alarmTrait,
             dnd: dndTrait,
             timer: timerTrait,
+            trigger: triggerTrait,
             initialOnline: graphEndpoint.online
         });
         energyTrait?.start();
@@ -585,6 +601,7 @@ export class Session {
         alarmTrait?.start();
         dndTrait?.start();
         timerTrait?.start();
+        triggerTrait?.start();
         return endpoint;
     }
 

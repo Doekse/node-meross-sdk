@@ -1,0 +1,324 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import { Endpoint } from '../../src/endpoint';
+import { MerossError } from '../../src/errors';
+import {
+    DIGEST_TRIGGERX_NAMESPACE,
+    TRIGGERX_NAMESPACE,
+    encodeMessage,
+    type MerossMessage
+} from '../../src/protocol';
+import { TriggerTrait } from '../../src/traits/trigger';
+import type { TriggerTraitBind } from '../../src/traits/trigger';
+
+const KEY = 'stub-key';
+const UUID = '2201201075575151809248e1e988531b';
+const CHANNEL = 0;
+
+const WIRE_ENTRY = {
+    type: 0,
+    rule: {
+        week: 136,
+        duration: 9600
+    },
+    id: '3lewklurxp2eqnza',
+    enable: 1,
+    createTime: 1675675346,
+    channel: CHANNEL,
+    alias: 'stop'
+};
+
+const HOST_ENTRY = {
+    id: '3lewklurxp2eqnza',
+    channel: CHANNEL,
+    alias: 'stop',
+    enabled: true,
+    type: 0,
+    createTime: 1675675346,
+    rule: { duration: 9600, week: 136 }
+};
+
+function createHarness(options: {
+    getAck?: Record<string, unknown>;
+    namespaces?: ReadonlySet<string>;
+} = {}): {
+    trait: TriggerTrait;
+    requests: MerossMessage[];
+    changes: Record<string, unknown>[];
+} {
+    const requests: MerossMessage[] = [];
+    const changes: Record<string, unknown>[] = [];
+    const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['trigger'] });
+    const namespaces = options.namespaces ?? new Set([TRIGGERX_NAMESPACE, DIGEST_TRIGGERX_NAMESPACE]);
+    const bind: TriggerTraitBind = {
+        uuid: UUID,
+        channel: CHANNEL,
+        namespaces,
+        request: async (requestOptions) => {
+            const message = encodeMessage({
+                namespace: requestOptions.namespace,
+                method: requestOptions.method,
+                key: KEY,
+                from: '/app/test/subscribe',
+                payload: requestOptions.payload,
+                uuid: UUID
+            });
+            requests.push(message);
+            if (requestOptions.namespace === DIGEST_TRIGGERX_NAMESPACE) {
+                return encodeMessage({
+                    namespace: requestOptions.namespace,
+                    method: 'GETACK',
+                    key: KEY,
+                    from: `/appliance/${UUID}/publish`,
+                    messageId: message.header.messageId,
+                    uuid: UUID,
+                    payload: {
+                        digest: [{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]
+                    }
+                });
+            }
+            if (requestOptions.method === 'GET') {
+                return encodeMessage({
+                    namespace: requestOptions.namespace,
+                    method: 'GETACK',
+                    key: KEY,
+                    from: `/appliance/${UUID}/publish`,
+                    messageId: message.header.messageId,
+                    uuid: UUID,
+                    payload: options.getAck ?? { triggerx: WIRE_ENTRY }
+                });
+            }
+            return encodeMessage({
+                namespace: requestOptions.namespace,
+                method: `${requestOptions.method}ACK`,
+                key: KEY,
+                from: `/appliance/${UUID}/publish`,
+                messageId: message.header.messageId,
+                uuid: UUID,
+                payload: {}
+            });
+        },
+        emitChange: (values) => {
+            changes.push({ ...values });
+            endpoint.emit('change', { trait: 'trigger', values: { ...values } });
+        }
+    };
+    return { trait: new TriggerTrait(bind), requests, changes };
+}
+
+async function flush(): Promise<void> {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+function pushMessage(payload: Record<string, unknown>): MerossMessage {
+    return encodeMessage({
+        namespace: TRIGGERX_NAMESPACE,
+        method: 'PUSH',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload
+    });
+}
+
+describe('TriggerTrait', () => {
+    it('polls Digest.TriggerX then GET by id on start', async () => {
+        const { trait, requests, changes } = createHarness();
+        trait.start();
+        await flush();
+        assert.equal(requests[0]?.header.namespace, DIGEST_TRIGGERX_NAMESPACE);
+        assert.deepEqual(requests[0]?.payload, {});
+        assert.equal(requests[1]?.header.namespace, TRIGGERX_NAMESPACE);
+        assert.deepEqual(requests[1]?.payload, { triggerx: { id: WIRE_ENTRY.id } });
+        assert.deepEqual(trait.list(), [HOST_ENTRY]);
+        assert.equal((changes[0]?.entries as unknown[])?.length, 1);
+    });
+
+    it('skips the initial poll when Digest.TriggerX is not advertised', async () => {
+        const { trait, requests, changes } = createHarness({
+            namespaces: new Set([TRIGGERX_NAMESPACE])
+        });
+        trait.start();
+        await flush();
+        assert.equal(requests.length, 0);
+        assert.deepEqual(trait.list(), []);
+        assert.equal(changes.length, 0);
+    });
+
+    it('shares one Digest.TriggerX GET across channels on the same uuid', async () => {
+        const requests: MerossMessage[] = [];
+        const namespaces = new Set([TRIGGERX_NAMESPACE, DIGEST_TRIGGERX_NAMESPACE]);
+        const request: TriggerTraitBind['request'] = async (requestOptions) => {
+            const message = encodeMessage({
+                namespace: requestOptions.namespace,
+                method: requestOptions.method,
+                key: KEY,
+                from: '/app/test/subscribe',
+                payload: requestOptions.payload,
+                uuid: UUID
+            });
+            requests.push(message);
+            if (requestOptions.namespace === DIGEST_TRIGGERX_NAMESPACE) {
+                return encodeMessage({
+                    namespace: requestOptions.namespace,
+                    method: 'GETACK',
+                    key: KEY,
+                    from: `/appliance/${UUID}/publish`,
+                    messageId: message.header.messageId,
+                    uuid: UUID,
+                    payload: {
+                        digest: [
+                            { channel: 0, id: 'trigger-ch0', count: 1 },
+                            { channel: 1, id: 'trigger-ch1', count: 1 }
+                        ]
+                    }
+                });
+            }
+            const raw = requestOptions.payload.triggerx;
+            const id = typeof raw === 'object' && raw !== null && typeof (raw as { id?: unknown }).id === 'string'
+                ? (raw as { id: string }).id
+                : WIRE_ENTRY.id;
+            const channel = id === 'trigger-ch1' ? 1 : 0;
+            return encodeMessage({
+                namespace: requestOptions.namespace,
+                method: 'GETACK',
+                key: KEY,
+                from: `/appliance/${UUID}/publish`,
+                messageId: message.header.messageId,
+                uuid: UUID,
+                payload: {
+                    triggerx: { ...WIRE_ENTRY, id, channel }
+                }
+            });
+        };
+        const trait0 = new TriggerTrait({
+            uuid: UUID,
+            channel: 0,
+            namespaces,
+            request,
+            emitChange: () => {}
+        });
+        const trait1 = new TriggerTrait({
+            uuid: UUID,
+            channel: 1,
+            namespaces,
+            request,
+            emitChange: () => {}
+        });
+        trait0.start();
+        trait1.start();
+        await flush();
+        await flush();
+        assert.equal(
+            requests.filter((message) => message.header.namespace === DIGEST_TRIGGERX_NAMESPACE).length,
+            1
+        );
+        assert.equal(trait0.list()[0]?.id, 'trigger-ch0');
+        assert.equal(trait1.list()[0]?.id, 'trigger-ch1');
+    });
+
+    it('set SETs a triggerx object with rule and updates the list', async () => {
+        const { trait, requests, changes } = createHarness({ getAck: { triggerx: [] } });
+        const entry = await trait.set({
+            id: 'qm7n5caqxjapjfh5',
+            alias: 'Apagado pergola',
+            createTime: 1614716670,
+            rule: { duration: 46800, week: 255 }
+        });
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(requests[0]?.payload, {
+            triggerx: {
+                id: 'qm7n5caqxjapjfh5',
+                channel: CHANNEL,
+                type: 1,
+                enable: 1,
+                alias: 'Apagado pergola',
+                createTime: 1614716670,
+                rule: { duration: 46800, week: 255 }
+            }
+        });
+        assert.equal(entry.rule.duration, 46800);
+        assert.equal(trait.list().length, 1);
+        assert.deepEqual(changes[0], { entries: trait.list() });
+    });
+
+    it('setEnabled SETs enable from a cached entry', async () => {
+        const { trait, requests } = createHarness();
+        trait.start();
+        await flush();
+        requests.length = 0;
+        await trait.setEnabled(HOST_ENTRY.id, false);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.equal((requests[0]?.payload.triggerx as { enable: number }).enable, 0);
+        assert.equal(trait.list()[0]?.enabled, false);
+    });
+
+    it('setEnabled throws when the id is unknown', async () => {
+        const { trait } = createHarness({ getAck: { triggerx: [] } });
+        await assert.rejects(
+            () => trait.setEnabled('missing', true),
+            (error: unknown) => error instanceof MerossError && error.code === 'TRIGGER_NOT_FOUND'
+        );
+    });
+
+    it('remove DELETEs by id and drops the local row without waiting for PUSH', async () => {
+        const { trait, requests, changes } = createHarness();
+        trait.start();
+        await flush();
+        changes.length = 0;
+        requests.length = 0;
+        await trait.remove(HOST_ENTRY.id);
+        assert.equal(requests[0]?.header.method, 'DELETE');
+        assert.deepEqual(requests[0]?.payload, { triggerx: { id: HOST_ENTRY.id } });
+        assert.deepEqual(trait.list(), []);
+        assert.deepEqual(changes[0], { entries: [] });
+    });
+
+    it('handlePush upserts this channel only', () => {
+        const { trait, changes } = createHarness({ getAck: { triggerx: [] } });
+        trait.handlePush(pushMessage({
+            triggerx: [
+                {
+                    ...WIRE_ENTRY,
+                    id: '50d64c3bd2b391b0',
+                    alias: 'patio off',
+                    rule: { duration: 1800, week: 255 }
+                },
+                {
+                    ...WIRE_ENTRY,
+                    channel: 1,
+                    id: 'other-channel'
+                }
+            ]
+        }));
+        assert.equal(trait.list().length, 1);
+        assert.equal(trait.list()[0]?.id, '50d64c3bd2b391b0');
+        assert.equal(trait.list()[0]?.rule.duration, 1800);
+        assert.equal((changes[0]?.entries as unknown[])?.length, 1);
+    });
+
+    it('handlePush does not emit when the list is unchanged', async () => {
+        const { trait, changes } = createHarness();
+        trait.start();
+        await flush();
+        changes.length = 0;
+        trait.handlePush(pushMessage({ triggerx: [WIRE_ENTRY] }));
+        assert.equal(changes.length, 0);
+    });
+
+    it('ignores PUSH when uuid does not match the bind', () => {
+        const { trait, changes } = createHarness({ getAck: { triggerx: [] } });
+        trait.handlePush(encodeMessage({
+            namespace: TRIGGERX_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: '/appliance/other/publish',
+            uuid: 'other',
+            payload: { triggerx: [WIRE_ENTRY] }
+        }));
+        assert.equal(changes.length, 0);
+        assert.deepEqual(trait.list(), []);
+    });
+});

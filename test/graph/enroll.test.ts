@@ -417,6 +417,137 @@ describe('enrollPhysicalDevice', () => {
         );
     });
 
+    it('appends trigger to each strip socket when Control.TriggerX is advertised', () => {
+        const strip = loadFixture('togglex-getack-all.json');
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.Control.TriggerX': {}
+            }),
+            allPayload: systemAllWithDigest({ togglex: strip.payload.togglex })
+        });
+
+        assert.deepEqual(
+            device.endpoints.map((endpoint) => ({
+                channel: endpoint.channel,
+                traits: [...endpoint.traits]
+            })),
+            [
+                { channel: 0, traits: ['switch', 'trigger'] },
+                ...[1, 2, 3, 4].map((channel) => ({
+                    channel,
+                    traits: ['switch', 'trigger']
+                }))
+            ]
+        );
+    });
+
+    it('appends both timer and trigger when both namespaces are advertised', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.Control.TimerX': {},
+                'Appliance.Control.TriggerX': {}
+            }),
+            allPayload: systemAllWithDigest({
+                togglex: [{ channel: 0, onoff: 1 }]
+            })
+        });
+
+        assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'timer', 'trigger']);
+    });
+
+    it('does not append trigger to cover channels when Control.TriggerX is advertised', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.GarageDoor.State': {},
+                    'Appliance.Control.TriggerX': {},
+                    'Appliance.Control.ToggleX': {}
+                }
+            },
+            allPayload: systemAllWithDigest({
+                garageDoor: [{ channel: 1 }, { channel: 2 }],
+                togglex: [
+                    { channel: 0, onoff: 0 },
+                    { channel: 1, onoff: 0 },
+                    { channel: 2, onoff: 0 }
+                ]
+            })
+        });
+
+        assert.equal(
+            device.endpoints.some((endpoint) => endpoint.traits.includes('trigger')),
+            false
+        );
+    });
+
+    it('does not append trigger when Control.Mp3 already takes the light endpoint', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Light': {},
+                    'Appliance.Control.Mp3': {},
+                    'Appliance.Control.ToggleX': {},
+                    'Appliance.Control.TriggerX': {}
+                }
+            },
+            allPayload: systemAllWithDigest({
+                light: [{ channel: 0 }],
+                togglex: [{ channel: 0, onoff: 1 }]
+            })
+        });
+
+        assert.deepEqual(device.endpoints[0]?.traits, ['light', 'media']);
+    });
+
+    it('does not append trigger to hub parents or children when Control.TriggerX is advertised', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Hub.SubdeviceList': {},
+                    'Appliance.Control.TriggerX': {},
+                    'Appliance.Control.Multiple': { maxCmdNum: 5 }
+                }
+            },
+            allPayload: {
+                all: {
+                    system: {
+                        hardware: {
+                            type: 'msh300',
+                            uuid: HUB_UUID,
+                            macAddress: 'aa:bb:cc:dd:ee:ff'
+                        },
+                        firmware: { innerIp: '10.0.0.1' },
+                        online: { status: 1 }
+                    },
+                    digest: {
+                        hub: {
+                            hubId: -381895630,
+                            mode: 0,
+                            subdevice: [{ id: '120027D21C19', status: 1 }]
+                        }
+                    }
+                }
+            },
+            cloud: {
+                uuid: HUB_UUID,
+                devName: 'Hall hub',
+                deviceType: 'msh300',
+                onlineStatus: 1,
+                channels: []
+            },
+            subDevices: [{
+                subDeviceId: '120027D21C19',
+                subDeviceType: 'ms130',
+                subDeviceName: 'Hall sensor'
+            }]
+        });
+
+        assert.equal(
+            device.endpoints.some((endpoint) => endpoint.traits.includes('trigger')),
+            false
+        );
+    });
+
     it('keeps both channels on a 2-gang wall switch', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: socketAbility(),
