@@ -1,14 +1,26 @@
 import {
+    FAN_BTN_CONFIG_NAMESPACE,
+    FAN_CONFIG_NAMESPACE,
     FAN_NAMESPACE,
+    FILTER_MAINTENANCE_NAMESPACE,
     TOGGLEX_NAMESPACE,
+    decodeFanBtnConfigPush,
+    decodeFanConfigGetAck,
     decodeFanGetAck,
     decodeFanPush,
+    decodeFilterMaintenancePush,
     decodeToggleXGetAck,
     decodeToggleXPush,
+    encodeFanBtnConfigPushQuery,
+    encodeFanBtnConfigSet,
+    encodeFanConfigGet,
     encodeFanGet,
     encodeFanSet,
+    encodeFilterMaintenancePushQuery,
     encodeToggleXGet,
     encodeToggleXSet,
+    type FanButtonConfig,
+    type FanButtonConfigSetOptions,
     type MerossMessage
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
@@ -18,7 +30,11 @@ export interface FanValues {
     /** Speed as 0..1 of advertised maxSpeed. */
     speed?: number;
     maxSpeed?: number;
+    /** Remaining filter life as 0..1 from FilterMaintenance. */
+    filterLife?: number;
 }
+
+export type { FanButtonConfig, FanButtonConfigSetOptions };
 
 /**
  * Transport + channel bind for one Control.Fan endpoint. Session supplies this;
@@ -27,6 +43,8 @@ export interface FanValues {
 export interface FanTraitBind {
     uuid: string;
     channel: number;
+    /** Ability keys; extras no-op when the namespace is absent. */
+    namespaces?: ReadonlySet<string>;
     /** Device-level on/off via ToggleX (preferred when available). */
     hasToggleX: boolean;
     /** Device-level on/off via classic Toggle (only when ToggleX is absent). */
@@ -38,16 +56,23 @@ export interface FanTraitBind {
 /**
  * Fan speed and power for one enrolled channel. Power routes through
  * ToggleX/Toggle when the device has it; Control.Fan handles the rest. Speed is
- * host 0..1; wire is 0..maxSpeed from the last GETACK.
+ * host 0..1; wire is 0..maxSpeed from the last GETACK. Optional Fan.Config,
+ * Fan.BtnConfig, and FilterMaintenance attach when Ability advertises them.
  */
 export class FanTrait {
     private readonly bind: FanTraitBind;
+    private readonly namespaces: ReadonlySet<string>;
     private last: FanValues = {};
     private maxSpeed = 1;
     private savedSpeed = 1;
 
     constructor(bind: FanTraitBind) {
         this.bind = bind;
+        this.namespaces = bind.namespaces ?? new Set();
+    }
+
+    private has(namespace: string): boolean {
+        return this.namespaces.has(namespace);
     }
 
     /** Fetches initial state. Idempotent; Session calls this once and does not await it. */
@@ -63,6 +88,11 @@ export class FanTrait {
     /** Last known speed in `0..1`. */
     getSpeed(): number | undefined {
         return this.last.speed;
+    }
+
+    /** Last known filter life in `0..1`. */
+    getFilterLife(): number | undefined {
+        return this.last.filterLife;
     }
 
     /**
@@ -101,6 +131,38 @@ export class FanTrait {
     }
 
     /**
+     * Reads Fan.BtnConfig via PUSH-query. GET disconnects on MFC100, so this is
+     * never polled from `start()`. Returns `undefined` when BtnConfig is absent.
+     */
+    async getButtonConfig(): Promise<FanButtonConfig | undefined> {
+        if (!this.has(FAN_BTN_CONFIG_NAMESPACE)) {
+            return undefined;
+        }
+        const reply = await this.bind.request({
+            namespace: FAN_BTN_CONFIG_NAMESPACE,
+            method: 'PUSH',
+            payload: encodeFanBtnConfigPushQuery()
+        });
+        return decodeFanBtnConfigPush(reply.payload).find(
+            (entry) => entry.channel === this.bind.channel
+        );
+    }
+
+    /**
+     * Writes Fan.BtnConfig for this channel. No-op when BtnConfig is absent.
+     */
+    async setButtonConfig(options: Omit<FanButtonConfigSetOptions, 'channel'>): Promise<void> {
+        if (!this.has(FAN_BTN_CONFIG_NAMESPACE)) {
+            return;
+        }
+        await this.bind.request({
+            namespace: FAN_BTN_CONFIG_NAMESPACE,
+            method: 'SET',
+            payload: encodeFanBtnConfigSet({ channel: this.bind.channel, ...options })
+        });
+    }
+
+    /**
      * Applies a firmware PUSH for this endpoint.
      */
     handlePush(message: MerossMessage): void {
@@ -130,12 +192,21 @@ export class FanTrait {
             return;
         }
 
-        if (message.header.namespace !== FAN_NAMESPACE) {
+        const ns = message.header.namespace;
+        if (ns === FAN_NAMESPACE) {
+            for (const entry of decodeFanPush(message.payload)) {
+                if (entry.channel === this.bind.channel) {
+                    this.applyFanEntry(entry);
+                }
+            }
             return;
         }
-        for (const entry of decodeFanPush(message.payload)) {
-            if (entry.channel === this.bind.channel) {
-                this.applyFanEntry(entry);
+
+        if (ns === FILTER_MAINTENANCE_NAMESPACE && this.has(ns)) {
+            for (const entry of decodeFilterMaintenancePush(message.payload)) {
+                if (entry.channel === this.bind.channel) {
+                    this.applyChange({ filterLife: entry.life / 100 });
+                }
             }
         }
     }
@@ -199,6 +270,44 @@ export class FanTrait {
             if (fan) {
                 this.applyFanEntry(fan);
             }
+
+            if (this.has(FAN_CONFIG_NAMESPACE)) {
+                const configReply = await this.bind.request({
+                    namespace: FAN_CONFIG_NAMESPACE,
+                    method: 'GET',
+                    payload: encodeFanConfigGet({ channel: this.bind.channel })
+                });
+                const config = decodeFanConfigGetAck(configReply.payload).find(
+                    (entry) => entry.channel === this.bind.channel
+                );
+                if (
+                    config?.maxSpeed !== undefined
+                    && config.maxSpeed > 0
+                    && (fan?.maxSpeed === undefined || fan.maxSpeed <= 0)
+                ) {
+                    this.maxSpeed = config.maxSpeed;
+                    if (fan) {
+                        this.applyFanSpeed(fan.speed);
+                    } else {
+                        this.applyChange({ maxSpeed: this.maxSpeed });
+                    }
+                }
+            }
+
+            if (this.has(FILTER_MAINTENANCE_NAMESPACE)) {
+                const filterReply = await this.bind.request({
+                    namespace: FILTER_MAINTENANCE_NAMESPACE,
+                    method: 'PUSH',
+                    payload: encodeFilterMaintenancePushQuery()
+                });
+                const filter = decodeFilterMaintenancePush(filterReply.payload).find(
+                    (entry) => entry.channel === this.bind.channel
+                );
+                if (filter) {
+                    this.applyChange({ filterLife: filter.life / 100 });
+                }
+            }
+
             if (!this.bind.hasToggleX) {
                 return;
             }

@@ -17,6 +17,7 @@ export {
 export type {
     SensorFamily, SensorValues, SensorSmokeStatus, SensorAlertBand,
     PresenceValues, SprinklerValues, SprinklerScheduleEntry, SprayValues, SprayMode, FanValues,
+    FanButtonConfig, FanButtonConfigSetOptions,
     DiffuserValues, DiffuserLightMode, DiffuserSprayMode, MediaValues, AlarmValues,
     TimerEntry, TimerSetInput, TimerValues,
     TriggerEntry, TriggerRule, TriggerSetInput, TriggerValues

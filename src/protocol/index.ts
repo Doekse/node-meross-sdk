@@ -404,12 +404,32 @@ export {
 export type { SprayChannelState, SprayMode } from './codecs/spray';
 export {
     FAN_NAMESPACE,
+    FAN_CONFIG_NAMESPACE,
+    FAN_BTN_CONFIG_NAMESPACE,
+    FILTER_MAINTENANCE_NAMESPACE,
     decodeFanGetAck,
     decodeFanPush,
+    decodeFanConfigGetAck,
+    decodeFanBtnConfigPush,
+    decodeFilterMaintenancePush,
     encodeFanGet,
-    encodeFanSet
+    encodeFanSet,
+    encodeFanConfigGet,
+    encodeFanBtnConfigPushQuery,
+    encodeFanBtnConfigSet,
+    encodeFilterMaintenancePushQuery
 } from './codecs/fan';
-export type { FanChannelState, FanGetOptions, FanSetOptions } from './codecs/fan';
+export type {
+    FanChannelState,
+    FanGetOptions,
+    FanSetOptions,
+    FanConfigState,
+    FanButtonConfig,
+    FanButtonConfigSetOptions,
+    FanPowerBtn,
+    FanControlBtn,
+    FilterMaintenanceState
+} from './codecs/fan';
 export {
     DIFFUSER_LIGHT_NAMESPACE,
     DIFFUSER_SENSOR_NAMESPACE,

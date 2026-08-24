@@ -3,10 +3,17 @@ import { describe, it } from 'node:test';
 
 import { ProtocolError } from '../../../src/errors';
 import {
+    decodeFanBtnConfigPush,
+    decodeFanConfigGetAck,
     decodeFanGetAck,
     decodeFanPush,
+    decodeFilterMaintenancePush,
+    encodeFanBtnConfigPushQuery,
+    encodeFanBtnConfigSet,
+    encodeFanConfigGet,
     encodeFanGet,
-    encodeFanSet
+    encodeFanSet,
+    encodeFilterMaintenancePushQuery
 } from '../../../src/protocol/codecs/fan';
 
 describe('Control.Fan codec', () => {
@@ -47,5 +54,76 @@ describe('Control.Fan codec', () => {
 
     it('rejects a missing speed', () => {
         assert.throws(() => decodeFanGetAck({ fan: [{ channel: 0 }] }), ProtocolError);
+    });
+});
+
+describe('Fan.Config codec', () => {
+    it('encodes GET with config channel list', () => {
+        assert.deepEqual(encodeFanConfigGet({ channel: 0 }), {
+            config: [{ channel: 0 }]
+        });
+    });
+
+    it('decodes MFC100 GETACK maxSpeed', () => {
+        assert.deepEqual(
+            decodeFanConfigGetAck({ config: [{ channel: 0, maxSpeed: 0 }] }),
+            [{ channel: 0, maxSpeed: 0 }]
+        );
+    });
+});
+
+describe('Fan.BtnConfig codec', () => {
+    it('encodes PUSH-query as empty object', () => {
+        assert.deepEqual(encodeFanBtnConfigPushQuery(), {});
+    });
+
+    it('encodes SET with powerBtn or controlBtn', () => {
+        assert.deepEqual(
+            encodeFanBtnConfigSet({ channel: 0, powerBtn: { type: 1 } }),
+            { config: [{ channel: 0, powerBtn: { type: 1 } }] }
+        );
+        assert.deepEqual(
+            encodeFanBtnConfigSet({ channel: 1, controlBtn: { onoffType: 1, levelType: 2 } }),
+            { config: [{ channel: 1, controlBtn: { onoffType: 1, levelType: 2 } }] }
+        );
+    });
+
+    it('decodes MFC100 PUSH fixture', () => {
+        assert.deepEqual(
+            decodeFanBtnConfigPush({
+                config: [
+                    { channel: 0, powerBtn: { type: 1 } },
+                    { channel: 1, controlBtn: { onoffType: 1, levelType: 2 } },
+                    { channel: 2, controlBtn: { onoffType: 1, levelType: 2 } }
+                ]
+            }),
+            [
+                { channel: 0, powerBtn: { type: 1 } },
+                { channel: 1, controlBtn: { onoffType: 1, levelType: 2 } },
+                { channel: 2, controlBtn: { onoffType: 1, levelType: 2 } }
+            ]
+        );
+    });
+});
+
+describe('FilterMaintenance codec', () => {
+    it('encodes PUSH-query as empty object', () => {
+        assert.deepEqual(encodeFilterMaintenancePushQuery(), {});
+    });
+
+    it('decodes life percent from PUSH', () => {
+        assert.deepEqual(
+            decodeFilterMaintenancePush({
+                filter: [{ channel: 0, life: 100, lmTime: 1748695021 }]
+            }),
+            [{ channel: 0, life: 100, lmTime: 1748695021 }]
+        );
+    });
+
+    it('rejects a missing life', () => {
+        assert.throws(
+            () => decodeFilterMaintenancePush({ filter: [{ channel: 0 }] }),
+            ProtocolError
+        );
     });
 });

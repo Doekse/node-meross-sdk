@@ -12,7 +12,7 @@ export type { SprinklerValues, SprinklerScheduleEntry } from './sprinkler';
 export { SprayTrait } from './spray';
 export type { SprayValues, SprayMode } from './spray';
 export { FanTrait } from './fan';
-export type { FanValues } from './fan';
+export type { FanValues, FanButtonConfig, FanButtonConfigSetOptions } from './fan';
 export { DiffuserTrait } from './diffuser';
 export type { DiffuserValues, DiffuserLightMode, DiffuserSprayMode } from './diffuser';
 export { MediaTrait } from './media';

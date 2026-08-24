@@ -491,6 +491,7 @@ export class Session {
             fanTrait = new FanTrait({
                 uuid: physical.uuid,
                 channel,
+                namespaces,
                 hasToggleX: TOGGLEX_NAMESPACE in physical.ability,
                 hasToggle: !(TOGGLEX_NAMESPACE in physical.ability)
                     && 'Appliance.Control.Toggle' in physical.ability,
