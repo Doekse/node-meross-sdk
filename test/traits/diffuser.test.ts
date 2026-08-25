@@ -126,7 +126,10 @@ describe('DiffuserTrait', () => {
         const { trait, requests } = createHarness();
         await trait.setSprayMode('strong');
         assert.equal(requests[0]?.header.namespace, DIFFUSER_SPRAY_NAMESPACE);
-        assert.deepEqual(requests[0]?.payload, { spray: [{ channel: CHANNEL, mode: 1 }] });
+        assert.deepEqual(requests[0]?.payload, {
+            type: 'mod100',
+            spray: [{ channel: CHANNEL, mode: 1 }]
+        });
         assert.equal(trait.getSprayMode(), 'strong');
     });
 
@@ -134,7 +137,9 @@ describe('DiffuserTrait', () => {
         const { trait, requests } = createHarness();
         await trait.setRgb({ r: 0x11, g: 0x22, b: 0x33 });
         assert.equal(requests[0]?.header.namespace, DIFFUSER_LIGHT_NAMESPACE);
-        const light = (requests[0]?.payload as { light: Array<{ rgb: number; mode: number }> }).light[0];
+        const payload = requests[0]?.payload as { type: string; light: Array<{ rgb: number; mode: number }> };
+        assert.equal(payload.type, 'mod100');
+        const light = payload.light[0];
         assert.equal(light?.rgb, 0x112233);
         assert.equal(light?.mode, 1);
         assert.deepEqual(trait.getRgb(), { r: 0x11, g: 0x22, b: 0x33 });

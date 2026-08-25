@@ -451,6 +451,7 @@ export {
     DIFFUSER_LIGHT_NAMESPACE,
     DIFFUSER_SENSOR_NAMESPACE,
     DIFFUSER_SPRAY_NAMESPACE,
+    DIFFUSER_TYPE,
     decodeDiffuserLightGetAck,
     decodeDiffuserLightPush,
     decodeDiffuserSensorGetAck,

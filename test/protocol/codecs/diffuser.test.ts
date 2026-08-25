@@ -18,7 +18,7 @@ describe('Diffuser.Light codec', () => {
         assert.deepEqual(encodeDiffuserLightGet(), {});
     });
 
-    it('encodes SET as a one-entry light list', () => {
+    it('encodes SET as a one-entry light list with type mod100', () => {
         assert.deepEqual(encodeDiffuserLightSet({
             channel: 0,
             on: true,
@@ -26,6 +26,7 @@ describe('Diffuser.Light codec', () => {
             luminance: 100,
             rgb: 16711935
         }), {
+            type: 'mod100',
             light: [{ channel: 0, onoff: 1, mode: 1, luminance: 100, rgb: 16711935 }]
         });
     });
@@ -47,6 +48,7 @@ describe('Diffuser.Spray codec', () => {
     it('encodes GET as an empty payload and SET as a list', () => {
         assert.deepEqual(encodeDiffuserSprayGet(), {});
         assert.deepEqual(encodeDiffuserSpraySet({ channel: 0, mode: 'off' }), {
+            type: 'mod100',
             spray: [{ channel: 0, mode: 2 }]
         });
     });

@@ -5,6 +5,12 @@ export const DIFFUSER_LIGHT_NAMESPACE = 'Appliance.Control.Diffuser.Light';
 export const DIFFUSER_SPRAY_NAMESPACE = 'Appliance.Control.Diffuser.Spray';
 export const DIFFUSER_SENSOR_NAMESPACE = 'Appliance.Control.Diffuser.Sensor';
 
+/**
+ * Firmware product family on SET. MOD150 keeps using `mod100` because the
+ * mode tables are the same.
+ */
+export const DIFFUSER_TYPE = 'mod100';
+
 /** Wire 0 = rotating-colors, 1 = fixed-rgb, 2 = fixed-luminance. */
 export type DiffuserLightMode = 'rotating-colors' | 'fixed-rgb' | 'fixed-luminance';
 
@@ -72,7 +78,7 @@ export function encodeDiffuserLightGet(): MerossPayload {
     return {};
 }
 
-/** SET is a one-entry list. */
+/** SET is a one-entry list with firmware `type` on the payload root. */
 export function encodeDiffuserLightSet(options: DiffuserLightSetOptions): MerossPayload {
     const light: Record<string, unknown> = { channel: options.channel };
     if (options.on !== undefined) {
@@ -87,7 +93,7 @@ export function encodeDiffuserLightSet(options: DiffuserLightSetOptions): Meross
     if (options.rgb !== undefined) {
         light.rgb = options.rgb;
     }
-    return { light: [light] };
+    return { type: DIFFUSER_TYPE, light: [light] };
 }
 
 export function decodeDiffuserLightGetAck(payload: MerossPayload): DiffuserLightState[] {
@@ -103,9 +109,10 @@ export function encodeDiffuserSprayGet(): MerossPayload {
     return {};
 }
 
-/** SET is a one-entry list. */
+/** SET is a one-entry list with firmware `type` on the payload root. */
 export function encodeDiffuserSpraySet(options: DiffuserSpraySetOptions): MerossPayload {
     return {
+        type: DIFFUSER_TYPE,
         spray: [{ channel: options.channel, mode: SPRAY_MODE_TO_WIRE[options.mode] }]
     };
 }
