@@ -77,8 +77,8 @@ export interface SessionOptions {
 }
 
 /**
- * Cloud credentials plus live inventory. Homey persists {@link TokenData}
- * via `storeData` and rebuilds a session with {@link Session.restore}.
+ * Cloud credentials plus live inventory. Hosts persist {@link TokenData}
+ * and rebuild a session with {@link Session.restore}.
  */
 export class Session {
     readonly inventory: Inventory;
@@ -108,7 +108,7 @@ export class Session {
     }
 
     /**
-     * Exchanges email/password (and optional MFA) for a session.
+     * Password is not stored; only {@link TokenData} is kept for {@link restore}.
      */
     static async login(
         options: LoginOptions,
@@ -119,7 +119,7 @@ export class Session {
     }
 
     /**
-     * Rebuilds a session from a previously stored token without a password.
+     * Rebuilds a session from a stored token without a password.
      */
     static restore(token: TokenData, sessionOptions: SessionOptions = {}): Session {
         const cloud = CloudClient.restore(token, sessionOptions.cloud);
@@ -127,15 +127,15 @@ export class Session {
     }
 
     /**
-     * Returns a copy of the stored token so callers can persist it safely.
+     * Returns a copy so callers can persist the token without mutating session state.
      */
     getToken(): TokenData {
         return { ...this.token };
     }
 
     /**
-     * Opens MQTT/LAN transports, enrolls devices from Ability + System.All,
-     * and refreshes {@link Inventory}.
+     * Opens MQTT and LAN, then enrolls boards into {@link Inventory}.
+     * Transports stay internal; hosts only see inventory after this.
      */
     async connect(): Promise<void> {
         if (this.router) {
@@ -165,8 +165,8 @@ export class Session {
     }
 
     /**
-     * Re-lists the cloud account and protocol-enrolls boards that are not in
-     * inventory yet. Offline or unreachable boards are skipped.
+     * Re-lists the cloud account and enrolls boards not yet in inventory.
+     * Offline or unreachable boards are skipped so one timeout cannot block the rest.
      */
     async sync(): Promise<void> {
         if (!this.router) {
@@ -199,7 +199,7 @@ export class Session {
     }
 
     /**
-     * Returns the Homey-facing device for an inventory row id.
+     * Looks up an enrolled endpoint by inventory row id.
      */
     endpoint(id: string): Endpoint {
         const endpoint = this.endpoints.get(id);

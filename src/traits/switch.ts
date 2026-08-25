@@ -19,7 +19,7 @@ export interface SwitchTraitBoardBind {
     namespace: typeof TOGGLEX_NAMESPACE | 'Appliance.Control.Toggle';
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
     emitChange: (on: boolean) => void;
-    /** System.All digest `onoff` so Homey can read the tile before the first PUSH. */
+    /** System.All digest `onoff` so hosts can read on/off before the first PUSH. */
     initialOn?: boolean;
 }
 
@@ -32,7 +32,7 @@ export interface SwitchTraitHubBind {
     subDeviceId: string;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
     emitChange: (on: boolean) => void;
-    /** Hub digest `onoff` so Homey can read the tile before the first PUSH. */
+    /** Hub digest `onoff` so hosts can read on/off before the first PUSH. */
     initialOn?: boolean;
 }
 
@@ -51,16 +51,11 @@ export class SwitchTrait {
         this.on = bind.initialOn;
     }
 
-    /**
-     * Last known on/off. Undefined until digest, SET, or PUSH fills it.
-     */
+    /** Undefined until digest, SET, or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.on;
     }
 
-    /**
-     * Turns the bound channel or hub subdevice on or off.
-     */
     async setOn(on: boolean): Promise<{ on: boolean }> {
         const payload = this.bind.kind === 'hub'
             ? encodeHubToggleXSet({ id: this.bind.subDeviceId, on })
@@ -79,9 +74,6 @@ export class SwitchTrait {
         return { on };
     }
 
-    /**
-     * Applies a firmware PUSH for this endpoint's namespace and channel or subdevice id.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];

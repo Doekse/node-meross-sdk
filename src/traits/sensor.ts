@@ -31,10 +31,10 @@ import {
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
 
-/** Hub child sensor families. Determines which push namespace the trait listens to. */
+/** Hub child sensor families. Digest type strings do not match cloud subDeviceType. */
 export type SensorFamily = 'tempHum' | 'contact' | 'leak' | 'smoke';
 
-/** Map from lowercase model string to sensor family. */
+/** Lowercase model / digest alias → family so enroll and the trait share one table. */
 export const SENSOR_FAMILY_MAP: ReadonlyMap<string, SensorFamily> = new Map([
     ['ms100', 'tempHum'],
     ['ms100f', 'tempHum'],
@@ -138,8 +138,7 @@ export class SensorTrait {
     }
 
     /**
-     * Sets temperature/humidity calibration offsets in °C / RH%. No-op unless
-     * this is a tempHum child and Adjust is advertised.
+     * No-op unless this is a tempHum child and Adjust is advertised.
      */
     async setCalibration(options: { temperature?: number; humidity?: number }): Promise<SensorValues> {
         const patch: SensorValues = {};
@@ -162,8 +161,7 @@ export class SensorTrait {
     }
 
     /**
-     * Sets temperature/humidity alert bands. Values are °C / RH%. No-op unless
-     * this is a tempHum child and Alert is advertised.
+     * Values are °C / RH%. No-op unless this is a tempHum child and Alert is advertised.
      */
     async setAlerts(options: { temperature?: SensorAlertBand[]; humidity?: SensorAlertBand[] }): Promise<SensorValues> {
         const patch: SensorValues = {};
@@ -186,7 +184,6 @@ export class SensorTrait {
     }
 
     /**
-     * Silences the current smoke/temperature alarm or fault.
      * Firmware only accepts the mute code that matches the live status
      * (smoke 25→27, temperature 24→26, faults 17–19→20–22). No-op when
      * there is nothing to mute.
@@ -202,31 +199,26 @@ export class SensorTrait {
     }
 
     /**
-     * Triggers a smoke-detector self-test. No-op unless smoke family.
+     * No-op unless smoke family.
      */
     async test(): Promise<SensorValues> {
         return this.setSmokeStatus(SMOKE_TEST);
     }
 
     /**
-     * Enables or disables smoke detector Do Not Disturb mode. No-op unless this
-     * is a smoke child and Control.Smoke.Config is advertised.
+     * No-op unless this is a smoke child and Control.Smoke.Config is advertised.
      */
     async setSmokeDnd(enabled: boolean): Promise<SensorValues> {
         return this.setSmokeConfig({ dndEnabled: enabled });
     }
 
     /**
-     * Enables or disables the smoke detector periodic self-detect mode. No-op
-     * unless this is a smoke child and Control.Smoke.Config is advertised.
+     * No-op unless this is a smoke child and Control.Smoke.Config is advertised.
      */
     async setSmokeDetect(enabled: boolean): Promise<SensorValues> {
         return this.setSmokeConfig({ detectEnabled: enabled });
     }
 
-    /**
-     * Applies a firmware PUSH or poller GETACK for this endpoint.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];

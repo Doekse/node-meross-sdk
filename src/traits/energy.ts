@@ -83,7 +83,9 @@ export class EnergyTrait {
         return { ...this.last };
     }
 
-    /** Fetches hourly consumption samples when ConsumptionH is available. */
+    /**
+     * On-demand only. Returns `undefined` when ConsumptionH is not advertised.
+     */
     async getHourlyConsumption(): Promise<ConsumptionHHour[] | undefined> {
         if (!this.bind.hasConsumptionH) {
             return undefined;
@@ -93,8 +95,7 @@ export class EnergyTrait {
     }
 
     /**
-     * Fetches plug calibration coefficients. On-demand only; returns
-     * `undefined` when ConsumptionConfig is not advertised.
+     * On-demand only. Returns `undefined` when ConsumptionConfig is not advertised.
      */
     async getCalibration(): Promise<ElectricityConfig | undefined> {
         if (!this.has(CONSUMPTION_CONFIG_NAMESPACE)) {
@@ -109,9 +110,8 @@ export class EnergyTrait {
     }
 
     /**
-     * Deletes every stored daily record. DELETE is all-or-nothing and does
-     * not PUSH, so the local list updates here. No-op when ConsumptionX is
-     * not advertised.
+     * DELETE is all-or-nothing and does not PUSH, so the local list updates here.
+     * No-op when ConsumptionX is not advertised.
      */
     async deleteConsumption(): Promise<void> {
         if (!this.bind.hasConsumptionX) {

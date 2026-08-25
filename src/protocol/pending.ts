@@ -47,7 +47,7 @@ export class PendingRequests {
     }
 
     /**
-     * @returns false when this id was never registered or already settled
+     * Unregistered or already-settled ids must not throw; PUSH uses that signal.
      */
     settle(message: MerossMessage): boolean {
         const entry = this.entries.get(message.header.messageId);

@@ -1022,7 +1022,7 @@ describe('enrollPhysicalDevice', () => {
 });
 
 describe('DeviceGraph and Inventory', () => {
-    it('projects pairing rows and keeps ids stable across re-enroll', () => {
+    it('projects inventory rows and keeps ids stable across re-enroll', () => {
         const graph = new DeviceGraph();
         const first = graph.enroll({
             abilityPayload: socketAbility(),

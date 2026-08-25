@@ -215,8 +215,10 @@ export interface ClimateTraitHubBind {
 
 export type ClimateTraitBind = ClimateTraitBoardBind | ClimateTraitHubBind;
 
-// MTS100 Mode.state: 0=custom, 1=heat/comfort, 2=cool/economy, 3=auto/schedule, 4=eco/away.
-// Off is Hub.ToggleX, not a Mode state. `manual` has no hub wire value.
+/**
+ * MTS100 Mode.state: 0=custom, 1=heat/comfort, 2=cool/economy, 3=auto/schedule, 4=eco/away.
+ * Off is Hub.ToggleX, not a Mode state. `manual` has no hub wire value.
+ */
 const HUB_MODE_FROM_WIRE: Record<number, ClimateMode> = {
     0: 'custom',
     1: 'heat',
@@ -251,13 +253,13 @@ export class ClimateTrait {
         this.namespaces = bind.namespaces ?? new Set();
     }
 
-    /** Last known on/off. Undefined until poller GETACK or PUSH fills it. */
+    /** Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.last.on;
     }
 
     /**
-     * Turns the thermostat on or off. Hub valves use Hub.ToggleX.
+     * Hub valves use Hub.ToggleX; board ModeC/Mode map off onto mode rather than a separate toggle.
      */
     async setOn(on: boolean): Promise<{ on: boolean }> {
         if (this.bind.kind === 'hub') {
@@ -296,7 +298,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets the thermostat mode. Unsupported modes for this generation are a no-op.
+     * Unsupported modes for this generation are a no-op. Hub `off` is ToggleX, not Mode.state.
      */
     async setMode(mode: ClimateMode): Promise<{ mode: ClimateMode }> {
         if (this.bind.kind === 'hub') {
@@ -358,7 +360,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets the target temperature in °C. Hub valves use Hub.Mts100.Temperature (custom slot).
+     * Hub valves write the custom Temperature slot; board generations use Mode/ModeB/ModeC.
      */
     async setTargetTemperature(celsius: number): Promise<{ targetTemperature: number }> {
         if (this.bind.kind === 'hub') {
@@ -395,7 +397,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets ModeB/ModeC work mode. No-op on Mode generation and hub valves.
+     * No-op on Mode generation and hub valves.
      */
     async setWorkMode(workMode: ClimateWorkMode): Promise<{ workMode: ClimateWorkMode }> {
         if (this.bind.kind !== 'board') {
@@ -424,7 +426,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets the heat setpoint. Hub valves write the comfort slot.
+     * Hub valves write the comfort slot.
      */
     async setHeatTemperature(celsius: number): Promise<{ heatTemperature: number }> {
         if (this.bind.kind === 'hub') {
@@ -461,8 +463,8 @@ export class ClimateTrait {
         return { heatTemperature: celsius };
     }
 
-    /**S
-     * Sets the cool setpoint. Hub valves write the economy slot.
+    /**
+     * Hub valves write the economy slot; board ModeB maps this onto the shared target.
      */
     async setCoolTemperature(celsius: number): Promise<{ coolTemperature: number }> {
         if (this.bind.kind === 'hub') {
@@ -500,7 +502,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets the eco setpoint. Hub valves write the away slot.
+     * Hub valves write the away slot.
      */
     async setEcoTemperature(celsius: number): Promise<{ ecoTemperature: number }> {
         if (this.bind.kind === 'hub') {
@@ -524,7 +526,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets the manual setpoint. Mode generation only.
+     * Mode generation only; other binds are a no-op.
      */
     async setManualTemperature(celsius: number): Promise<{ manualTemperature: number }> {
         if (this.bind.kind === 'board' && this.bind.generation === 'mode') {
@@ -539,7 +541,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets fan speed. ModeC only.
+     * ModeC only; other binds are a no-op.
      */
     async setFanSpeed(fanSpeed: ClimateFanSpeed, fanHoldMinutes?: number): Promise<{ fanSpeed: ClimateFanSpeed }> {
         if (this.bind.kind !== 'board' || this.bind.generation !== 'modeC') {
@@ -562,8 +564,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Enables or disables open-window detection. Board WindowOpened only.
-     * Open/closed status is GET/PUSH (`windowOpen` on change).
+     * Board WindowOpened only. Open/closed status is GET/PUSH (`windowOpen` on change).
      */
     async setWindowDetect(detect: boolean): Promise<{ windowDetect: boolean }> {
         if (!this.has(WINDOW_OPENED_NAMESPACE) || this.bind.kind !== 'board') {
@@ -579,7 +580,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets a temperature hold. No-op unless HoldAction is advertised.
+     * No-op unless HoldAction is advertised.
      */
     async setHold(mode: ClimateHoldMode, minutes?: number): Promise<{ holdMode: ClimateHoldMode }> {
         if (!this.has(HOLD_ACTION_NAMESPACE) || this.bind.kind !== 'board') {
@@ -595,7 +596,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Selects internal/external sensor. No-op unless Sensor is advertised.
+     * No-op unless Sensor is advertised.
      */
     async setSensorMode(sensorMode: ClimateSensorMode): Promise<{ sensorMode: ClimateSensorMode }> {
         if (!this.has(SENSOR_NAMESPACE) || this.bind.kind !== 'board') {
@@ -611,7 +612,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets frost protection. No-op unless Frost is advertised.
+     * No-op unless Frost is advertised.
      */
     async setFrost(frost: boolean, frostTemperature?: number): Promise<{ frost: boolean }> {
         if (!this.has(FROST_NAMESPACE) || this.bind.kind !== 'board') {
@@ -632,7 +633,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets temperature calibration. Hub valves use Hub.Mts100.Adjust.
+     * Hub valves use Hub.Mts100.Adjust.
      */
     async setCalibration(calibration: number): Promise<{ calibration: number }> {
         if (this.bind.kind === 'hub') {
@@ -664,7 +665,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets overheat protection. No-op unless Overheat is advertised.
+     * No-op unless Overheat is advertised.
      */
     async setOverheat(overheat: boolean, overheatTemperature?: number): Promise<{ overheat: boolean }> {
         if (!this.has(OVERHEAT_NAMESPACE) || this.bind.kind !== 'board') {
@@ -680,7 +681,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets deadband. No-op unless DeadZone is advertised.
+     * No-op unless DeadZone is advertised.
      */
     async setDeadZone(deadZone: number): Promise<{ deadZone: number }> {
         if (!this.has(DEAD_ZONE_NAMESPACE) || this.bind.kind !== 'board') {
@@ -696,7 +697,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets summer mode. No-op unless SummerMode is advertised.
+     * No-op unless SummerMode is advertised.
      */
     async setSummerMode(summerMode: boolean): Promise<{ summerMode: boolean }> {
         if (!this.has(SUMMER_MODE_NAMESPACE) || this.bind.kind !== 'board') {
@@ -712,7 +713,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets compressor delay. No-op unless CompressorDelay is advertised.
+     * No-op unless CompressorDelay is advertised.
      */
     async setCompressorDelay(
         compressorDelay: boolean,
@@ -738,7 +739,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets the allowed temperature range. No-op unless CtlRange is advertised.
+     * No-op unless CtlRange is advertised.
      */
     async setCtlRange(minTemperature: number, maxTemperature: number): Promise<{
         minTemperature: number;
@@ -757,7 +758,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets the timer. No-op unless Timer is advertised.
+     * No-op unless Timer is advertised.
      */
     async setTimer(timer: ClimateTimer): Promise<{ timer: ClimateTimer }> {
         if (!this.has(TIMER_NAMESPACE) || this.bind.kind !== 'board') {
@@ -773,7 +774,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets high/low alarm config. No-op unless AlarmConfig is advertised.
+     * No-op unless AlarmConfig is advertised.
      */
     async setAlarmConfig(options: {
         highAlarm?: boolean;
@@ -794,8 +795,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets the on-device temperature unit. Host temperatures stay °C.
-     * No-op unless TempUnit is advertised (board thermostats only).
+     * Host temperatures stay °C. No-op unless TempUnit is advertised (board thermostats only).
      */
     async setTempUnit(tempUnit: ClimateTempUnit): Promise<{ tempUnit: ClimateTempUnit }> {
         if (!this.has(TEMP_UNIT_NAMESPACE) || this.bind.kind !== 'board') {
@@ -811,7 +811,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Enables or disables the physical child lock. No-op unless PhysicalLock is advertised.
+     * No-op unless PhysicalLock is advertised.
      */
     async setChildLock(locked: boolean): Promise<{ childLock: boolean }> {
         if (!this.has(PHYSICAL_LOCK_NAMESPACE)) {
@@ -829,7 +829,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets display brightness (0–1). No-op unless Screen.Brightness is advertised (board only).
+     * Host range is 0–1. No-op unless Screen.Brightness is advertised (board only).
      */
     async setScreenBrightness(options: {
         standby?: number;
@@ -853,8 +853,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Fetches stored sensor history samples. On-demand only; returns
-     * `undefined` when Sensor.History is not advertised or the bind is a hub valve.
+     * On-demand only. Returns `undefined` when Sensor.History is not advertised or the bind is a hub valve.
      */
     async getHistory(options?: { capacity?: number }): Promise<SensorHistorySample[] | undefined> {
         if (!this.has(SENSOR_HISTORY_NAMESPACE) || this.bind.kind !== 'board') {
@@ -875,8 +874,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Fetches extended sensor history. On-demand only; returns
-     * `undefined` when Sensor.HistoryX is not advertised or the bind is a hub valve.
+     * On-demand only. Returns `undefined` when Sensor.HistoryX is not advertised or the bind is a hub valve.
      */
     async getHistoryX(): Promise<SensorHistoryXState | undefined> {
         if (!this.has(SENSOR_HISTORYX_NAMESPACE) || this.bind.kind !== 'board') {
@@ -893,15 +891,14 @@ export class ClimateTrait {
     }
 
     /**
-     * Last Thermostat.System state from PUSH or setSystem. Does not GET —
-     * MTS300 GET can disconnect.
+     * Does not GET — MTS300 GET can disconnect.
      */
     getSystem(): ClimateSystem | undefined {
         return this.lastSystem;
     }
 
     /**
-     * Writes Thermostat.System. No-op unless System is advertised.
+     * No-op unless System is advertised.
      */
     async setSystem(patch: ClimateSystem): Promise<ClimateSystem> {
         if (!this.has(THERMOSTAT_SYSTEM_NAMESPACE) || this.bind.kind !== 'board') {
@@ -918,7 +915,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets the weekly schedule. Prefers ScheduleB when both are advertised.
+     * Prefers ScheduleB when both are advertised.
      */
     async setSchedule(schedule: ClimateSchedule): Promise<{ schedule: ClimateSchedule }> {
         if (this.bind.kind === 'hub') {
@@ -961,7 +958,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets hub valve PID config. No-op unless Hub.Mts100.Config is advertised.
+     * No-op unless Hub.Mts100.Config is advertised.
      */
     async setConfig(pid: ClimatePid): Promise<{ pid: ClimatePid }> {
         if (!this.has(HUB_MTS100_CONFIG_NAMESPACE) || this.bind.kind !== 'hub') {
@@ -977,7 +974,7 @@ export class ClimateTrait {
     }
 
     /**
-     * Sets hub SuperCtl. No-op unless Hub.Mts100.SuperCtl is advertised.
+     * No-op unless Hub.Mts100.SuperCtl is advertised.
      */
     async setSuperCtl(superCtl: boolean, superCtlLevel?: number): Promise<{ superCtl: boolean }> {
         if (!this.has(HUB_MTS100_SUPERCTL_NAMESPACE) || this.bind.kind !== 'hub') {
@@ -996,9 +993,6 @@ export class ClimateTrait {
         return { superCtl };
     }
 
-    /**
-     * Applies a firmware PUSH for this endpoint.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];

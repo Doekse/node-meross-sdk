@@ -2,14 +2,7 @@ import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
 /**
- * Light bulb / lamp control for one channel.
- *
- * Notes:
- * - `capacity` is a firmware bitmask:
- *   - 0x1 RGB
- *   - 0x2 temperature
- *   - 0x4 luminance (brightness)
- *   - 0x8 effect
+ * Firmware `capacity` bitmask: 0x1 RGB, 0x2 temperature, 0x4 luminance, 0x8 effect.
  */
 export const LIGHT_NAMESPACE = 'Appliance.Control.Light';
 export const LIGHT_EFFECT_NAMESPACE = 'Appliance.Control.Light.Effect';
@@ -27,8 +20,7 @@ export interface LightChannelWireState {
     luminance?: number;
     effect?: number;
     /**
-     * Light "on/off" (1 = on, 0 = off). This is not the same as Toggle/ToggleX
-     * device-level on/off.
+     * Light on/off (1 = on, 0 = off). Distinct from Toggle/ToggleX device-level on/off.
      */
     onoff?: boolean;
 }
@@ -37,7 +29,7 @@ export interface LightSetOptions {
     channel: number;
     /**
      * Bitmask declaring which value fields in this command are valid.
-     * Typically you pass the device's reported capacity.
+     * Typically the device's reported capacity.
      */
     capacity: number;
     rgb?: number;
@@ -92,16 +84,10 @@ export function encodeLightSet(options: LightSetOptions): MerossPayload {
     return { light };
 }
 
-/**
- * Decodes a firmware light object from GETACK/SETACK/PUSH payloads.
- */
 export function decodeLightGetAck(payload: MerossPayload): LightChannelWireState {
     return decodeLight(payload);
 }
 
-/**
- * Decodes a firmware light object from PUSH payloads.
- */
 export function decodeLightPush(payload: MerossPayload): LightChannelWireState {
     return decodeLight(payload);
 }

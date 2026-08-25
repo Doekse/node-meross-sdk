@@ -58,8 +58,8 @@ export interface EnrollInput {
 }
 
 /**
- * One Homey-facing row plus the ToggleX/hub bind the switch trait will use.
- * Ids are `{uuid}:{channel}` or `{uuid}#{subDeviceId}` so storeData stays stable.
+ * One user-visible row plus the ToggleX/hub bind the switch trait will use.
+ * Ids are `{uuid}:{channel}` or `{uuid}#{subDeviceId}` so they stay stable across reconnects.
  */
 export interface GraphEndpoint {
     id: string;
@@ -67,7 +67,7 @@ export interface GraphEndpoint {
     channel?: number;
     subDeviceId?: string;
     /**
-     * Hub child or extra strip outlet. Homey groups under this id instead of
+     * Hub child or extra strip outlet. Hosts can group under this id instead of
      * merging those sockets into the parent device.
      */
     parentId?: string;
@@ -76,7 +76,7 @@ export interface GraphEndpoint {
     classHint: ClassHint;
     traits: readonly TraitName[];
     online: boolean;
-    /** Digest `togglex.onoff` when System.All carried it; switch uses this as the first tile value. */
+    /** Digest `togglex.onoff` when System.All carried it, so switch has a value before the first PUSH. */
     on?: boolean;
 }
 
@@ -134,7 +134,7 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
 }
 
 /**
- * Collects protocol-enrolled boards so Session can project pairing rows.
+ * Collects protocol-enrolled boards so Session can project inventory rows.
  */
 export class DeviceGraph {
     private readonly physical = new Map<string, PhysicalDevice>();
@@ -150,7 +150,7 @@ export class DeviceGraph {
     }
 
     /**
-     * Session needs the board (LAN IP, ability, maxCmdNum), not the pairing row.
+     * Session needs the board (LAN IP, ability, maxCmdNum), not the inventory row.
      */
     getPhysical(uuid: string): PhysicalDevice | undefined {
         return this.physical.get(uuid);
@@ -171,8 +171,8 @@ export class DeviceGraph {
     }
 
     /**
-     * Drops trait-less rows so a hub board with no alarm/dnd does not show up
-     * in pairing.
+     * Drops trait-less rows so a hub board with no alarm/dnd does not appear
+     * in inventory.
      */
     inventoryRows(): InventoryRow[] {
         return [...this.physical.values()].flatMap((device) =>
@@ -398,8 +398,8 @@ function enrollBoard(
 }
 
 /**
- * parentId is the hub uuid so Homey can group children without treating the
- * board as the only pairable device.
+ * parentId is the hub uuid so hosts can group children without treating the
+ * board as the only user-visible device.
  */
 function enrollHub(
     uuid: string,

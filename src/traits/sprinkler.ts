@@ -55,18 +55,18 @@ export class SprinklerTrait {
         this.namespaces = bind.namespaces ?? new Set();
     }
 
-    /** Last known on/off. Undefined until poller GETACK or PUSH fills it. */
+    /** Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.last.on;
     }
 
-    /** Last known default watering duration in seconds. */
+    /** Default watering duration from DeviceCfg. Undefined until GETACK or PUSH fills it. */
     getDuration(): number | undefined {
         return this.last.duration;
     }
 
     /**
-     * Turns watering on or off via Control.Water. Never uses Hub.ToggleX.
+     * Uses Control.Water, never Hub.ToggleX (firmware onoff is 1/2).
      */
     async setOn(on: boolean): Promise<{ on: boolean }> {
         await this.bind.request({
@@ -79,7 +79,7 @@ export class SprinklerTrait {
     }
 
     /**
-     * Sets the default watering duration in seconds via DeviceCfg mstCfg.dura.
+     * Writes DeviceCfg `mstCfg.dura`. No-op when DeviceCfg is absent.
      */
     async setDuration(seconds: number): Promise<{ duration: number }> {
         if (!this.has(DEVICE_CFG_NAMESPACE)) {
@@ -95,7 +95,6 @@ export class SprinklerTrait {
     }
 
     /**
-     * Fetches watering schedules for this sub-device via Config.WaterPlan.
      * On-demand only (never Digest.WaterPlan). Returns `undefined` when the
      * namespace is absent or the hub replies with error 5000.
      */
@@ -121,8 +120,7 @@ export class SprinklerTrait {
     }
 
     /**
-     * Writes watering schedules via Config.WaterPlan. No-op when the namespace
-     * is absent. Entries should carry this trait's `subId`.
+     * No-op when the namespace is absent. Entries should carry this trait's `subId`.
      */
     async setSchedule(
         entries: SprinklerScheduleEntry[]
@@ -142,9 +140,6 @@ export class SprinklerTrait {
         return payload;
     }
 
-    /**
-     * Applies a firmware PUSH or poller GETACK for this endpoint.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];

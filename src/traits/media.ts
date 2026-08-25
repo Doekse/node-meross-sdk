@@ -38,23 +38,22 @@ export class MediaTrait {
         this.bind = bind;
     }
 
-    /** Last known mute. Firmware mute 1 is stopped/idle. */
+    /** Firmware mute 1 is stopped/idle. Undefined until GETACK or PUSH fills it. */
     isMuted(): boolean | undefined {
         return this.last.muted;
     }
 
-    /** Last known volume in `0..1`. */
+    /** Host range is `0..1` of firmware max 16. */
     getVolume(): number | undefined {
         return this.last.volume;
     }
 
-    /** Last known built-in track id. */
     getSong(): number | undefined {
         return this.last.song;
     }
 
     /**
-     * Mutes or unmutes. Firmware mute 1 is stopped/idle.
+     * Firmware mute 1 is stopped/idle, not a volume of zero.
      */
     async setMuted(muted: boolean): Promise<{ muted: boolean }> {
         await this.bind.request({
@@ -67,7 +66,7 @@ export class MediaTrait {
     }
 
     /**
-     * Sets volume in `0..1`. Wire volume is 0–16.
+     * Host range is `0..1`; wire volume is 0–16.
      */
     async setVolume(volume: number): Promise<{ volume: number }> {
         const wire = Math.round(clamp01(volume) * MP3_VOLUME_MAX);
@@ -81,7 +80,7 @@ export class MediaTrait {
     }
 
     /**
-     * Selects a built-in track. HP110 songs are 1–11.
+     * HP110 songs are 1–11.
      */
     async setSong(song: number): Promise<{ song: number }> {
         await this.bind.request({
@@ -93,9 +92,6 @@ export class MediaTrait {
         return { song };
     }
 
-    /**
-     * Applies a firmware PUSH for this endpoint.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];

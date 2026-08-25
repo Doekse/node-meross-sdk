@@ -27,8 +27,10 @@ export interface LightRgb {
 
 export interface LightValues {
     on?: boolean;
-    brightness?: number; // 0..1
-    temperature?: number; // 0..1
+    /** Host range is `0..1`. */
+    brightness?: number;
+    /** Host range is `0..1`. */
+    temperature?: number;
     rgb?: LightRgb;
     effect?: number;
 }
@@ -40,11 +42,10 @@ export interface LightValues {
 export interface LightTraitBind {
     uuid: string;
     channel: number;
-    /** Device-level on/off via ToggleX (preferred when available). */
+    /** ToggleX when advertised; classic Toggle only when ToggleX is absent. */
     hasToggleX: boolean;
-    /** Device-level on/off via classic Toggle (only when ToggleX is absent). */
     hasToggle: boolean;
-    /** Whether the device exposes `Appliance.Control.Light.Effect` for an effect catalog. */
+    /** Light.Effect catalog SET needs this namespace. */
     hasLightEffect: boolean;
     /** Capacity bitmask from Ability; the trait updates it after the first GETACK. */
     lightCapacity: number;
@@ -72,32 +73,30 @@ export class LightTrait {
         this.lightCapacity = bind.lightCapacity;
     }
 
-    /** Last known on/off. Undefined until poller GETACK or PUSH fills it. */
+    /** Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.on;
     }
 
-    /** Last known brightness in `0..1`. */
+    /** Host range is `0..1`. Undefined until GETACK or PUSH fills it. */
     getBrightness(): number | undefined {
         return this.brightness;
     }
 
-    /** Last known color temperature in `0..1`. */
+    /** Host range is `0..1`. Undefined until GETACK or PUSH fills it. */
     getTemperature(): number | undefined {
         return this.temperature;
     }
 
-    /** Last known RGB color. */
     getRgb(): LightRgb | undefined {
         return this.rgb && { ...this.rgb };
     }
 
-    /** Last known Control.Light effect index. */
     getEffect(): number | undefined {
         return this.effect;
     }
 
-    /** Names from the last Light.Effect GET/PUSH. Empty when the namespace is absent. */
+    /** Empty when Light.Effect is absent. */
     getEffectNames(): string[] {
         return this.effectCatalog.map((entry) => entry.effectName);
     }
@@ -130,9 +129,6 @@ export class LightTrait {
         return { effect };
     }
 
-    /**
-     * Turns the bound channel on or off.
-     */
     async setOn(on: boolean): Promise<{ on: boolean }> {
         if (this.bind.hasToggleX) {
             await this.bind.request({
@@ -158,10 +154,9 @@ export class LightTrait {
     }
 
     /**
-     * Sets brightness in `0..1`.
+     * Capacity 0x4 treats luminance 0 as off; the usual scale is 1–100.
      */
     async setBrightness(brightness: number): Promise<{ brightness: number }> {
-        // Capacity 0x4 treats luminance 0 as off; the usual scale is 1–100.
         const luminance = brightness === 0 ? 0 : hostToWire01(brightness);
         const reply = await this.bind.request({
             namespace: LIGHT_NAMESPACE,
@@ -175,9 +170,6 @@ export class LightTrait {
         return { brightness: this.brightness ?? brightness };
     }
 
-    /**
-     * Sets color temperature in `0..1`.
-     */
     async setTemperature(temperature: number): Promise<{ temperature: number }> {
         const wire = hostToWire01(temperature);
         const reply = await this.bind.request({
@@ -189,9 +181,6 @@ export class LightTrait {
         return { temperature: this.temperature ?? temperature };
     }
 
-    /**
-     * Sets RGB color.
-     */
     async setRgb(rgb: LightRgb): Promise<{ rgb: LightRgb }> {
         const reply = await this.bind.request({
             namespace: LIGHT_NAMESPACE,
@@ -202,9 +191,6 @@ export class LightTrait {
         return { rgb: this.rgb ?? rgb };
     }
 
-    /**
-     * Applies a firmware PUSH for this endpoint.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
         if (!uuid || uuid !== this.bind.uuid) {
@@ -286,7 +272,7 @@ export class LightTrait {
 }
 
 /**
- * Converts firmware packed `rgb` (0xRRGGBB) into a host RGB object.
+ * Firmware packs RGB as 0xRRGGBB, not three payload fields.
  */
 function wireToRgb(rgbWire: number): LightRgb {
     const r = (rgbWire >> 16) & 0xff;
@@ -296,7 +282,7 @@ function wireToRgb(rgbWire: number): LightRgb {
 }
 
 /**
- * Packs host RGB into firmware packed `rgb` (0xRRGGBB).
+ * Inverse of {@link wireToRgb}.
  */
 function rgbToWire(rgb: LightRgb): number {
     const r = clampInt(rgb.r, 0, 0xff);
@@ -306,15 +292,16 @@ function rgbToWire(rgb: LightRgb): number {
 }
 
 /**
- * Converts host brightness/temperature in `0..1` into firmware `1..100`.
+ * Firmware luminance/temperature is 1–100; host APIs use 0..1. Zero stays zero
+ * so capacity 0x4 can still mean off.
  */
 function hostToWire01(value: number): number {
     const clamped = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-    return Math.round(clamped * 99) + 1; // 0..1 -> 1..100
+    return Math.round(clamped * 99) + 1;
 }
 
 /**
- * Converts firmware `1..100` (yellow->cold for temperature) into host `0..1`.
+ * Inverse of {@link hostToWire01}. Firmware 0 (off) maps to host 0.
  */
 function wireToHost01(value: number): number {
     if (!Number.isFinite(value)) {
@@ -323,12 +310,9 @@ function wireToHost01(value: number): number {
     if (value <= 0) {
         return 0;
     }
-    return (value - 1) / 99; // 1..100 -> 0..1
+    return (value - 1) / 99;
 }
 
-/**
- * Converts values into a safe integer range for firmware payloads.
- */
 function clampInt(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, Math.trunc(value)));
 }

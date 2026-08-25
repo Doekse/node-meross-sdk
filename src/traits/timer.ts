@@ -58,13 +58,13 @@ export class TimerTrait {
         this.bind = bind;
     }
 
-    /** Last known schedules for this channel (after digest resolve / set / PUSH). */
+    /** After digest resolve / set / PUSH. Empty until then. */
     list(): TimerEntry[] {
         return this.entries.map(cloneEntry);
     }
 
     /**
-     * Creates or updates a schedule. Only ToggleX-shaped extend is written.
+     * Only ToggleX-shaped extend is written; cover/climate/humidifier/speaker use other extend objects.
      */
     async set(input: TimerSetInput): Promise<TimerEntry> {
         const entry = normalizeSet(input, this.bind.channel);
@@ -77,9 +77,6 @@ export class TimerTrait {
         return cloneEntry(entry);
     }
 
-    /**
-     * Enables or disables an existing schedule by id.
-     */
     async setEnabled(id: string, enabled: boolean): Promise<TimerEntry> {
         const existing = this.entries.find((entry) => entry.id === id);
         if (!existing) {
@@ -89,7 +86,7 @@ export class TimerTrait {
     }
 
     /**
-     * Deletes a schedule. Firmware does not PUSH after DELETE, so the local list updates here.
+     * Firmware does not PUSH after DELETE, so the local list updates here.
      */
     async remove(id: string): Promise<void> {
         await this.bind.request({
@@ -100,10 +97,6 @@ export class TimerTrait {
         this.applyEntries(this.entries.filter((entry) => entry.id !== id));
     }
 
-    /**
-     * Applies a firmware PUSH or poller GETACK for this endpoint.
-     * Digest GETACK triggers async Control.TimerX GET-by-id for this channel.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];

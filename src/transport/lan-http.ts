@@ -50,9 +50,6 @@ export class LanHttpTransport {
         this.dispatcher = options.dispatcher ?? new ProtocolDispatcher();
     }
 
-    /**
-     * Encode, register by messageId, POST, then settle from the HTTP body.
-     */
     async request(options: LanHttpRequestOptions): Promise<MerossMessage> {
         const message = encodeMessage({
             namespace: options.namespace,

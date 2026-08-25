@@ -7,8 +7,7 @@ import { signMessage, verifySignature } from './sign';
 export const PAYLOAD_VERSION = 1;
 
 /**
- * Signature does not cover this field. Android matches outbound traffic
- * devices already accept from meross-iot.
+ * Signature does not cover this field. Matches official Android app traffic.
  */
 export const DEFAULT_TRIGGER_SRC = 'Android';
 
@@ -46,7 +45,7 @@ export interface EncodeMessageOptions {
 }
 
 /**
- * Builds a signed `{ header, payload }` envelope.
+ * Sign covers messageId + key + timestamp only; the payload is not hashed.
  */
 export function encodeMessage(options: EncodeMessageOptions): MerossMessage {
     const messageId = options.messageId ?? randomBytes(16).toString('hex');

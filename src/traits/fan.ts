@@ -39,9 +39,8 @@ export interface FanTraitBind {
     channel: number;
     /** Ability keys; extras no-op when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
-    /** Device-level on/off via ToggleX (preferred when available). */
+    /** ToggleX when advertised; classic Toggle only when ToggleX is absent. */
     hasToggleX: boolean;
-    /** Device-level on/off via classic Toggle (only when ToggleX is absent). */
     hasToggle: boolean;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
     emitChange: (values: FanValues) => void;
@@ -74,24 +73,21 @@ export class FanTrait {
         return this.namespaces.has(namespace);
     }
 
-    /** Last known on/off. Undefined until poller GETACK or PUSH fills it. */
+    /** Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.last.on;
     }
 
-    /** Last known speed in `0..1`. */
+    /** Host range is `0..1` of advertised maxSpeed. */
     getSpeed(): number | undefined {
         return this.last.speed;
     }
 
-    /** Last known filter life in `0..1`. */
+    /** Host range is `0..1` from FilterMaintenance. */
     getFilterLife(): number | undefined {
         return this.last.filterLife;
     }
 
-    /**
-     * Turns the bound channel on or off.
-     */
     async setOn(on: boolean): Promise<{ on: boolean }> {
         if (this.bind.hasToggleX) {
             await this.bind.request({
@@ -115,7 +111,7 @@ export class FanTrait {
     }
 
     /**
-     * Sets speed in `0..1`. Wire speed is rounded against the last known maxSpeed.
+     * Wire speed is rounded against the last known maxSpeed.
      */
     async setSpeed(speed: number): Promise<{ speed: number }> {
         const wire = Math.round(clamp01(speed) * this.maxSpeed);
@@ -125,8 +121,8 @@ export class FanTrait {
     }
 
     /**
-     * Reads Fan.BtnConfig via PUSH-query. GET disconnects on MFC100, so this is
-     * never polled from DevicePoller. Returns `undefined` when BtnConfig is absent.
+     * GET disconnects on MFC100, so this is never polled from DevicePoller.
+     * Returns `undefined` when BtnConfig is absent.
      */
     async getButtonConfig(): Promise<FanButtonConfig | undefined> {
         if (!this.has(FAN_BTN_CONFIG_NAMESPACE)) {
@@ -143,7 +139,7 @@ export class FanTrait {
     }
 
     /**
-     * Writes Fan.BtnConfig for this channel. No-op when BtnConfig is absent.
+     * No-op when BtnConfig is absent.
      */
     async setButtonConfig(options: Omit<FanButtonConfigSetOptions, 'channel'>): Promise<void> {
         if (!this.has(FAN_BTN_CONFIG_NAMESPACE)) {
@@ -156,9 +152,6 @@ export class FanTrait {
         });
     }
 
-    /**
-     * Applies a firmware PUSH or poller GETACK for this endpoint.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];

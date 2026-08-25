@@ -79,7 +79,7 @@ export class CloudClient {
 
     /**
      * Exchanges email/password (and optional MFA) for a client that can
-     * list devices. Session.login stays stubbed until the wiring slice.
+     * list devices.
      */
     static async login(options: LoginOptions, clientOptions?: CloudClientOptions): Promise<CloudClient> {
         const client = new CloudClient(clientOptions);
@@ -88,7 +88,7 @@ export class CloudClient {
     }
 
     /**
-     * Rebuilds an HTTP client from Homey `storeData` without a password.
+     * Rebuilds an HTTP client from a stored token without a password.
      */
     static restore(token: TokenData, clientOptions?: CloudClientOptions): CloudClient {
         const client = new CloudClient(clientOptions);

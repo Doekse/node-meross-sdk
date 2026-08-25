@@ -84,11 +84,13 @@ export function encodeThermostatModeGet(options: ThermostatGetOptions): MerossPa
     return { mode: [{ channel: options.channel }] };
 }
 
-/** SET array under `mode`. Temps ×10; onoff 0/1. */
+/**
+ * SET array under `mode`. Temps ×10; onoff 0/1.
+ * Wire mode: 0=heat, 1=cool, 2=eco, 3=auto, 4=manual; off drives onoff=0.
+ */
 export function encodeThermostatModeSet(options: ThermostatModeSetOptions): MerossPayload {
     const entry: Record<string, unknown> = { channel: options.channel };
     if (options.mode !== undefined) {
-        // Mode wire values: 0=heat, 1=cool, 2=eco, 3=auto, 4=manual; off drives onoff=0
         entry.onoff = options.mode === 'off' ? 0 : 1;
         entry.mode = options.mode === 'off' ? 0
             : options.mode === 'cool' ? 1
@@ -166,7 +168,7 @@ export function encodeThermostatModeBGet(options: ThermostatGetOptions): MerossP
     return { modeB: [{ channel: options.channel }] };
 }
 
-/** SET array under `modeB`. Temps ×100; onoff 1 = on, 2 = off. */
+/** SET array under `modeB`. Temps ×100; onoff 1 = on, 2 = off. Firmware requires mode=1 (manual) to accept a targetTemp. */
 export function encodeThermostatModeBSet(options: ThermostatModeBSetOptions): MerossPayload {
     const entry: Record<string, unknown> = { channel: options.channel };
     if (options.on !== undefined) {
@@ -179,7 +181,6 @@ export function encodeThermostatModeBSet(options: ThermostatModeBSetOptions): Me
         entry.mode = options.workMode === 'schedule' ? 2 : options.workMode === 'timer' ? 3 : 1;
     }
     if (options.targetTemperature !== undefined) {
-        // Firmware requires mode=1 (manual) to accept a targetTemp
         if (entry.mode === undefined) {
             entry.mode = 1;
         }
@@ -225,11 +226,10 @@ export function encodeThermostatModeCGet(options: ThermostatGetOptions): MerossP
     return { control: [{ channel: options.channel }] };
 }
 
-/** SET array under `control`. Temps ×100; `targetTemp` is `{ heat, cold }`. */
+/** SET array under `control`. Temps ×100; `targetTemp` is `{ heat, cold }`. Wire mode: 0=off, 1=heat, 2=cool, 3=auto. */
 export function encodeThermostatModeCSet(options: ThermostatModeSetOptions): MerossPayload {
     const entry: Record<string, unknown> = { channel: options.channel };
     if (options.mode !== undefined) {
-        // ModeC wire values: 0=off, 1=heat, 2=cool, 3=auto
         entry.mode = options.mode === 'off' ? 0 : options.mode === 'cool' ? 2 : options.mode === 'auto' ? 3 : 1;
     }
     if (options.workMode !== undefined) {

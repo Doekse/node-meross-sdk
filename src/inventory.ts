@@ -15,8 +15,8 @@ export interface InventoryRow {
 }
 
 /**
- * Cloud/LAN device list projected into Homey-facing endpoints (one row per
- * user-visible device, not per physical board).
+ * Cloud/LAN device list projected into user-visible endpoints (one row per
+ * endpoint, not per physical board).
  */
 export class Inventory {
     private rows: readonly InventoryRow[] = [];
@@ -26,15 +26,14 @@ export class Inventory {
     }
 
     /**
-     * Replaces pairing rows after graph enrollment. Session wiring will call
-     * this once Ability/System.All have been applied.
+     * Replaces inventory rows after graph enrollment.
      */
     replace(rows: readonly InventoryRow[]): void {
         this.rows = rows;
     }
 
     /**
-     * Copies rows so Homey pairing cannot mutate enrolled ids or traits.
+     * Returns copies so callers cannot mutate enrolled ids or traits.
      */
     endpoints(): InventoryRow[] {
         return this.rows.map((row) => ({ ...row, traits: [...row.traits] }));

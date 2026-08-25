@@ -10,7 +10,6 @@ export interface ElectricityConfig {
     maxElectricityCurrent?: number;
 }
 
-/** Parses a `{ voltageRatio, electricityRatio, maxElectricityCurrent? }` object. */
 export function parseElectricityConfig(raw: unknown): ElectricityConfig | undefined {
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
         return undefined;

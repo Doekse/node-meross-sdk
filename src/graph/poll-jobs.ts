@@ -94,7 +94,7 @@ import {
 } from './poller';
 import { SYSTEM_ALL_NAMESPACE } from './system-all';
 
-/** Endpoint fields needed to fill channel / id LIST GET payloads. */
+/** LIST GETs need enrolled channels/ids, not just Ability keys. */
 export interface PollEndpoint {
     channel?: number;
     subDeviceId?: string;

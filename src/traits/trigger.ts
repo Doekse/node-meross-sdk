@@ -58,14 +58,11 @@ export class TriggerTrait {
         this.bind = bind;
     }
 
-    /** Last known countdowns for this channel (after digest resolve / set / PUSH). */
+    /** After digest resolve / set / PUSH. Empty until then. */
     list(): TriggerEntry[] {
         return this.entries.map(cloneEntry);
     }
 
-    /**
-     * Creates or updates a countdown.
-     */
     async set(input: TriggerSetInput): Promise<TriggerEntry> {
         const entry = normalizeSet(input, this.bind.channel);
         await this.bind.request({
@@ -77,9 +74,6 @@ export class TriggerTrait {
         return cloneEntry(entry);
     }
 
-    /**
-     * Enables or disables an existing countdown by id.
-     */
     async setEnabled(id: string, enabled: boolean): Promise<TriggerEntry> {
         const existing = this.entries.find((entry) => entry.id === id);
         if (!existing) {
@@ -89,7 +83,7 @@ export class TriggerTrait {
     }
 
     /**
-     * Deletes a countdown. Firmware does not PUSH after DELETE, so the local list updates here.
+     * Firmware does not PUSH after DELETE, so the local list updates here.
      */
     async remove(id: string): Promise<void> {
         await this.bind.request({
@@ -100,10 +94,6 @@ export class TriggerTrait {
         this.applyEntries(this.entries.filter((entry) => entry.id !== id));
     }
 
-    /**
-     * Applies a firmware PUSH or poller GETACK for this endpoint.
-     * Digest GETACK triggers async Control.TriggerX GET-by-id for this channel.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];

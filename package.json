@@ -1,7 +1,7 @@
 {
   "name": "node-meross-sdk",
   "version": "0.0.0",
-  "description": "Control Meross devices from Node.js using a Homey-shaped Session/Endpoint/Trait API",
+  "description": "Control Meross devices from Node.js using a Session, Endpoint, and Trait API",
   "author": "Abe Haverkamp",
   "license": "MIT",
   "keywords": [

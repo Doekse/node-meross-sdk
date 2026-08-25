@@ -54,34 +54,28 @@ export class DiffuserTrait {
         this.namespaces = bind.namespaces ?? new Set();
     }
 
-    /** Last known on/off. Undefined until poller GETACK or PUSH fills it. */
+    /** Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.last.on;
     }
 
-    /** Last known brightness in `0..1`. */
+    /** Host range is `0..1`. Undefined until GETACK or PUSH fills it. */
     getBrightness(): number | undefined {
         return this.last.brightness;
     }
 
-    /** Last known RGB color. */
     getRgb(): LightRgb | undefined {
         return this.last.rgb && { ...this.last.rgb };
     }
 
-    /** Last known Diffuser.Light mode. */
     getLightMode(): DiffuserLightMode | undefined {
         return this.last.lightMode;
     }
 
-    /** Last known Diffuser.Spray mode. */
     getSprayMode(): DiffuserSprayMode | undefined {
         return this.last.sprayMode;
     }
 
-    /**
-     * Turns the diffuser light on or off.
-     */
     async setOn(on: boolean): Promise<{ on: boolean }> {
         await this.bind.request({
             namespace: DIFFUSER_LIGHT_NAMESPACE,
@@ -93,7 +87,7 @@ export class DiffuserTrait {
     }
 
     /**
-     * Sets light mode. rotating-colors, fixed-rgb, or fixed-luminance.
+     * rotating-colors, fixed-rgb, or fixed-luminance.
      */
     async setLightMode(lightMode: DiffuserLightMode): Promise<{ lightMode: DiffuserLightMode }> {
         await this.bind.request({
@@ -106,7 +100,7 @@ export class DiffuserTrait {
     }
 
     /**
-     * Sets brightness in `0..1`. Firmware luminance is 0–100.
+     * Firmware luminance is 0–100; host range is `0..1`.
      */
     async setBrightness(brightness: number): Promise<{ brightness: number }> {
         const luminance = Math.round(clamp01(brightness) * 100);
@@ -120,7 +114,7 @@ export class DiffuserTrait {
     }
 
     /**
-     * Sets RGB in fixed-color mode.
+     * Also switches the light into fixed-rgb mode; firmware has no RGB without it.
      */
     async setRgb(rgb: LightRgb): Promise<{ rgb: LightRgb }> {
         await this.bind.request({
@@ -137,7 +131,7 @@ export class DiffuserTrait {
     }
 
     /**
-     * Sets Diffuser.Spray mode. Distinct from Control.Spray wire values.
+     * Distinct from Control.Spray wire values.
      */
     async setSprayMode(sprayMode: DiffuserSprayMode): Promise<{ sprayMode: DiffuserSprayMode }> {
         await this.bind.request({
@@ -149,9 +143,6 @@ export class DiffuserTrait {
         return { sprayMode };
     }
 
-    /**
-     * Applies a firmware PUSH or poller GETACK for this endpoint.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];

@@ -36,14 +36,11 @@ export class SprayTrait {
         this.bind = bind;
     }
 
-    /** Last known spray mode. Undefined until poller GETACK or PUSH fills it. */
+    /** Undefined until poller GETACK or PUSH fills it. */
     getMode(): SprayMode | undefined {
         return this.last.mode;
     }
 
-    /**
-     * Sets the spray mode for the bound channel.
-     */
     async setMode(mode: SprayMode): Promise<{ mode: SprayMode }> {
         await this.bind.request({
             namespace: SPRAY_NAMESPACE,
@@ -54,9 +51,6 @@ export class SprayTrait {
         return { mode };
     }
 
-    /**
-     * Applies a firmware PUSH for this endpoint.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];

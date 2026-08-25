@@ -59,14 +59,10 @@ export class PresenceTrait {
         this.bind = bind;
     }
 
-    /** Mirrors other traits by guarding optional namespace behavior. */
     private has(namespace: string): boolean {
         return this.bind.namespaces?.has(namespace) ?? false;
     }
 
-    /**
-     * Applies a firmware PUSH or poller GETACK for this endpoint.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
@@ -93,7 +89,6 @@ export class PresenceTrait {
     }
 
     /**
-     * Reads current config from the device and emits changed fields.
      * Returns `undefined` when Presence.Config is not advertised.
      */
     async getConfig(): Promise<PresenceConfig | undefined> {
@@ -115,8 +110,7 @@ export class PresenceTrait {
     }
 
     /**
-     * Writes one or more config fields. Only supplied fields go on the wire.
-     * No-op when Presence.Config is not advertised.
+     * Only supplied fields go on the wire. No-op when Presence.Config is not advertised.
      */
     async setConfig(options: Omit<PresenceConfigSetOptions, 'channel'>): Promise<void> {
         if (!this.has(PRESENCE_CONFIG_NAMESPACE)) {
@@ -130,7 +124,7 @@ export class PresenceTrait {
     }
 
     /**
-     * Triggers firmware self-calibration. No-op when Presence.Study is not advertised.
+     * No-op when Presence.Study is not advertised.
      */
     async startStudy(): Promise<void> {
         if (!this.has(PRESENCE_STUDY_NAMESPACE)) {

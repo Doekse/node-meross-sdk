@@ -6,7 +6,7 @@ import { TransportError } from '../errors';
 import { ProtocolDispatcher, decodeMessage, encodeMessage } from '../protocol';
 import type { MerossMessage, MerossPayload } from '../protocol';
 
-/** Firmware `System.All` / meross_lan. meross-iot's MQTT manager still uses 2001. */
+/** Firmware `System.All` / meross_lan use 443, not the older 2001 broker port. */
 const MQTT_PORT = 443;
 const CONNECT_TIMEOUT_MS = 30_000;
 
@@ -108,9 +108,6 @@ export class MqttTransport {
         await new Promise<void>((resolve) => client.end(true, resolve));
     }
 
-    /**
-     * Encode, register by messageId, publish, then wait for GETACK/SETACK/ERROR.
-     */
     async request(options: MqttRequestOptions): Promise<MerossMessage> {
         const client = this.client;
         if (!client || !this.connected) {

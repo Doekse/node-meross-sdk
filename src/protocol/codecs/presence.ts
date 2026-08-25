@@ -119,8 +119,8 @@ function decodePresenceConfigEntry(item: unknown): PresenceConfig {
 }
 
 /**
- * Study SET uses `study`, not `config`: merossiot SET and live MS600 PUSH both
- * use that key. `status: 1` starts calibration (meross-cli).
+ * Study SET uses `study`, not `config`: live MS600 PUSH uses that key.
+ * `status: 1` starts calibration.
  */
 export function encodePresenceStudySet(channel: number): MerossPayload {
     return { study: [{ channel, status: 1 }] };

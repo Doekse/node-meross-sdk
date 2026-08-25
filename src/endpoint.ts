@@ -55,7 +55,7 @@ interface EndpointEvents {
 }
 
 /**
- * One Homey-facing device. A strip is a master plus child sockets; hub
+ * One user-visible device. A strip is a master plus child sockets; hub
  * children use this same type. `parentId` stays inventory metadata.
  */
 export class Endpoint extends EventEmitter<EndpointEvents> {
@@ -103,6 +103,10 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         this.online = options.initialOnline ?? true;
     }
 
+    /**
+     * `force` is for the initial fan-out so hosts get a first availability
+     * event even when the value matches the constructor default.
+     */
     setAvailability(online: boolean, force = false): void {
         if (!force && this.online === online) {
             return;

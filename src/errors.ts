@@ -1,5 +1,5 @@
 /**
- * Base error so Homey can instanceof-check as the kernel grows.
+ * Base error so hosts can instanceof-check as the kernel grows.
  */
 export class MerossError extends Error {
     readonly code: string;
@@ -12,7 +12,7 @@ export class MerossError extends Error {
 }
 
 /**
- * Thrown by frozen-API stubs until login, MQTT, LAN, and traits are implemented.
+ * Unimplemented public API surface.
  */
 export class NotImplementedError extends MerossError {
     constructor(feature: string) {

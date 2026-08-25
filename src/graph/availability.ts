@@ -99,7 +99,7 @@ export class DeviceAvailability {
     }
 
     /**
-     * meross_lan probes System.All for liveness, not System.Online.
+     * Firmware liveness is System.All; System.Online is not used as the probe.
      */
     private async pollOnline(): Promise<void> {
         const reply = await this.request(SYSTEM_ALL_NAMESPACE, 'GET', {});

@@ -37,14 +37,11 @@ export class AlarmTrait {
         this.bind = bind;
     }
 
-    /** True when the security siren is executing. Undefined until GETACK or PUSH fills it. */
+    /** Undefined until GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.last.on;
     }
 
-    /**
-     * Arms or clears the security siren.
-     */
     async setOn(on: boolean, durationSeconds?: number): Promise<{ on: boolean }> {
         await this.bind.request({
             namespace: CONTROL_ALARM_NAMESPACE,
@@ -61,7 +58,7 @@ export class AlarmTrait {
     }
 
     /**
-     * Arms or clears linkage (`event.interConn`) for this device only.
+     * `event.interConn` for this device only; firmware type 1 is local scope.
      */
     async setLinked(on: boolean): Promise<{ linked: boolean }> {
         await this.bind.request({
@@ -76,9 +73,6 @@ export class AlarmTrait {
         return { linked: on };
     }
 
-    /**
-     * Applies a firmware PUSH for this endpoint.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];

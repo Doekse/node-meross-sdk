@@ -70,24 +70,20 @@ export class CoverTrait {
         this.bind = bind;
     }
 
-    /** Mirrors other traits by guarding optional namespace behavior. */
     private has(namespace: string): boolean {
         return this.bind.namespaces?.has(namespace) ?? false;
     }
 
-    /** Last known open/closed. Undefined until poller GETACK or PUSH fills it. */
+    /** Undefined until poller GETACK or PUSH fills it. */
     isOpen(): boolean | undefined {
         return this.on;
     }
 
-    /** Last known position in `0..1`. Shutter only. */
+    /** Shutter only. Undefined for garage or until GETACK/PUSH fills it. */
     getPosition(): number | undefined {
         return this.position;
     }
 
-    /**
-     * Opens the bound channel.
-     */
     async open(): Promise<{ open: boolean }> {
         if (this.bind.kind === 'garage') {
             return { open: await this.setGarage(true) };
@@ -101,9 +97,6 @@ export class CoverTrait {
         return { open: true };
     }
 
-    /**
-     * Closes the bound channel.
-     */
     async close(): Promise<{ open: boolean }> {
         if (this.bind.kind === 'garage') {
             return { open: await this.setGarage(false) };
@@ -118,7 +111,7 @@ export class CoverTrait {
     }
 
     /**
-     * Stops a moving shutter. No-op for garage; firmware has no stop.
+     * No-op for garage; firmware has no stop.
      */
     async stop(): Promise<void> {
         if (this.bind.kind === 'garage') {
@@ -132,7 +125,7 @@ export class CoverTrait {
     }
 
     /**
-     * Sets position in `0..1`. Shutter only; no-op for garage.
+     * Host range is `0..1`. No-op for garage.
      */
     async setPosition(position: number): Promise<{ position: number }> {
         if (this.bind.kind === 'garage') {
@@ -150,7 +143,7 @@ export class CoverTrait {
     }
 
     /**
-     * Last known garage config. Undefined until poller GETACK or PUSH fills it.
+     * Undefined until poller GETACK or PUSH fills it.
      * Prefers MultipleConfig when both namespaces are advertised.
      */
     getConfig(): GarageMultipleConfigEntry | GarageDoorConfig | undefined {
@@ -167,7 +160,6 @@ export class CoverTrait {
     }
 
     /**
-     * Writes garage door config back to the device.
      * Uses MultipleConfig (MSG200) when advertised, else Config (MSG100).
      * No-op on shutters or when neither namespace is available.
      */
@@ -204,7 +196,6 @@ export class CoverTrait {
     }
 
     /**
-     * Last known travel-time and direction config for the bound shutter channel.
      * Undefined until poller GETACK or PUSH fills it, or when the kind is garage.
      */
     getShutterConfig(): ShutterConfig | undefined {
@@ -215,7 +206,6 @@ export class CoverTrait {
     }
 
     /**
-     * Writes travel times and optional direction to the device.
      * No-op on garages or when RollerShutter.Config is not advertised.
      */
     async setTravelTimes(options: Omit<ShutterConfigSetOptions, 'channel'>): Promise<void> {
@@ -232,7 +222,6 @@ export class CoverTrait {
     }
 
     /**
-     * Sends a calibration command to the device.
      * No-op on garages or when RollerShutter.Adjust is not advertised.
      *
      * Stage semantics follow the firmware:
@@ -262,9 +251,6 @@ export class CoverTrait {
         });
     }
 
-    /**
-     * Applies a firmware PUSH or poller GETACK for this endpoint.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];

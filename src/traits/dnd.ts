@@ -32,9 +32,6 @@ export class DndTrait {
         return this.on;
     }
 
-    /**
-     * Enables or disables do-not-disturb for the bound device.
-     */
     async setOn(on: boolean): Promise<{ on: boolean }> {
         await this.bind.request({
             namespace: DND_MODE_NAMESPACE,
@@ -45,9 +42,6 @@ export class DndTrait {
         return { on };
     }
 
-    /**
-     * Applies a firmware PUSH or poller GETACK for this device.
-     */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];

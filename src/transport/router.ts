@@ -54,7 +54,7 @@ interface BudgetEntry {
 
 /**
  * Always try LAN when an IP is known; MQTT is the fallback. There is no
- * public `transportMode` — Homey (and any host) should not choose a path.
+ * public `transportMode` — hosts should not choose a path.
  */
 export class TransportRouter {
     readonly mqtt: MqttTransport;
