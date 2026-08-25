@@ -231,7 +231,8 @@ export interface ClimateTraitHubBind {
 
 export type ClimateTraitBind = ClimateTraitBoardBind | ClimateTraitHubBind;
 
-// MTS100: 0=custom, 1=heat/comfort, 2=cool/economy, 3=auto/schedule, 4=eco/away
+// MTS100 Mode.state: 0=custom, 1=heat/comfort, 2=cool/economy, 3=auto/schedule, 4=eco/away.
+// Off is Hub.ToggleX, not a Mode state. `manual` has no hub wire value.
 const HUB_MODE_FROM_WIRE: Record<number, ClimateMode> = {
     0: 'custom',
     1: 'heat',
@@ -239,19 +240,16 @@ const HUB_MODE_FROM_WIRE: Record<number, ClimateMode> = {
     3: 'auto',
     4: 'eco'
 };
-const HUB_MODE_TO_WIRE: Record<ClimateMode, number> = {
-    off: 0,
+const HUB_MODE_TO_WIRE: Partial<Record<ClimateMode, number>> = {
     custom: 0,
     heat: 1,
     cool: 2,
     auto: 3,
-    eco: 4,
-    manual: 0
+    eco: 4
 };
 
 const MODEC_MODES = new Set<ClimateMode>(['off', 'heat', 'cool', 'auto']);
 const MODE_MODES = new Set<ClimateMode>(['off', 'heat', 'cool', 'auto', 'eco', 'manual']);
-const HUB_MODES = new Set<ClimateMode>(['off', 'custom', 'heat', 'cool', 'auto', 'eco', 'manual']);
 
 /**
  * Climate control for one enrolled thermostat or hub valve. Board generation
@@ -322,9 +320,6 @@ export class ClimateTrait {
      */
     async setMode(mode: ClimateMode): Promise<{ mode: ClimateMode }> {
         if (this.bind.kind === 'hub') {
-            if (!HUB_MODES.has(mode)) {
-                return { mode };
-            }
             if (mode === 'off') {
                 await this.bind.request({
                     namespace: HUB_TOGGLEX_NAMESPACE,
@@ -334,10 +329,14 @@ export class ClimateTrait {
                 this.applyChange({ mode, on: false });
                 return { mode };
             }
+            const state = HUB_MODE_TO_WIRE[mode];
+            if (state === undefined) {
+                return { mode };
+            }
             await this.bind.request({
                 namespace: HUB_MTS100_MODE_NAMESPACE,
                 method: 'SET',
-                payload: encodeHubMts100ModeSet({ id: this.bind.subDeviceId, state: HUB_MODE_TO_WIRE[mode] })
+                payload: encodeHubMts100ModeSet({ id: this.bind.subDeviceId, state })
             });
             this.applyChange({ mode });
             return { mode };

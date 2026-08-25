@@ -408,12 +408,24 @@ describe('ClimateTrait hub valve', () => {
         assert.equal(payload.mode[0]?.state, 0);
     });
 
-    it('setMode(off) sends Hub.ToggleX SET', async () => {
+    it('setMode(off) sends Hub.ToggleX SET, not Mode state 0', async () => {
         const { trait, requests } = createHubHarness();
 
         await trait.setMode('off');
 
+        assert.equal(requests.length, 1);
         assert.equal(requests[0]?.header.namespace, HUB_TOGGLEX_NAMESPACE);
+        const payload = requests[0]?.payload as { togglex: Array<{ id: string; onoff: number }> };
+        assert.equal(payload.togglex[0]?.onoff, 0);
+    });
+
+    it('setMode(manual) is a no-op on hub valves', async () => {
+        const { trait, requests } = createHubHarness();
+
+        const result = await trait.setMode('manual');
+
+        assert.equal(result.mode, 'manual');
+        assert.equal(requests.length, 0);
     });
 
     it('ignores Hub.ToggleX PUSH for a different subDeviceId', () => {
