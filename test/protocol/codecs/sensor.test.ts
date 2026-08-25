@@ -12,6 +12,7 @@ import {
     encodeSensorHistoryGet,
     encodeSensorHistoryXGet,
     encodeSensorLatestGet,
+    encodeLatestXGet,
     decodeSmokeConfigGetAck,
     decodeSmokeConfigPush,
     encodeSmokeConfigGet,
@@ -69,6 +70,20 @@ describe('Control.Sensor.Latest codec', () => {
     });
 });
 
+describe('Control.Sensor.LatestX codec', () => {
+    it('encodes GET with empty data (all keys)', () => {
+        assert.deepEqual(encodeLatestXGet({ channel: 0, keys: [] }), {
+            latest: [{ channel: 0, data: [] }]
+        });
+        assert.deepEqual(encodeLatestXGet({ channel: 0, keys: ['presence', 'light'] }), {
+            latest: [{ channel: 0, data: ['presence', 'light'] }]
+        });
+        assert.deepEqual(encodeLatestXGet({ channel: 0, subId: '00000101', keys: [] }), {
+            latest: [{ channel: 0, subId: '00000101', data: [] }]
+        });
+    });
+});
+
 describe('Control.Sensor.History codec', () => {
     it('encodes GET with channel and optional capacity', () => {
         assert.deepEqual(encodeSensorHistoryGet({ channel: 0 }), {
@@ -118,7 +133,7 @@ describe('Control.Sensor.History codec', () => {
 });
 
 describe('Control.Sensor.HistoryX codec', () => {
-    it('encodes GET with channel and requested sensor keys', () => {
+    it('encodes GET with channel and empty data (all keys)', () => {
         assert.deepEqual(encodeSensorHistoryXGet({ channel: 0, keys: [] }), {
             history: [{ channel: 0, data: [] }]
         });

@@ -11,9 +11,9 @@ import {
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_NAMESPACE,
     encodeConsumptionConfigGet,
-    encodeConsumptionConfigSet,
     encodeConsumptionHGet,
     decodeMessage,
+    encodeConsumptionXDelete,
     encodeConsumptionXGet,
     encodeElectricityGet,
     encodeElectricityXGet,
@@ -147,6 +147,16 @@ function createEnergyHarness(options: {
                 return electricityXAck();
             }
             if (opts.namespace === CONSUMPTIONX_NAMESPACE) {
+                if (opts.method === 'DELETE') {
+                    return encodeMessage({
+                        namespace: CONSUMPTIONX_NAMESPACE,
+                        method: 'DELETEACK',
+                        key: KEY,
+                        from: `/appliance/${UUID}/publish`,
+                        uuid: UUID,
+                        payload: {}
+                    });
+                }
                 return consumptionAck();
             }
             if (opts.namespace === CONSUMPTIONH_NAMESPACE) {
@@ -503,43 +513,6 @@ describe('EnergyTrait calibration', () => {
         assert.equal(requests.length, 0);
     });
 
-    it('SETs ConsumptionConfig on demand when advertised', async () => {
-        const { trait, requests } = createEnergyHarness({
-            hasConsumptionX: false,
-            namespaces: configNamespaces
-        });
-        const patch = {
-            voltageRatio: 190,
-            electricityRatio: 110,
-            maxElectricityCurrent: 15_000
-        };
-
-        const result = await trait.setCalibration(patch);
-
-        assert.deepEqual(result, patch);
-        assert.deepEqual(requests[0], {
-            namespace: CONSUMPTION_CONFIG_NAMESPACE,
-            method: 'SET',
-            payload: encodeConsumptionConfigSet(patch)
-        });
-    });
-
-    it('no-ops setCalibration when ConsumptionConfig is absent', async () => {
-        const { trait, requests } = createEnergyHarness({
-            hasConsumptionX: false
-        });
-        const patch = {
-            voltageRatio: 190,
-            electricityRatio: 110,
-            maxElectricityCurrent: 15_000
-        };
-
-        const result = await trait.setCalibration(patch);
-
-        assert.deepEqual(result, patch);
-        assert.equal(requests.length, 0);
-    });
-
     it('does not poll ConsumptionConfig on start', async (t) => {
         t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
         const { trait, requests } = createEnergyHarness({
@@ -584,5 +557,39 @@ describe('EnergyTrait calibration', () => {
         trait.handlePush(push);
 
         assert.deepEqual(changes, []);
+    });
+});
+
+describe('EnergyTrait consumption delete', () => {
+    it('DELETEs ConsumptionX records and clears local consumption', async () => {
+        const { endpoint, trait, requests } = createEnergyHarness();
+        const changes: Array<{ trait: string; values: EnergyValues }> = [];
+        endpoint.on('change', (change) => changes.push(change));
+        await trait.poll();
+        requests.length = 0;
+        changes.length = 0;
+
+        await trait.deleteConsumption();
+
+        assert.deepEqual(requests, [{
+            namespace: CONSUMPTIONX_NAMESPACE,
+            method: 'DELETE',
+            payload: encodeConsumptionXDelete()
+        }]);
+        assert.deepEqual(changes, [{
+            trait: 'energy',
+            values: { consumption: [] }
+        }]);
+    });
+
+    it('no-ops deleteConsumption when ConsumptionX is absent', async () => {
+        const { trait, requests } = createEnergyHarness({
+            hasElectricity: false,
+            hasConsumptionX: false
+        });
+
+        await trait.deleteConsumption();
+
+        assert.equal(requests.length, 0);
     });
 });

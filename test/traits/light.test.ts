@@ -124,7 +124,7 @@ function createLightHarness(options: {
                     key: KEY,
                     from: `/appliance/${UUID}/publish`,
                     uuid: UUID,
-                    payload: {}
+                    payload: opts.payload
                 });
             }
 
@@ -205,6 +205,28 @@ describe('LightTrait.setOn', () => {
         assert.equal(requests[0]?.header.method, 'SET');
         assert.deepEqual(requests[0]?.payload, encodeToggleXSet({ channel: CHANNEL, on: false }));
         assert.deepEqual(changes, [{ trait: 'light', values: { on: false } }]);
+    });
+});
+
+describe('LightTrait.setBrightness', () => {
+    it('maps host 0 to wire luminance 0 and treats the SET as off', async () => {
+        const { trait, requests } = createLightHarness();
+        const result = await trait.setBrightness(0);
+        assert.deepEqual(
+            requests[0]?.payload,
+            encodeLightSet({ channel: CHANNEL, capacity: LIGHT_CAPACITY_LUMINANCE, luminance: 0 })
+        );
+        assert.equal(trait.isOn(), false);
+        assert.equal(result.brightness, 0);
+    });
+
+    it('maps non-zero host brightness onto the 1–100 luminance scale', async () => {
+        const { trait, requests } = createLightHarness();
+        await trait.setBrightness(1);
+        assert.deepEqual(
+            requests[0]?.payload,
+            encodeLightSet({ channel: CHANNEL, capacity: LIGHT_CAPACITY_LUMINANCE, luminance: 100 })
+        );
     });
 });
 

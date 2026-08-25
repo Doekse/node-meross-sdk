@@ -66,6 +66,7 @@ describe('SprayTrait', () => {
         trait.start();
         await new Promise((resolve) => setImmediate(resolve));
         assert.equal(requests[0]?.header.namespace, SPRAY_NAMESPACE);
+        assert.deepEqual(requests[0]?.payload, { spray: {} });
         assert.equal(trait.getMode(), 'continuous');
         assert.deepEqual(changes[0], { mode: 'continuous' });
     });

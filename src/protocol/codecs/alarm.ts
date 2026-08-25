@@ -19,8 +19,13 @@ export interface AlarmSetOptions {
     channel: number;
     subId?: string;
     on: boolean;
-    /** Optional siren duration in seconds (`event.security.time`). */
+    /** Optional siren duration in seconds (`event.security.time` / `event.maSecurity.time`). */
     durationSeconds?: number;
+    /**
+     * MA151 hub-wide siren. SET uses `event.maSecurity` and omits subId;
+     * other hubs use `event.security`.
+     */
+    maSecurity?: boolean;
 }
 
 export interface AlarmLinkedSetOptions {
@@ -32,8 +37,10 @@ export interface AlarmLinkedSetOptions {
 export interface AlarmChannelState {
     channel: number;
     subId?: string;
-    /** True when `event.security.value` is execute. Undefined if security is absent. */
+    /** True when `event.security` or `event.maSecurity` is execute. Undefined if both are absent. */
     on?: boolean;
+    /** True when `on` came from `event.maSecurity` (MA151 hub-wide, no subId). */
+    maSecurity?: boolean;
     /** True when `event.interConn.value` is execute. Undefined if interConn is absent. */
     linked?: boolean;
 }
@@ -55,15 +62,18 @@ export function encodeAlarmGet(options: AlarmGetOptions): MerossPayload {
     return encodeArray('alarm', alarmRow(options));
 }
 
-/** SET security siren on/off (`event.security`). */
+/** SET security siren on/off (`event.security`, or `event.maSecurity` for MA151). */
 export function encodeAlarmSet(options: AlarmSetOptions): MerossPayload {
-    const security: Record<string, unknown> = {
+    const action: Record<string, unknown> = {
         value: options.on ? EXECUTE : NORMAL
     };
     if (options.durationSeconds !== undefined) {
-        security.time = options.durationSeconds;
+        action.time = options.durationSeconds;
     }
-    return encodeArray('alarm', { ...alarmRow(options), event: { security } });
+    return encodeArray('alarm', {
+        ...(options.maSecurity ? { channel: options.channel } : alarmRow(options)),
+        event: options.maSecurity ? { maSecurity: action } : { security: action }
+    });
 }
 
 /** SET linkage alarm on/off (`event.interConn`, local scope). */
@@ -119,12 +129,17 @@ function decodeAlarmEntry(item: unknown): AlarmChannelState {
         const security = decodeActionValue(fields.security);
         if (security !== undefined) {
             state.on = security;
+        } else {
+            const maSecurity = decodeActionValue(fields.maSecurity);
+            if (maSecurity !== undefined) {
+                state.on = maSecurity;
+                state.maSecurity = true;
+            }
         }
         const linked = decodeActionValue(fields.interConn);
         if (linked !== undefined) {
             state.linked = linked;
         }
-        // maSecurity, demolish, and other event keys are ignored on purpose.
     }
     return state;
 }

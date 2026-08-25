@@ -37,6 +37,12 @@ describe('GarageDoor.State codec', () => {
             [{ channel: 0, open: true }]
         );
         assert.deepEqual(
+            decodeGarageGetAck({
+                state: { channel: 0, open: 0, lmTime: 1686273341, execute: 1 }
+            }),
+            [{ channel: 0, open: false, execute: true }]
+        );
+        assert.deepEqual(
             decodeGaragePush({ state: [{ channel: 0, open: 0 }, { channel: 1, open: 1 }] }),
             [{ channel: 0, open: false }, { channel: 1, open: true }]
         );

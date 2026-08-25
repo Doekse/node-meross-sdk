@@ -23,9 +23,9 @@ const SPRAY_MODE_TO_WIRE: Record<SprayMode, number> = {
     intermittent: 2
 };
 
-/** GET is empty; firmware returns every channel. */
+/** GET `{ spray: {} }` returns every channel. */
 export function encodeSprayGet(): MerossPayload {
-    return {};
+    return { spray: {} };
 }
 
 /** SET is a single-channel object. */

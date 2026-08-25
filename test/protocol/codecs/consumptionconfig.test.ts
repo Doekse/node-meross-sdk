@@ -5,8 +5,7 @@ import { ProtocolError } from '../../../src/errors';
 import {
     decodeConsumptionConfigGetAck,
     decodeConsumptionConfigPush,
-    encodeConsumptionConfigGet,
-    encodeConsumptionConfigSet
+    encodeConsumptionConfigGet
 } from '../../../src/protocol/codecs/consumptionconfig';
 
 describe('ConsumptionConfig codec', () => {
@@ -62,30 +61,6 @@ describe('ConsumptionConfig codec', () => {
                 electricityRatio: 102,
                 maxElectricityCurrent: 11_000
             }
-        );
-    });
-
-    it('encodes SET with a config object', () => {
-        assert.deepEqual(
-            encodeConsumptionConfigSet({
-                voltageRatio: 193,
-                electricityRatio: 102,
-                maxElectricityCurrent: 16_000
-            }),
-            {
-                config: {
-                    voltageRatio: 193,
-                    electricityRatio: 102,
-                    maxElectricityCurrent: 16_000
-                }
-            }
-        );
-    });
-
-    it('omits maxElectricityCurrent from SET when it is absent', () => {
-        assert.deepEqual(
-            encodeConsumptionConfigSet({ voltageRatio: 186, electricityRatio: 121 }),
-            { config: { voltageRatio: 186, electricityRatio: 121 } }
         );
     });
 

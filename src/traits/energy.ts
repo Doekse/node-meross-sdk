@@ -10,8 +10,8 @@ import {
     decodeElectricityGetAck,
     decodeElectricityXGetAck,
     encodeConsumptionConfigGet,
-    encodeConsumptionConfigSet,
     encodeConsumptionHGet,
+    encodeConsumptionXDelete,
     encodeConsumptionXGet,
     encodeElectricityGet,
     encodeElectricityXGet,
@@ -161,19 +161,20 @@ export class EnergyTrait {
     }
 
     /**
-     * Writes plug calibration coefficients. No-op when ConsumptionConfig
-     * is not advertised. `maxElectricityCurrent` stays milliamps.
+     * Deletes every stored daily record. DELETE is all-or-nothing and does
+     * not PUSH, so the local list updates here. No-op when ConsumptionX is
+     * not advertised.
      */
-    async setCalibration(config: ElectricityConfig): Promise<ElectricityConfig> {
-        if (!this.has(CONSUMPTION_CONFIG_NAMESPACE)) {
-            return config;
+    async deleteConsumption(): Promise<void> {
+        if (!this.bind.hasConsumptionX) {
+            return;
         }
         await this.bind.request({
-            namespace: CONSUMPTION_CONFIG_NAMESPACE,
-            method: 'SET',
-            payload: encodeConsumptionConfigSet(config)
+            namespace: CONSUMPTIONX_NAMESPACE,
+            method: 'DELETE',
+            payload: encodeConsumptionXDelete()
         });
-        return config;
+        this.applyConsumption([]);
     }
 
     handlePush(message: MerossMessage): void {

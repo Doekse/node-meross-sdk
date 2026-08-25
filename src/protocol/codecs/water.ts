@@ -3,7 +3,7 @@ import type { MerossPayload } from '../message';
 
 export const CONTROL_WATER_NAMESPACE = 'Appliance.Control.Water';
 export const DEVICE_CFG_NAMESPACE = 'Appliance.Config.DeviceCfg';
-/** MST100 watering schedules. Not in the firmware doc; wire key is waterPlan. */
+/** MST100 watering schedules. Payload key is `config`. */
 export const WATER_PLAN_NAMESPACE = 'Appliance.Config.WaterPlan';
 
 export interface WaterControlState {
@@ -144,12 +144,12 @@ export function decodeDeviceCfgPush(payload: MerossPayload): MstDeviceCfgState[]
 }
 
 export function encodeWaterPlanGet(options: WaterPlanGetOptions): MerossPayload {
-    return encodeArray('waterPlan', { subId: options.subId, channel: 0 });
+    return encodeArray('config', { subId: options.subId, channel: 0 });
 }
 
 export function encodeWaterPlanSet(entries: WaterPlanEntry[]): MerossPayload {
     return {
-        waterPlan: entries.map((entry) => ({
+        config: entries.map((entry) => ({
             subId: entry.subId,
             channel: entry.channel,
             ...entry.schedule
@@ -166,7 +166,7 @@ export function decodeWaterPlanPush(payload: MerossPayload): WaterPlanEntry[] {
 }
 
 function decodeWaterPlan(payload: MerossPayload): WaterPlanEntry[] {
-    return decodeArray(payload, 'waterPlan', 'Config.WaterPlan').map((item) => {
+    return decodeArray(payload, 'config', 'Config.WaterPlan').map((item) => {
         const { subId, channel, ...rest } = item;
         if (typeof subId !== 'string') {
             throw new ProtocolError('Config.WaterPlan entry requires subId');

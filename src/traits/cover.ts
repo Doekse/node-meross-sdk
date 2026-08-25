@@ -98,20 +98,14 @@ export class CoverTrait {
      */
     async open(): Promise<{ open: boolean }> {
         if (this.bind.kind === 'garage') {
-            await this.bind.request({
-                namespace: GARAGE_STATE_NAMESPACE,
-                method: 'SET',
-                payload: encodeGarageSet({ channel: this.bind.channel, open: true })
-            });
-            this.applyGarage(true);
-        } else {
-            await this.bind.request({
-                namespace: SHUTTER_POSITION_NAMESPACE,
-                method: 'SET',
-                payload: encodeShutterPositionSet({ channel: this.bind.channel, position: 100 })
-            });
-            this.applyShutter(100);
+            return { open: await this.setGarage(true) };
         }
+        await this.bind.request({
+            namespace: SHUTTER_POSITION_NAMESPACE,
+            method: 'SET',
+            payload: encodeShutterPositionSet({ channel: this.bind.channel, position: 100 })
+        });
+        this.applyShutter(100);
         return { open: true };
     }
 
@@ -120,20 +114,14 @@ export class CoverTrait {
      */
     async close(): Promise<{ open: boolean }> {
         if (this.bind.kind === 'garage') {
-            await this.bind.request({
-                namespace: GARAGE_STATE_NAMESPACE,
-                method: 'SET',
-                payload: encodeGarageSet({ channel: this.bind.channel, open: false })
-            });
-            this.applyGarage(false);
-        } else {
-            await this.bind.request({
-                namespace: SHUTTER_POSITION_NAMESPACE,
-                method: 'SET',
-                payload: encodeShutterPositionSet({ channel: this.bind.channel, position: 0 })
-            });
-            this.applyShutter(0);
+            return { open: await this.setGarage(false) };
         }
+        await this.bind.request({
+            namespace: SHUTTER_POSITION_NAMESPACE,
+            method: 'SET',
+            payload: encodeShutterPositionSet({ channel: this.bind.channel, position: 0 })
+        });
+        this.applyShutter(0);
         return { open: false };
     }
 
@@ -308,6 +296,9 @@ export class CoverTrait {
                 for (const entry of decodeGaragePush(message.payload)) {
                     if (entry.channel === this.bind.channel) {
                         this.applyGarage(entry.open);
+                        if (this.moving === true) {
+                            this.applyMoving(false);
+                        }
                     }
                 }
             }
@@ -363,6 +354,29 @@ export class CoverTrait {
         } catch {
             // Next PUSH or setter call will recover.
         }
+    }
+
+    /**
+     * SETACK `open` is the current state, not the command. `execute` 1 with
+     * a different `open` means the door is still travelling.
+     */
+    private async setGarage(open: boolean): Promise<boolean> {
+        const reply = await this.bind.request({
+            namespace: GARAGE_STATE_NAMESPACE,
+            method: 'SET',
+            payload: encodeGarageSet({ channel: this.bind.channel, open })
+        });
+        for (const entry of decodeGarageGetAck(reply.payload)) {
+            if (entry.channel !== this.bind.channel) {
+                continue;
+            }
+            this.applyGarage(entry.open);
+            const moving = entry.execute === true && entry.open !== open;
+            if (moving || this.moving === true) {
+                this.applyMoving(moving);
+            }
+        }
+        return this.on ?? open;
     }
 
     private applyGarage(open: boolean): void {

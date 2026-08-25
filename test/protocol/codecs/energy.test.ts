@@ -10,6 +10,7 @@ import {
 } from '../../../src/protocol/codecs/consumptionh';
 import {
     decodeConsumptionXGetAck,
+    encodeConsumptionXDelete,
     encodeConsumptionXGet
 } from '../../../src/protocol/codecs/consumptionx';
 import {
@@ -99,8 +100,8 @@ describe('Electricity codec', () => {
 });
 
 describe('ElectricityX codec', () => {
-    it('encodes GET as an empty payload', () => {
-        assert.deepEqual(encodeElectricityXGet(), {});
+    it('encodes GET with channel 65535 so every channel is returned', () => {
+        assert.deepEqual(encodeElectricityXGet(), { electricity: { channel: 0xffff } });
     });
 
     it('decodes millivolt GETACK arrays into host units', () => {
@@ -152,6 +153,10 @@ describe('ConsumptionX codec', () => {
             encodeConsumptionXGet(),
             loadFixture('consumptionx-get.json').payload
         );
+    });
+
+    it('encodes DELETE as an empty payload', () => {
+        assert.deepEqual(encodeConsumptionXDelete(), {});
     });
 
     it('decodes firmware GETACK daily Wh rows', () => {

@@ -528,7 +528,11 @@ export class SensorTrait {
                 }),
                 this.pollHubNs(
                     SENSOR_LATESTX_NAMESPACE,
-                    encodeLatestXGet({ channel: 0, subId: subDeviceId, keys: ['light', 'temp', 'humi'] }),
+                    encodeLatestXGet({
+                        channel: 0,
+                        subId: subDeviceId,
+                        keys: ['light', 'temp', 'humi']
+                    }),
                     (payload) => {
                         const entry = decodeLatestXGetAck(payload).find((e) => e.subId === subDeviceId);
                         if (entry) {

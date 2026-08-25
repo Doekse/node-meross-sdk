@@ -790,7 +790,7 @@ describe('ClimateTrait board sensor readings', () => {
         assert.equal(requests[0]?.header.namespace, SENSOR_HISTORYX_NAMESPACE);
         assert.deepEqual(
             (requests[0]?.payload as { history: Array<{ channel: number; data: string[] }> }).history[0],
-            { channel: CHANNEL, data: ['temp', 'humi'] }
+            { channel: CHANNEL, data: [] }
         );
         assert.equal(history?.temperature?.length, 2);
         assert.equal(history?.temperature?.[0]?.temperature, 16.6);

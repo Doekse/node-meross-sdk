@@ -52,7 +52,11 @@ function createCoverHarness(
                 uuid: UUID
             });
             requests.push(message);
-            const ackPayload = getAckPayloads[options.namespace] ?? {};
+            const ackPayload = getAckPayloads[options.namespace] ?? (
+                options.method === 'SET' && options.namespace === GARAGE_STATE_NAMESPACE
+                    ? { state: { ...(options.payload.state as object), execute: 1 } }
+                    : {}
+            );
             return encodeMessage({
                 namespace: options.namespace,
                 method: options.method === 'GET' ? 'GETACK' : 'SETACK',
@@ -80,7 +84,7 @@ function push(namespace: string, payload: MerossMessage['payload']): MerossMessa
 }
 
 describe('CoverTrait.open/close', () => {
-    it('open() sends GarageDoor.State SET and returns the requested state', async () => {
+    it('open() sends GarageDoor.State SET and returns SETACK current state', async () => {
         const { trait, requests } = createCoverHarness('garage');
 
         const result = await trait.open();
@@ -130,6 +134,59 @@ describe('CoverTrait.open/close', () => {
         await trait.open();
 
         assert.equal(changes.length, 1);
+    });
+
+    it('open() uses SETACK open as current and moving when execute ran against a different state', async () => {
+        const { endpoint, trait } = createCoverHarness('garage', undefined, {
+            [GARAGE_STATE_NAMESPACE]: {
+                state: { channel: CHANNEL, open: 0, execute: 1, lmTime: 0 }
+            }
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const result = await trait.open();
+
+        assert.deepEqual(result, { open: false });
+        assert.deepEqual(changes, [
+            { trait: 'cover', values: { open: false } },
+            { trait: 'cover', values: { moving: true } }
+        ]);
+    });
+
+    it('open() does not set moving when SETACK execute is 0', async () => {
+        const { endpoint, trait } = createCoverHarness('garage', undefined, {
+            [GARAGE_STATE_NAMESPACE]: {
+                state: { channel: CHANNEL, open: 1, execute: 0, lmTime: 0 }
+            }
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const result = await trait.open();
+
+        assert.deepEqual(result, { open: true });
+        assert.deepEqual(changes, [{ trait: 'cover', values: { open: true } }]);
+    });
+
+    it('garage PUSH clears moving after SETACK starts travel', async () => {
+        const { endpoint, trait } = createCoverHarness('garage', undefined, {
+            [GARAGE_STATE_NAMESPACE]: {
+                state: { channel: CHANNEL, open: 0, execute: 1, lmTime: 0 }
+            }
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        await trait.open();
+        trait.handlePush(push(GARAGE_STATE_NAMESPACE, { state: { channel: CHANNEL, open: 1 } }));
+
+        assert.deepEqual(changes, [
+            { trait: 'cover', values: { open: false } },
+            { trait: 'cover', values: { moving: true } },
+            { trait: 'cover', values: { open: true } },
+            { trait: 'cover', values: { moving: false } }
+        ]);
     });
 
     it('open() sends RollerShutter.Position SET with position 100', async () => {

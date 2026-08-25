@@ -10,8 +10,8 @@ import {
 } from '../../../src/protocol/codecs/spray';
 
 describe('Control.Spray codec', () => {
-    it('encodes GET as an empty payload', () => {
-        assert.deepEqual(encodeSprayGet(), {});
+    it('encodes GET as an empty spray object', () => {
+        assert.deepEqual(encodeSprayGet(), { spray: {} });
     });
 
     it('encodes SET as a single spray object', () => {

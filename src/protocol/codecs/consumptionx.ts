@@ -15,6 +15,11 @@ export function encodeConsumptionXGet(): MerossPayload {
     return {};
 }
 
+/** Firmware DELETE uses an empty payload. */
+export function encodeConsumptionXDelete(): MerossPayload {
+    return {};
+}
+
 /** GETACK `consumptionx` is an array of daily records. */
 export function decodeConsumptionXGetAck(payload: MerossPayload): ConsumptionXDay[] {
     const raw = payload.consumptionx;

@@ -109,9 +109,9 @@ describe('Config.DeviceCfg codec', () => {
 });
 
 describe('Config.WaterPlan codec', () => {
-    it('encodes GET with subId and channel 0 under waterPlan', () => {
+    it('encodes GET with subId and channel 0 under config', () => {
         assert.deepEqual(encodeWaterPlanGet({ subId: SUB_ID }), {
-            waterPlan: [{ subId: SUB_ID, channel: 0 }]
+            config: [{ subId: SUB_ID, channel: 0 }]
         });
     });
 
@@ -121,7 +121,7 @@ describe('Config.WaterPlan codec', () => {
             channel: 0,
             schedule: { enable: 1, week: 127, time: 360, dura: 900 }
         }]), {
-            waterPlan: [{
+            config: [{
                 subId: SUB_ID,
                 channel: 0,
                 enable: 1,
@@ -134,7 +134,7 @@ describe('Config.WaterPlan codec', () => {
 
     it('decodes GETACK rows keyed by subId with opaque schedule', () => {
         const [entry] = decodeWaterPlanGetAck({
-            waterPlan: [{
+            config: [{
                 channel: 0,
                 subId: SUB_ID,
                 enable: 1,
@@ -155,18 +155,18 @@ describe('Config.WaterPlan codec', () => {
 
     it('uses PUSH decoder interchangeably with GETACK', () => {
         const payload = {
-            waterPlan: [{ channel: 0, subId: SUB_ID, enable: 0 }]
+            config: [{ channel: 0, subId: SUB_ID, enable: 0 }]
         };
         assert.deepEqual(decodeWaterPlanPush(payload), decodeWaterPlanGetAck(payload));
     });
 
-    it('rejects a non-array waterPlan payload', () => {
-        assert.throws(() => decodeWaterPlanGetAck({ waterPlan: {} }), ProtocolError);
+    it('rejects a non-array config payload', () => {
+        assert.throws(() => decodeWaterPlanGetAck({ config: {} }), ProtocolError);
     });
 
     it('rejects an entry without subId', () => {
         assert.throws(
-            () => decodeWaterPlanGetAck({ waterPlan: [{ channel: 0 }] }),
+            () => decodeWaterPlanGetAck({ config: [{ channel: 0 }] }),
             ProtocolError
         );
     });

@@ -157,7 +157,7 @@ describe('SprinklerTrait', () => {
     it('getSchedule returns rows for this subId via Config.WaterPlan', async () => {
         const { trait, requests } = createHarness({
             [WATER_PLAN_NAMESPACE]: {
-                waterPlan: [
+                config: [
                     {
                         channel: 0,
                         subId: SUB_DEVICE_ID,
@@ -180,7 +180,7 @@ describe('SprinklerTrait', () => {
         assert.equal(requests[0]?.header.namespace, WATER_PLAN_NAMESPACE);
         assert.equal(requests[0]?.header.method, 'GET');
         assert.deepEqual(requests[0]?.payload, {
-            waterPlan: [{ subId: SUB_DEVICE_ID, channel: 0 }]
+            config: [{ subId: SUB_DEVICE_ID, channel: 0 }]
         });
         assert.deepEqual(schedule, [{
             subId: SUB_DEVICE_ID,
@@ -219,7 +219,7 @@ describe('SprinklerTrait', () => {
         assert.equal(withAbility.requests[0]?.header.namespace, WATER_PLAN_NAMESPACE);
         assert.equal(withAbility.requests[0]?.header.method, 'SET');
         assert.deepEqual(withAbility.requests[0]?.payload, {
-            waterPlan: [{
+            config: [{
                 subId: SUB_DEVICE_ID,
                 channel: 0,
                 enable: 1,

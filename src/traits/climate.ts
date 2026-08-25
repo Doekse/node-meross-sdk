@@ -898,7 +898,7 @@ export class ClimateTrait {
      * Fetches extended sensor history. On-demand only; returns
      * `undefined` when Sensor.HistoryX is not advertised or the bind is a hub valve.
      */
-    async getHistoryX(options?: { keys?: string[] }): Promise<SensorHistoryXState | undefined> {
+    async getHistoryX(): Promise<SensorHistoryXState | undefined> {
         if (!this.has(SENSOR_HISTORYX_NAMESPACE) || this.bind.kind !== 'board') {
             return undefined;
         }
@@ -906,10 +906,7 @@ export class ClimateTrait {
         const reply = await this.bind.request({
             namespace: SENSOR_HISTORYX_NAMESPACE,
             method: 'GET',
-            payload: encodeSensorHistoryXGet({
-                channel,
-                keys: options?.keys ?? ['temp', 'humi']
-            })
+            payload: encodeSensorHistoryXGet({ channel, keys: [] })
         });
         return decodeSensorHistoryXGetAck(reply.payload, this.boardScale())
             .find((entry) => entry.channel === channel);

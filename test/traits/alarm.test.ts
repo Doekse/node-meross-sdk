@@ -10,7 +10,10 @@ const KEY = 'stub-key';
 const UUID = '1906017373338625184434298f1ed9bd';
 const CHANNEL = 0;
 
-function createHarness(): {
+function createHarness(event: Record<string, unknown> = {
+    interConn: { value: 2, timestamp: 0 },
+    security: { value: 1, timestamp: 0 }
+}): {
     trait: AlarmTrait;
     requests: MerossMessage[];
     changes: Record<string, unknown>[];
@@ -41,10 +44,7 @@ function createHarness(): {
                 payload: {
                     alarm: [{
                         channel: CHANNEL,
-                        event: {
-                            interConn: { value: 2, timestamp: 0 },
-                            security: { value: 1, timestamp: 0 }
-                        }
+                        event
                     }]
                 }
             });
@@ -141,5 +141,35 @@ describe('AlarmTrait', () => {
             }
         }));
         assert.equal(changes.length, 0);
+    });
+
+    it('applies maSecurity PUSH as the hub-wide siren', () => {
+        const { trait, changes } = createHarness();
+        trait.handlePush(pushMessage({
+            alarm: [{
+                channel: CHANNEL,
+                event: { maSecurity: { value: 1, timestamp: 10 } }
+            }]
+        }));
+        assert.equal(trait.isOn(), true);
+        assert.deepEqual(changes, [{ on: true }]);
+    });
+
+    it('setOn uses maSecurity after a maSecurity GETACK', async () => {
+        const { trait, requests } = createHarness({
+            maSecurity: { value: 2, timestamp: 0 }
+        });
+        trait.start();
+        await new Promise((resolve) => setImmediate(resolve));
+        requests.length = 0;
+
+        await trait.setOn(true, 15);
+
+        assert.deepEqual(requests[0]?.payload, {
+            alarm: [{
+                channel: CHANNEL,
+                event: { maSecurity: { value: 1, time: 15 } }
+            }]
+        });
     });
 });

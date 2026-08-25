@@ -109,6 +109,7 @@ export interface SensorSmokeSetOptions {
 export interface LatestXGetOptions {
     channel: number;
     subId?: string;
+    /** Sensor keys to request. Empty selects all. */
     keys: string[];
 }
 
@@ -141,6 +142,7 @@ export interface SensorHistoryGetOptions {
 export interface SensorHistoryXGetOptions {
     channel: number;
     subId?: string;
+    /** Sensor keys to request. Empty selects all. */
     keys: string[];
 }
 
@@ -490,7 +492,10 @@ function nestedNumber(raw: unknown, key: string): number | undefined {
 }
 
 export function encodeLatestXGet(options: LatestXGetOptions): MerossPayload {
-    const entry: Record<string, unknown> = { channel: options.channel, data: options.keys };
+    const entry: Record<string, unknown> = {
+        channel: options.channel,
+        data: options.keys
+    };
     if (options.subId) {
         entry.subId = options.subId;
     }
@@ -685,7 +690,10 @@ function decodeSensorHistory(payload: MerossPayload, tempScale: number): SensorH
 }
 
 export function encodeSensorHistoryXGet(options: SensorHistoryXGetOptions): MerossPayload {
-    const entry: Record<string, unknown> = { channel: options.channel, data: options.keys };
+    const entry: Record<string, unknown> = {
+        channel: options.channel,
+        data: options.keys
+    };
     if (options.subId) {
         entry.subId = options.subId;
     }

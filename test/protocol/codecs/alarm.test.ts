@@ -31,6 +31,18 @@ describe('Control.Alarm codec', () => {
                 event: { security: { value: 2 } }
             }]
         });
+        assert.deepEqual(encodeAlarmSet({ channel: 0, on: true, maSecurity: true, durationSeconds: 15 }), {
+            alarm: [{
+                channel: 0,
+                event: { maSecurity: { value: 1, time: 15 } }
+            }]
+        });
+        assert.deepEqual(encodeAlarmSet({ channel: 0, subId: 'abc', on: false, maSecurity: true }), {
+            alarm: [{
+                channel: 0,
+                event: { maSecurity: { value: 2 } }
+            }]
+        });
     });
 
     it('encodes SET interConn with local scope', () => {
@@ -64,6 +76,15 @@ describe('Control.Alarm codec', () => {
             }]
         });
         assert.deepEqual(entry, { channel: 0, on: false, linked: true });
+        assert.deepEqual(
+            decodeAlarmGetAck({
+                alarm: [{
+                    channel: 0,
+                    event: { maSecurity: { value: 1, timestamp: 100 } }
+                }]
+            }),
+            [{ channel: 0, on: true, maSecurity: true }]
+        );
     });
 
     it('uses PUSH decoder interchangeably with GETACK', () => {

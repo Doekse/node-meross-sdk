@@ -171,13 +171,17 @@ export class LightTrait {
      * Sets brightness in `0..1`.
      */
     async setBrightness(brightness: number): Promise<{ brightness: number }> {
-        const luminance = hostToWire01(brightness);
+        // Capacity 0x4 treats luminance 0 as off; the usual scale is 1–100.
+        const luminance = brightness === 0 ? 0 : hostToWire01(brightness);
         const reply = await this.bind.request({
             namespace: LIGHT_NAMESPACE,
             method: 'SET',
             payload: encodeLightSet({ channel: this.bind.channel, capacity: LIGHT_CAPACITY_LUMINANCE, luminance })
         });
         this.applyLight(decodeLightGetAck(reply.payload));
+        if (luminance === 0) {
+            this.applyOn(false);
+        }
         return { brightness: this.brightness ?? brightness };
     }
 

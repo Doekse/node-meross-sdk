@@ -32,6 +32,8 @@ export interface AlarmTraitBind {
 export class AlarmTrait {
     private readonly bind: AlarmTraitBind;
     private last: AlarmValues = {};
+    /** MA151 GETACK/PUSH uses maSecurity; SET must match. */
+    private maSecurity = false;
 
     constructor(bind: AlarmTraitBind) {
         this.bind = bind;
@@ -48,7 +50,7 @@ export class AlarmTrait {
     }
 
     /**
-     * Arms or clears the security siren (`event.security`).
+     * Arms or clears the security siren.
      */
     async setOn(on: boolean, durationSeconds?: number): Promise<{ on: boolean }> {
         await this.bind.request({
@@ -57,6 +59,7 @@ export class AlarmTrait {
             payload: encodeAlarmSet({
                 channel: this.bind.channel,
                 on,
+                maSecurity: this.maSecurity,
                 ...(durationSeconds !== undefined ? { durationSeconds } : {})
             })
         });
@@ -94,6 +97,9 @@ export class AlarmTrait {
         }
         for (const entry of decodeAlarmPush(message.payload)) {
             if (this.matches(entry)) {
+                if (entry.maSecurity) {
+                    this.maSecurity = true;
+                }
                 this.applyChange(alarmPatch(entry));
             }
         }
@@ -127,6 +133,9 @@ export class AlarmTrait {
             });
             const entry = decodeAlarmGetAck(reply.payload).find((item) => this.matches(item));
             if (entry) {
+                if (entry.maSecurity) {
+                    this.maSecurity = true;
+                }
                 this.applyChange(alarmPatch(entry));
             }
         } catch {

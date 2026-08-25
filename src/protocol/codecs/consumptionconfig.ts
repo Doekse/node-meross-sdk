@@ -4,21 +4,9 @@ import { parseElectricityConfig, type ElectricityConfig } from './electricity';
 
 export const CONSUMPTION_CONFIG_NAMESPACE = 'Appliance.Control.ConsumptionConfig';
 
-/** Firmware GET is an empty payload. */
+/** Firmware GET uses an empty payload. */
 export function encodeConsumptionConfigGet(): MerossPayload {
     return {};
-}
-
-/** SET uses the GETACK `config` object. Firmware does not document SET. */
-export function encodeConsumptionConfigSet(config: ElectricityConfig): MerossPayload {
-    const body: Record<string, unknown> = {
-        voltageRatio: config.voltageRatio,
-        electricityRatio: config.electricityRatio
-    };
-    if (config.maxElectricityCurrent !== undefined) {
-        body.maxElectricityCurrent = config.maxElectricityCurrent;
-    }
-    return { config: body };
 }
 
 export function decodeConsumptionConfigGetAck(payload: MerossPayload): ElectricityConfig {

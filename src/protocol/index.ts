@@ -56,6 +56,7 @@ export type {
 export {
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_NAMESPACE,
+    ELECTRICITYX_ALL_CHANNELS,
     decodeElectricityGetAck,
     decodeElectricityXGetAck,
     encodeElectricityGet,
@@ -75,6 +76,7 @@ export type { ConsumptionHChannel, ConsumptionHHour } from './codecs/consumption
 export {
     CONSUMPTIONX_NAMESPACE,
     decodeConsumptionXGetAck,
+    encodeConsumptionXDelete,
     encodeConsumptionXGet
 } from './codecs/consumptionx';
 export type { ConsumptionXDay } from './codecs/consumptionx';
@@ -82,8 +84,7 @@ export {
     CONSUMPTION_CONFIG_NAMESPACE,
     decodeConsumptionConfigGetAck,
     decodeConsumptionConfigPush,
-    encodeConsumptionConfigGet,
-    encodeConsumptionConfigSet
+    encodeConsumptionConfigGet
 } from './codecs/consumptionconfig';
 export {
     GARAGE_STATE_NAMESPACE,

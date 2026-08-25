@@ -12,6 +12,11 @@ export const SHUTTER_ADJUST_NAMESPACE = 'Appliance.RollerShutter.Adjust';
 export interface GarageChannelState {
     channel: number;
     open: boolean;
+    /**
+     * SETACK only. 1 means the command ran; 0 means it did not (already in
+     * that state on newer firmware).
+     */
+    execute?: boolean;
 }
 
 export interface GarageSetOptions {
@@ -76,11 +81,15 @@ function decodeGarageEntry(item: unknown): GarageChannelState {
     if (typeof item !== 'object' || item === null) {
         throw new ProtocolError('GarageDoor.State entry must be an object');
     }
-    const { channel, open } = item as Record<string, unknown>;
+    const { channel, open, execute } = item as Record<string, unknown>;
     if (typeof channel !== 'number') {
         throw new ProtocolError('GarageDoor.State channel is required');
     }
-    return { channel, open: open === 1 };
+    const state: GarageChannelState = { channel, open: open === 1 };
+    if (typeof execute === 'number') {
+        state.execute = execute === 1;
+    }
+    return state;
 }
 
 /** SET is a single-channel object. Wire 0 = closed, 100 = open, -1 = stop. */
