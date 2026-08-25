@@ -60,6 +60,11 @@ export interface MqttTransportOptions {
     appId?: string;
     dispatcher?: ProtocolDispatcher;
     connect?: MqttConnectFn;
+    /**
+     * Session re-emits this as `connection` so hosts can react to broker
+     * drop without a public transport.
+     */
+    onConnectionChange?: (connected: boolean) => void;
 }
 
 export interface MqttRequestOptions {
@@ -92,6 +97,7 @@ export class MqttTransport {
     private readonly key: string;
     private readonly mqttDomain: string;
     private readonly connectFn: MqttConnectFn;
+    private readonly onConnectionChange?: (connected: boolean) => void;
     private client: MqttBrokerClient | undefined;
     private connectPromise: Promise<void> | null = null;
     private connected = false;
@@ -104,6 +110,7 @@ export class MqttTransport {
         this.key = options.key;
         this.mqttDomain = options.mqttDomain;
         this.connectFn = options.connect ?? defaultConnect;
+        this.onConnectionChange = options.onConnectionChange;
         this.appId = options.appId
             ?? createHash('md5').update(`API${randomUUID()}`).digest('hex');
         this.clientResponseTopic = `/app/${this.userId}-${this.appId}/subscribe`;
@@ -137,7 +144,7 @@ export class MqttTransport {
      * {@link connect} does not wait out the timeout.
      */
     async disconnect(): Promise<void> {
-        this.connected = false;
+        this.applyConnected(false);
         this.handshake?.reject(new TransportError('MQTT connection closed', 'MQTT_ERROR'));
         this.dispatcher.pending.clear();
         this.inflight.clear();
@@ -218,7 +225,7 @@ export class MqttTransport {
         });
         client.on('close', () => {
             const wasConnected = this.connected;
-            this.connected = false;
+            this.applyConnected(false);
             if (wasConnected) {
                 this.failInflight(new TransportError(
                     'MQTT connection closed',
@@ -255,7 +262,7 @@ export class MqttTransport {
                 };
             });
         } catch (error) {
-            this.connected = false;
+            this.applyConnected(false);
             if (this.client === client) {
                 this.client = undefined;
                 await new Promise<void>((resolve) => client.end(true, resolve));
@@ -285,7 +292,7 @@ export class MqttTransport {
                 }
                 if (error) {
                     failed = true;
-                    this.connected = false;
+                    this.applyConnected(false);
                     this.handshake?.reject(new TransportError(error.message, 'MQTT_SUBSCRIBE_FAILED'));
                     return;
                 }
@@ -293,10 +300,22 @@ export class MqttTransport {
                 if (remaining !== 0) {
                     return;
                 }
-                this.connected = true;
+                this.applyConnected(true);
                 this.handshake?.resolve();
             });
         }
+    }
+
+    /**
+     * Skip-duplicate so `close` and {@link disconnect} do not emit twice
+     * for the same drop.
+     */
+    private applyConnected(connected: boolean): void {
+        if (this.connected === connected) {
+            return;
+        }
+        this.connected = connected;
+        this.onConnectionChange?.(connected);
     }
 
     /**

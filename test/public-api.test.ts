@@ -21,6 +21,7 @@ describe('public API', () => {
         assert.equal(typeof Session.prototype.endpoint, 'function');
         assert.equal(typeof Session.prototype.getToken, 'function');
         assert.equal(typeof Session.prototype.sync, 'function');
+        assert.equal(typeof Session.prototype.on, 'function');
     });
 
     it('exposes AuthError and CloudError for login and token failures', () => {
@@ -41,6 +42,22 @@ describe('public API', () => {
         });
         assert.equal(session.getToken().token, 't');
         assert.deepEqual(session.inventory.endpoints(), []);
+    });
+
+    it('Session can emit connection like Endpoint emits availability', () => {
+        const session = Session.restore({
+            token: 't',
+            key: 'k',
+            userId: '1',
+            domain: 'https://example.com',
+            mqttDomain: 'mqtt.example.com'
+        });
+        const seen: boolean[] = [];
+        session.on('connection', (connected) => {
+            seen.push(connected);
+        });
+        session.emit('connection', true);
+        assert.deepEqual(seen, [true]);
     });
 
     it('SwitchTrait.setOn drives on/off when bound to a transport', async () => {

@@ -359,4 +359,22 @@ describe('MqttTransport', () => {
             (err: unknown) => err instanceof TransportError && err.code === 'MQTT_NOT_CONNECTED'
         );
     });
+
+    it('notifies onConnectionChange on connect, drop, reconnect, and disconnect', async () => {
+        const connections: boolean[] = [];
+        const { transport, getClient } = createTransport({
+            onConnectionChange: (connected) => connections.push(connected)
+        });
+        await transport.connect();
+        assert.deepEqual(connections, [true]);
+
+        getClient().emit('close');
+        assert.deepEqual(connections, [true, false]);
+
+        getClient().emit('connect');
+        assert.deepEqual(connections, [true, false, true]);
+
+        await transport.disconnect();
+        assert.deepEqual(connections, [true, false, true, false]);
+    });
 });

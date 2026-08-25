@@ -1,3 +1,5 @@
+import { EventEmitter } from 'node:events';
+
 import { CloudClient } from './cloud';
 import type { CloudClientOptions, CloudDevice } from './cloud';
 import { Endpoint } from './endpoint';
@@ -76,11 +78,15 @@ export interface SessionOptions {
     lanFetch?: typeof globalThis.fetch;
 }
 
+interface SessionEvents {
+    connection: [connected: boolean];
+}
+
 /**
  * Cloud credentials plus live inventory. Hosts persist {@link TokenData}
  * and rebuild a session with {@link Session.restore}.
  */
-export class Session {
+export class Session extends EventEmitter<SessionEvents> {
     readonly inventory: Inventory;
 
     private readonly cloud: CloudClient;
@@ -100,6 +106,7 @@ export class Session {
         cloud: CloudClient,
         options: SessionOptions = {}
     ) {
+        super();
         this.token = token;
         this.cloud = cloud;
         this.mqttConnect = options.mqttConnect;
@@ -136,6 +143,7 @@ export class Session {
     /**
      * Opens MQTT and LAN, then enrolls boards into {@link Inventory}.
      * Transports stay internal; hosts only see inventory after this.
+     * A failed attempt clears the router so a later call can retry.
      */
     async connect(): Promise<void> {
         if (this.router) {
@@ -151,7 +159,8 @@ export class Session {
             key: this.token.key,
             mqttDomain: this.token.mqttDomain,
             dispatcher,
-            connect: this.mqttConnect
+            connect: this.mqttConnect,
+            onConnectionChange: (connected) => this.emit('connection', connected)
         });
         const lan = new LanHttpTransport({
             key: this.token.key,
@@ -160,8 +169,13 @@ export class Session {
             fetch: this.lanFetch
         });
         this.router = new TransportRouter({ mqtt, lan });
-        await this.router.connect();
-        await this.sync();
+        try {
+            await this.router.connect();
+            await this.sync();
+        } catch (error) {
+            await this.teardownRouter();
+            throw error;
+        }
     }
 
     /**
@@ -193,9 +207,7 @@ export class Session {
         this.stopBoards();
         this.graph = new DeviceGraph();
         this.inventory.replace([]);
-        const router = this.router;
-        this.router = undefined;
-        await router?.disconnect();
+        await this.teardownRouter();
     }
 
     /**
@@ -207,6 +219,12 @@ export class Session {
             throw new MerossError(`Unknown endpoint: ${id}`, 'ENDPOINT_NOT_FOUND');
         }
         return endpoint;
+    }
+
+    private async teardownRouter(): Promise<void> {
+        const router = this.router;
+        this.router = undefined;
+        await router?.disconnect();
     }
 
     private handlePush(message: MerossMessage): void {

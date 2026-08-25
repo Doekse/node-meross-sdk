@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { ABILITY_NAMESPACE, SYSTEM_ALL_NAMESPACE } from '../src/graph';
-import { MerossError } from '../src/errors';
+import { AuthError, MerossError } from '../src/errors';
 import {
     decodeMessage,
     decryptPayload,
@@ -513,6 +513,63 @@ describe('Session.connect', () => {
         const headers = lanCalls[0]!.headers as Record<string, string>;
         assert.equal(headers['Content-Type'], 'application/octet-stream');
         assert.equal(String(lanCalls[0]!.body).startsWith('{'), false);
+        await session.disconnect();
+    });
+
+    it('emits connection on connect, drop, reconnect, and disconnect', async () => {
+        const { fetchImpl } = createCloudFetch();
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+
+        const connections: boolean[] = [];
+        session.on('connection', (connected) => connections.push(connected));
+
+        await connectSession(session, clientRef);
+        assert.deepEqual(connections, [true]);
+
+        clientRef.current!.emit('close');
+        assert.deepEqual(connections, [true, false]);
+
+        clientRef.current!.emit('connect');
+        assert.deepEqual(connections, [true, false, true]);
+
+        await session.disconnect();
+        assert.deepEqual(connections, [true, false, true, false]);
+    });
+
+    it('tears MQTT down when connect fails on an expired token', async () => {
+        const fetchImpl: typeof fetch = async (url) => {
+            if (String(url).endsWith('/v1/Auth/signIn')) {
+                return ok(LOGIN_DATA);
+            }
+            if (String(url).endsWith('/v1/Device/devList')) {
+                return jsonResponse({ apiStatus: 1019, info: 'Token invalid' });
+            }
+            return jsonResponse({ apiStatus: 999, info: 'unexpected' }, 500);
+        };
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+
+        const connections: boolean[] = [];
+        session.on('connection', (connected) => connections.push(connected));
+
+        await assert.rejects(
+            session.connect(),
+            (error: unknown) => error instanceof AuthError && error.code === 'TOKEN_EXPIRED'
+        );
+        assert.deepEqual(connections, [true, false]);
         await session.disconnect();
     });
 });

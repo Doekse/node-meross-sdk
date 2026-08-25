@@ -48,7 +48,7 @@ The first published release is `0.1.0-alpha`.
 - Ability-based enrollment: traits attach from firmware `Ability` + `System.All`, not a hardcoded model list
 - One `Endpoint` per user-visible device (strip outlets and hub children included)
 - LAN HTTP preferred automatically, with MQTT failover
-- PUSH updates plus background polling; hosts listen on `availability` and `change`
+- PUSH updates plus background polling; hosts listen on endpoint `availability` and `change`, and session `connection`
 - TypeScript types shipped next to CommonJS `dist/` so `require()` hosts (including Homey) load without a bundler
 
 
@@ -157,7 +157,13 @@ await session.sync();
 
 ### Events
 
+Attach session listeners before `connect()`. Endpoint listeners can be attached once inventory is ready.
+
 ```javascript
+session.on('connection', (connected) => {
+  // MQTT broker up/down, including reconnect after a drop
+});
+
 const endpoint = session.endpoint(row.id);
 
 endpoint.on('availability', (online) => {
