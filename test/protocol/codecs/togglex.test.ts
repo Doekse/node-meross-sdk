@@ -78,10 +78,10 @@ describe('ToggleX codec', () => {
         ]);
     });
 
-    it('rejects PUSH when togglex is an object', () => {
-        assert.throws(
-            () => decodeToggleXPush({ togglex: { channel: 0, onoff: 1 } }),
-            (err: unknown) => err instanceof ProtocolError
+    it('decodes historical single-channel PUSH when togglex is an object', () => {
+        assert.deepEqual(
+            decodeToggleXPush({ togglex: { channel: 0, onoff: 1 } }),
+            [{ channel: 0, on: true }]
         );
     });
 

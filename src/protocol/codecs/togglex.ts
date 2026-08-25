@@ -63,8 +63,17 @@ export function encodeToggleXGet(options: ToggleXGetOptions = {}): MerossPayload
 
 /**
  * Single-channel GETACK is an object; `0xffff` GETACK is an array.
+ * Older firmware also PUSHed an object; current firmware PUSHes an array.
  */
 export function decodeToggleXGetAck(payload: MerossPayload): ToggleXChannel[] {
+    return decodeToggleX(payload);
+}
+
+export function decodeToggleXPush(payload: MerossPayload): ToggleXChannel[] {
+    return decodeToggleX(payload);
+}
+
+function decodeToggleX(payload: MerossPayload): ToggleXChannel[] {
     const raw = payload.togglex;
     if (Array.isArray(raw)) {
         return raw.map(decodeChannel);
@@ -72,18 +81,7 @@ export function decodeToggleXGetAck(payload: MerossPayload): ToggleXChannel[] {
     if (raw && typeof raw === 'object') {
         return [decodeChannel(raw)];
     }
-    throw new ProtocolError('ToggleX GETACK togglex must be an object or array');
-}
-
-/**
- * PUSH is always an array, including single-channel devices.
- */
-export function decodeToggleXPush(payload: MerossPayload): ToggleXChannel[] {
-    const raw = payload.togglex;
-    if (!Array.isArray(raw)) {
-        throw new ProtocolError('ToggleX PUSH togglex must be an array');
-    }
-    return raw.map(decodeChannel);
+    throw new ProtocolError('ToggleX togglex must be an object or array');
 }
 
 function decodeChannel(raw: unknown): ToggleXChannel {
