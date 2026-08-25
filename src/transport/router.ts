@@ -91,9 +91,8 @@ export class TransportRouter {
     }
 
     /**
-     * Prefer LAN when `ip` is set and the device still has error budget;
-     * MQTT otherwise. A device ERROR method is a delivered command, not a
-     * transport failure, so it does not failover.
+     * Device ERROR and an unusable LAN body are delivered commands, not
+     * transport failures, so they do not failover.
      */
     async request(options: RoutedRequestOptions): Promise<MerossMessage> {
         const command = {
@@ -111,7 +110,7 @@ export class TransportRouter {
                     encryptionKey: options.encryptionKey
                 });
             } catch (error) {
-                if (error instanceof CommandError) {
+                if (error instanceof CommandError || error instanceof ProtocolError) {
                     throw error;
                 }
                 if (error instanceof TransportError) {

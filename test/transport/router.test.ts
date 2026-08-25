@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { describe, it } from 'node:test';
 
-import { CommandError, TransportError } from '../../src/errors';
+import { CommandError, ProtocolError, TransportError } from '../../src/errors';
 import {
     HUB_TOGGLEX_NAMESPACE,
     MULTIPLE_NAMESPACE,
@@ -272,7 +272,7 @@ describe('TransportRouter', () => {
         assert.equal(retry.header.method, 'GETACK');
     });
 
-    it('failovers on a LAN protocol error without spending budget', async () => {
+    it('does not spend budget or failover on a LAN protocol error', async () => {
         const { router, mqtt, lanCalls } = createRouted({
             lan: async (sent, calls) => {
                 if (calls.length === 1) {
@@ -283,12 +283,15 @@ describe('TransportRouter', () => {
         });
         await router.connect();
 
-        await connectAndAckMqtt(mqtt, router.request({
-            uuid: UUID,
-            ip: IP,
-            namespace: TOGGLEX_NAMESPACE,
-            method: 'GET'
-        }));
+        await assert.rejects(
+            router.request({
+                uuid: UUID,
+                ip: IP,
+                namespace: TOGGLEX_NAMESPACE,
+                method: 'SET'
+            }),
+            (err: unknown) => err instanceof ProtocolError
+        );
         const retry = await router.request({
             uuid: UUID,
             ip: IP,
@@ -297,7 +300,7 @@ describe('TransportRouter', () => {
         });
 
         assert.equal(lanCalls.length, 2);
-        assert.equal(mqtt.getClient().published.length, 1);
+        assert.equal(mqtt.getClient().published.length, 0);
         assert.equal(retry.header.method, 'GETACK');
     });
 
