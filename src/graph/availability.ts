@@ -32,7 +32,7 @@ export class DeviceAvailability {
     private readonly endpoints: readonly Endpoint[];
     private readonly request: DeviceAvailabilityOptions['request'];
     private readonly onOnlineChange?: (online: boolean) => void;
-    private readonly onInnerIp?: (innerIp: string) => void;
+    private readonly onInnerIp?: (innerIp: string | undefined) => void;
     private readonly heartbeat: Heartbeat;
 
     private online: boolean;
