@@ -2,7 +2,7 @@
  * MQTT, LAN HTTP, and the router that prefers LAN with MQTT failover.
  * Unexported from the package entry; Session wires this after login.
  */
-export { MqttTransport } from './mqtt';
+export { MQTT_RECONNECT_PERIOD_MS, MqttTransport } from './mqtt';
 export type {
     MqttBrokerClient,
     MqttConnectFn,

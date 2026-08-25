@@ -6,9 +6,19 @@ import { TransportError } from '../errors';
 import { ProtocolDispatcher, decodeMessage, encodeMessage } from '../protocol';
 import type { MerossMessage, MerossPayload } from '../protocol';
 
-/** Firmware `System.All` / meross_lan use 443, not the older 2001 broker port. */
+/** Cloud brokers listen on 443; older firmware used 2001. */
 const MQTT_PORT = 443;
+
+/**
+ * Bound for the first {@link MqttTransport.connect} so Session cannot hang
+ * while mqtt.js retries in the background.
+ */
 const CONNECT_TIMEOUT_MS = 30_000;
+
+/**
+ * Passed to mqtt.js so a dropped socket is retried on the same client.
+ */
+export const MQTT_RECONNECT_PERIOD_MS = 1_000;
 
 export interface MqttConnectOptions {
     protocol: 'mqtts';
@@ -20,10 +30,16 @@ export interface MqttConnectOptions {
     rejectUnauthorized: boolean;
     keepalive: number;
     reconnectPeriod: number;
+    /**
+     * mqtt.js would replay stored topics on reconnect. Subscribe already
+     * runs on every `connect` event.
+     */
+    resubscribe: boolean;
 }
 
 /**
- * Tests inject a fake. Factories must not emit `connect` during construction.
+ * mqtt.js client surface. Injected fakes must emit `connect` after return
+ * so listeners are already attached.
  */
 export interface MqttBrokerClient {
     on(event: 'connect', listener: () => void): unknown;
@@ -53,10 +69,19 @@ export interface MqttRequestOptions {
     payload?: MerossPayload;
 }
 
+/** First {@link MqttTransport.connect} must not settle on a later mqtt.js reconnect. */
+interface Handshake {
+    resolve: () => void;
+    reject: (error: Error) => void;
+}
+
 /**
  * Cloud MQTT: signed GET/SET on `/appliance/{uuid}/subscribe`, ACK on the
  * app response topic, PUSH on the user topic. Pending matching lives in
  * {@link ProtocolDispatcher} so LAN HTTP can share the same registry.
+ *
+ * mqtt.js owns reconnect; {@link disconnect} is the only `end()` so a
+ * dropped socket does not tear down the client.
  */
 export class MqttTransport {
     readonly appId: string;
@@ -70,6 +95,9 @@ export class MqttTransport {
     private client: MqttBrokerClient | undefined;
     private connectPromise: Promise<void> | null = null;
     private connected = false;
+    private handshake: Handshake | null = null;
+    /** Shared dispatcher also holds LAN ids; only these are cancelled on drop. */
+    private readonly inflight = new Set<string>();
 
     constructor(options: MqttTransportOptions) {
         this.userId = options.userId;
@@ -82,12 +110,19 @@ export class MqttTransport {
         this.dispatcher = options.dispatcher ?? new ProtocolDispatcher();
     }
 
+    /**
+     * First handshake only. Later `connect` events come from mqtt.js; calling
+     * this again must not create a second client.
+     */
     async connect(): Promise<void> {
         if (this.connected) {
             return;
         }
         if (this.connectPromise) {
             return this.connectPromise;
+        }
+        if (this.client) {
+            return;
         }
         this.connectPromise = this.open();
         try {
@@ -97,9 +132,15 @@ export class MqttTransport {
         }
     }
 
+    /**
+     * Stops mqtt.js reconnect. Rejects an in-flight first handshake so
+     * {@link connect} does not wait out the timeout.
+     */
     async disconnect(): Promise<void> {
         this.connected = false;
+        this.handshake?.reject(new TransportError('MQTT connection closed', 'MQTT_ERROR'));
         this.dispatcher.pending.clear();
+        this.inflight.clear();
         const client = this.client;
         this.client = undefined;
         if (!client) {
@@ -121,22 +162,33 @@ export class MqttTransport {
             payload: options.payload,
             uuid: options.uuid
         });
-        const reply = this.dispatcher.pending.register(message.header.messageId);
+        const messageId = message.header.messageId;
+        const reply = this.dispatcher.pending.register(messageId);
+        this.inflight.add(messageId);
         client.publish(
             `/appliance/${options.uuid}/subscribe`,
             JSON.stringify(message),
             (error) => {
                 if (error) {
                     this.dispatcher.pending.reject(
-                        message.header.messageId,
+                        messageId,
                         new TransportError(error.message, 'MQTT_PUBLISH_FAILED')
                     );
                 }
             }
         );
-        return reply;
+        try {
+            return await reply;
+        } finally {
+            this.inflight.delete(messageId);
+        }
     }
 
+    /**
+     * Creates the client and waits for the first successful subscribe. Failure
+     * calls `end()` because mqtt.js would otherwise keep retrying after
+     * {@link connect} has already rejected.
+     */
     private async open(): Promise<void> {
         const [host, portStr] = this.mqttDomain.split(':');
         const client = this.connectFn({
@@ -148,18 +200,48 @@ export class MqttTransport {
             password: createHash('md5').update(`${this.userId}${this.key}`).digest('hex'),
             rejectUnauthorized: true,
             keepalive: 30,
-            reconnectPeriod: 0
+            reconnectPeriod: MQTT_RECONNECT_PERIOD_MS,
+            resubscribe: false
         });
         this.client = client;
+
+        client.on('connect', () => this.onConnect(client));
+        client.on('message', (_topic, payload) => {
+            try {
+                this.dispatcher.handle(decodeMessage(payload, this.key));
+            } catch {
+                // Unsigned or malformed payloads must not kill the socket.
+            }
+        });
+        client.on('error', () => {
+            // mqtt.js treats an unhandled `error` event as a thrown exception.
+        });
+        client.on('close', () => {
+            const wasConnected = this.connected;
+            this.connected = false;
+            if (wasConnected) {
+                this.failInflight(new TransportError(
+                    'MQTT connection closed',
+                    'MQTT_DISCONNECTED'
+                ));
+            }
+        });
 
         try {
             await new Promise<void>((resolve, reject) => {
                 let settled = false;
-                const done = (error?: Error): void => {
+                const timer = setTimeout(() => {
+                    finish(new TransportError(
+                        `MQTT connection timed out after ${CONNECT_TIMEOUT_MS}ms`,
+                        'MQTT_CONNECT_TIMEOUT'
+                    ));
+                }, CONNECT_TIMEOUT_MS);
+                const finish = (error?: Error): void => {
                     if (settled) {
                         return;
                     }
                     settled = true;
+                    this.handshake = null;
                     clearTimeout(timer);
                     if (error) {
                         reject(error);
@@ -167,50 +249,65 @@ export class MqttTransport {
                         resolve();
                     }
                 };
-                const timer = setTimeout(() => {
-                    done(new TransportError(
-                        `MQTT connection timed out after ${CONNECT_TIMEOUT_MS}ms`,
-                        'MQTT_CONNECT_TIMEOUT'
-                    ));
-                }, CONNECT_TIMEOUT_MS);
-
-                client.on('connect', () => done());
-                client.on('message', (_topic, payload) => {
-                    try {
-                        this.dispatcher.handle(decodeMessage(payload, this.key));
-                    } catch {
-                        // Drop malformed JSON and bad signatures.
-                    }
-                });
-                client.on('error', (error) => {
-                    done(new TransportError(error.message, 'MQTT_ERROR'));
-                });
-                client.on('close', () => {
-                    this.connected = false;
-                    this.client = undefined;
-                    done(new TransportError('MQTT connection closed', 'MQTT_ERROR'));
-                });
+                this.handshake = {
+                    resolve: () => finish(),
+                    reject: (error) => finish(error)
+                };
             });
-
-            await Promise.all([
-                `/app/${this.userId}/subscribe`,
-                this.clientResponseTopic
-            ].map((topic) => new Promise<void>((resolve, reject) => {
-                client.subscribe(topic, (error) => {
-                    if (error) {
-                        reject(new TransportError(error.message, 'MQTT_SUBSCRIBE_FAILED'));
-                        return;
-                    }
-                    resolve();
-                });
-            })));
-            this.connected = true;
         } catch (error) {
             this.connected = false;
-            this.client = undefined;
-            await new Promise<void>((resolve) => client.end(true, resolve));
+            if (this.client === client) {
+                this.client = undefined;
+                await new Promise<void>((resolve) => client.end(true, resolve));
+            }
             throw error;
         }
+    }
+
+    /**
+     * Reconnects start a new MQTT session; topics from the previous
+     * connection are gone.
+     */
+    private onConnect(client: MqttBrokerClient): void {
+        if (this.client !== client) {
+            return;
+        }
+        const topics = [
+            `/app/${this.userId}/subscribe`,
+            this.clientResponseTopic
+        ];
+        let remaining = topics.length;
+        let failed = false;
+        for (const topic of topics) {
+            client.subscribe(topic, (error) => {
+                if (this.client !== client || failed) {
+                    return;
+                }
+                if (error) {
+                    failed = true;
+                    this.connected = false;
+                    this.handshake?.reject(new TransportError(error.message, 'MQTT_SUBSCRIBE_FAILED'));
+                    return;
+                }
+                remaining -= 1;
+                if (remaining !== 0) {
+                    return;
+                }
+                this.connected = true;
+                this.handshake?.resolve();
+            });
+        }
+    }
+
+    /**
+     * Only MQTT-originated ids. Clearing the shared registry would cancel a
+     * LAN GET that is still on the wire.
+     */
+    private failInflight(error: Error): void {
+        for (const messageId of this.inflight) {
+            this.dispatcher.pending.reject(messageId, error);
+        }
+        this.inflight.clear();
     }
 }
 

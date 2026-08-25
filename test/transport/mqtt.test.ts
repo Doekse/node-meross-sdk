@@ -13,6 +13,7 @@ import {
 } from '../../src/protocol';
 import { verifySignature } from '../../src/protocol/sign';
 import {
+    MQTT_RECONNECT_PERIOD_MS,
     MqttTransport,
     type MqttBrokerClient,
     type MqttConnectOptions,
@@ -24,6 +25,10 @@ const KEY = 'stub-key';
 const DOMAIN = 'eu-iotx.meross.com';
 const UUID = '00000000-0000-4000-8000-000000000001';
 const APP_ID = '53d331b732f6f1ba4031522fa9ee0d7a';
+const USER_TOPICS = [
+    `/app/${USER_ID}/subscribe`,
+    `/app/${USER_ID}-${APP_ID}/subscribe`
+];
 
 class FakeMqttClient extends EventEmitter implements MqttBrokerClient {
     readonly subscriptions: string[] = [];
@@ -77,6 +82,17 @@ function createTransport(overrides: Partial<MqttTransportOptions> & { client?: F
     };
 }
 
+function ackFor(sent: MerossMessage, method: 'GETACK' | 'SETACK'): MerossMessage {
+    return encodeMessage({
+        namespace: sent.header.namespace,
+        method,
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        messageId: sent.header.messageId,
+        timestamp: sent.header.timestamp
+    });
+}
+
 describe('MqttTransport', () => {
     it('connects with mqtts credentials and subscribes to user and response topics', async () => {
         const { transport, getClient, getConnectOptions } = createTransport();
@@ -90,10 +106,9 @@ describe('MqttTransport', () => {
         assert.equal(options.username, USER_ID);
         assert.equal(options.password, '3421441f1521102d91f627b001f9c9fd');
         assert.equal(options.rejectUnauthorized, true);
-        assert.deepEqual(getClient().subscriptions, [
-            `/app/${USER_ID}/subscribe`,
-            `/app/${USER_ID}-${APP_ID}/subscribe`
-        ]);
+        assert.equal(options.reconnectPeriod, MQTT_RECONNECT_PERIOD_MS);
+        assert.equal(options.resubscribe, false);
+        assert.deepEqual(getClient().subscriptions, USER_TOPICS);
         assert.equal(transport.clientResponseTopic, `/app/${USER_ID}-${APP_ID}/subscribe`);
     });
 
@@ -137,21 +152,23 @@ describe('MqttTransport', () => {
         );
     });
 
-    it('rejects when the broker emits error before connect', async () => {
+    it('stays pending through a broker error until connect', async () => {
         const client = new FakeMqttClient();
         const transport = new MqttTransport({
             userId: USER_ID,
             key: KEY,
             mqttDomain: DOMAIN,
+            appId: APP_ID,
             connect: () => {
-                queueMicrotask(() => client.emit('error', new Error('broker down')));
+                queueMicrotask(() => {
+                    client.emit('error', new Error('broker down'));
+                    client.emit('connect');
+                });
                 return client;
             }
         });
-        await assert.rejects(
-            transport.connect(),
-            (err: unknown) => err instanceof TransportError && err.code === 'MQTT_ERROR'
-        );
+        await transport.connect();
+        assert.deepEqual(client.subscriptions, USER_TOPICS);
     });
 
     it('publishes a signed ToggleX SET and resolves with SETACK via pending', async () => {
@@ -172,16 +189,8 @@ describe('MqttTransport', () => {
         assert.equal(verifySignature(sent.header, KEY), true);
         assert.deepEqual(sent.payload, { togglex: { onoff: 0, channel: 0, entity: 1 } });
 
-        const ack = encodeMessage({
-            namespace: sent.header.namespace,
-            method: 'SETACK',
-            key: KEY,
-            from: `/appliance/${UUID}/publish`,
-            messageId: sent.header.messageId,
-            timestamp: sent.header.timestamp
-        });
-        client.deliver(ack);
-        assert.deepEqual(await pending, ack);
+        client.deliver(ackFor(sent, 'SETACK'));
+        assert.equal((await pending).header.method, 'SETACK');
     });
 
     it('rejects a pending request when publish fails', async () => {
@@ -251,7 +260,7 @@ describe('MqttTransport', () => {
             payload: { togglex: [{ channel: 0, onoff: 1 }] }
         }));
 
-        const ack = encodeMessage({
+        client.deliver(encodeMessage({
             namespace: sent.header.namespace,
             method: 'GETACK',
             key: KEY,
@@ -259,11 +268,95 @@ describe('MqttTransport', () => {
             messageId: sent.header.messageId,
             timestamp: sent.header.timestamp,
             payload: { togglex: { channel: 0, onoff: 1 } }
-        });
-        client.deliver(ack);
+        }));
 
         assert.equal((await pending).header.method, 'GETACK');
         assert.equal(applied.length, 1);
         assert.equal(applied[0]!.header.method, 'PUSH');
+    });
+
+    it('uses the same client after close when it emits connect again', async () => {
+        let factories = 0;
+        const client = new FakeMqttClient();
+        const { transport } = createTransport({
+            connect: () => {
+                factories += 1;
+                queueMicrotask(() => client.emit('connect'));
+                return client;
+            }
+        });
+        await transport.connect();
+        client.emit('close');
+        await assert.rejects(
+            transport.request({ uuid: UUID, namespace: TOGGLEX_NAMESPACE, method: 'GET' }),
+            (err: unknown) => err instanceof TransportError && err.code === 'MQTT_NOT_CONNECTED'
+        );
+        await transport.connect();
+        assert.equal(factories, 1);
+
+        client.emit('connect');
+        assert.deepEqual(client.subscriptions.slice(-2), USER_TOPICS);
+
+        const pending = transport.request({
+            uuid: UUID,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        const sent = decodeMessage(client.published[0]!.payload, KEY);
+        client.deliver(ackFor(sent, 'GETACK'));
+        assert.equal((await pending).header.method, 'GETACK');
+        await transport.disconnect();
+    });
+
+    it('rejects in-flight MQTT requests when the socket drops', async () => {
+        const { transport, getClient } = createTransport();
+        await transport.connect();
+        const pending = transport.request({
+            uuid: UUID,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        getClient().emit('close');
+        await assert.rejects(
+            pending,
+            (err: unknown) => err instanceof TransportError && err.code === 'MQTT_DISCONNECTED'
+        );
+        await transport.disconnect();
+    });
+
+    it('does not cancel LAN pending ids when MQTT drops', async () => {
+        const dispatcher = new ProtocolDispatcher();
+        const { transport, getClient } = createTransport({ dispatcher });
+        await transport.connect();
+        const lanPending = dispatcher.pending.register('lan-id', 5_000);
+        const mqttPending = transport.request({
+            uuid: UUID,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        getClient().emit('close');
+        await assert.rejects(
+            mqttPending,
+            (err: unknown) => err instanceof TransportError && err.code === 'MQTT_DISCONNECTED'
+        );
+        assert.equal(dispatcher.pending.has('lan-id'), true);
+        dispatcher.pending.clear();
+        await assert.rejects(
+            lanPending,
+            (err: unknown) => err instanceof CommandError && err.code === 'COMMAND_CANCELLED'
+        );
+        await transport.disconnect();
+    });
+
+    it('ignores connect after disconnect', async () => {
+        const { transport, getClient } = createTransport();
+        await transport.connect();
+        const client = getClient();
+        await transport.disconnect();
+        client.emit('connect');
+        await assert.rejects(
+            transport.request({ uuid: UUID, namespace: TOGGLEX_NAMESPACE, method: 'GET' }),
+            (err: unknown) => err instanceof TransportError && err.code === 'MQTT_NOT_CONNECTED'
+        );
     });
 });
