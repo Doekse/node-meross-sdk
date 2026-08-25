@@ -1048,6 +1048,7 @@ describe('DeviceGraph and Inventory', () => {
         assert.equal(rows[0]?.id, id);
         assert.equal(rows[0]?.name, 'Kitchen plug');
         assert.deepEqual(rows[0]?.traits, ['switch', 'energy']);
+        assert.equal('online' in (rows[0] ?? {}), false);
 
         const inventory = new Inventory(rows);
         const copy = inventory.endpoints();

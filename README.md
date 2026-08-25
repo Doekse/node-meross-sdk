@@ -115,7 +115,7 @@ import { Session } from 'node-meross-sdk';
 | Piece         | Role                                                                                                                                 |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | **Session**   | Cloud credentials, live inventory, and connect/disconnect. Persist `[TokenData](#reuse-a-token)` and rebuild with `Session.restore`. |
-| **Inventory** | User-visible rows after enrollment (`id`, `name`, `model`, `classHint`, `traits`, `online`, optional `parentId`).                    |
+| **Inventory** | User-visible rows after enrollment (`id`, `name`, `model`, `classHint`, `traits`, optional `parentId`). Live availability is on Endpoint. |
 | **Endpoint**  | One device you would show a user. Traits live here. Channel and subdevice id are bound at enrollment; they are not method arguments. |
 | **Trait**     | Capability on that endpoint (`switch`, `light`, `energy`, ...). Absent traits are `undefined`; check before calling.                   |
 
@@ -167,7 +167,7 @@ session.on('connection', (connected) => {
 const endpoint = session.endpoint(row.id);
 
 endpoint.on('availability', (online) => {
-  // boolean
+  // boolean; current value is endpoint.isOnline()
 });
 
 endpoint.on('change', ({ trait, values }) => {

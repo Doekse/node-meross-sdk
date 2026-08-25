@@ -10,13 +10,13 @@ export interface InventoryRow {
     model: string;
     classHint: ClassHint;
     traits: readonly TraitName[];
-    online: boolean;
     parentId?: string;
 }
 
 /**
  * Cloud/LAN device list projected into user-visible endpoints (one row per
- * endpoint, not per physical board).
+ * endpoint, not per physical board). Availability is omitted so hosts cannot
+ * read a snapshot frozen at enroll.
  */
 export class Inventory {
     private rows: readonly InventoryRow[] = [];
@@ -26,7 +26,7 @@ export class Inventory {
     }
 
     /**
-     * Replaces inventory rows after graph enrollment.
+     * Full catalog swap after enroll or disconnect so ghost rows do not remain.
      */
     replace(rows: readonly InventoryRow[]): void {
         this.rows = rows;

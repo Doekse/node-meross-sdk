@@ -75,6 +75,7 @@ export interface GraphEndpoint {
     model: string;
     classHint: ClassHint;
     traits: readonly TraitName[];
+    /** Digest/cloud snapshot so Endpoint can start before the first Online PUSH. */
     online: boolean;
     /** Digest `togglex.onoff` when System.All carried it, so switch has a value before the first PUSH. */
     on?: boolean;
@@ -92,6 +93,7 @@ export interface PhysicalDevice {
     maxCmdNum: number;
     innerIp?: string;
     macAddress?: string;
+    /** Digest/cloud snapshot so DeviceAvailability can start before the first Online PUSH. */
     online: boolean;
     endpoints: readonly GraphEndpoint[];
 }
@@ -172,7 +174,7 @@ export class DeviceGraph {
 
     /**
      * Drops trait-less rows so a hub board with no alarm/dnd does not appear
-     * in inventory.
+     * in inventory. Online is omitted so the catalog cannot go stale after PUSH.
      */
     inventoryRows(): InventoryRow[] {
         return [...this.physical.values()].flatMap((device) =>
@@ -184,7 +186,6 @@ export class DeviceGraph {
                     model: endpoint.model,
                     classHint: endpoint.classHint,
                     traits: [...endpoint.traits],
-                    online: endpoint.online,
                     ...(endpoint.parentId ? { parentId: endpoint.parentId } : {})
                 }))
         );

@@ -104,6 +104,14 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     }
 
     /**
+     * Current availability. Inventory omits this so hosts cannot read a
+     * snapshot frozen at enroll.
+     */
+    isOnline(): boolean {
+        return this.online;
+    }
+
+    /**
      * `force` is for the initial fan-out so hosts get a first availability
      * event even when the value matches the constructor default.
      */
