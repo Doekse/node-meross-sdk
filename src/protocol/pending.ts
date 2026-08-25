@@ -1,5 +1,5 @@
 import { CommandError, ProtocolError } from '../errors';
-import type { MerossMessage } from './message';
+import { deviceErrorCode, type MerossMessage } from './message';
 
 /** MQTT/LAN replies usually arrive well under this; transports can override. */
 export const DEFAULT_COMMAND_TIMEOUT_MS = 10_000;
@@ -57,11 +57,13 @@ export class PendingRequests {
         clearTimeout(entry.timer);
         this.entries.delete(message.header.messageId);
         if (message.header.method === 'ERROR') {
-            const rawCode = (message.payload as { error?: { code?: unknown } }).error?.code;
-            const deviceCode = typeof rawCode === 'number' ? rawCode : undefined;
+            const deviceCode = deviceErrorCode(message);
+            const invalidKey = deviceCode === 5001;
             entry.reject(new CommandError(
-                `Device returned error: ${JSON.stringify(message.payload)}`,
-                'COMMAND_FAILED',
+                invalidKey
+                    ? 'Device rejected the key'
+                    : `Device returned error: ${JSON.stringify(message.payload)}`,
+                invalidKey ? 'INVALID_KEY' : 'COMMAND_FAILED',
                 deviceCode
             ));
         } else {

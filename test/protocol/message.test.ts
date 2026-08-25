@@ -193,6 +193,41 @@ describe('protocol message envelope', () => {
         );
     });
 
+    it('accepts ERROR 5001 signed with the device key when the caller key is wrong', () => {
+        // Device replies ERROR 5001 signed with its own key; the caller's wrong
+        // key cannot verify. decodeMessage must still return the envelope so
+        // PendingRequests can reject with INVALID_KEY.
+        const reply = encodeMessage({
+            namespace: 'Appliance.Control.ToggleX',
+            method: 'ERROR',
+            key: 'device-key',
+            from: '/appliance/abc/publish',
+            messageId: '91a936cd22f48cb18b210c649e42b5b3',
+            timestamp: 1_700_000_000,
+            payload: { error: { code: 5001 } }
+        });
+        const decoded = decodeMessage(reply, 'wrong-caller-key');
+        assert.equal(decoded.header.method, 'ERROR');
+        assert.equal(
+            (decoded.payload as { error: { code: number } }).error.code,
+            5001
+        );
+    });
+
+    it('still rejects a non-5001 ERROR with a wrong key as SIGNATURE_ERROR', () => {
+        const reply = encodeMessage({
+            namespace: 'Appliance.Control.ToggleX',
+            method: 'ERROR',
+            key: 'device-key',
+            from: '/appliance/abc/publish',
+            payload: { error: { code: 5000 } }
+        });
+        assert.throws(
+            () => decodeMessage(reply, 'wrong-caller-key'),
+            (err: unknown) => err instanceof ProtocolError && err.code === 'SIGNATURE_ERROR'
+        );
+    });
+
     it('rejects envelopes missing header or payload', () => {
         assert.throws(
             () => decodeMessage({ payload: {} }),

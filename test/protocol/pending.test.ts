@@ -47,7 +47,7 @@ describe('PendingRequests', () => {
             key: 'k',
             from: '/appliance/abc/publish',
             messageId: 'msg-err',
-            payload: { error: { code: 5001 } }
+            payload: { error: { code: 5000 } }
         });
 
         assert.equal(pending.settle(reply), true);
@@ -55,6 +55,27 @@ describe('PendingRequests', () => {
             promise,
             (err: unknown) => err instanceof CommandError
                 && err.code === 'COMMAND_FAILED'
+                && err.deviceCode === 5000
+        );
+    });
+
+    it('rejects ERROR 5001 as INVALID_KEY', async () => {
+        const pending = new PendingRequests();
+        const promise = pending.register('msg-key', 5_000);
+        const reply = encodeMessage({
+            namespace: 'Appliance.Control.ToggleX',
+            method: 'ERROR',
+            key: 'k',
+            from: '/appliance/abc/publish',
+            messageId: 'msg-key',
+            payload: { error: { code: 5001 } }
+        });
+
+        assert.equal(pending.settle(reply), true);
+        await assert.rejects(
+            promise,
+            (err: unknown) => err instanceof CommandError
+                && err.code === 'INVALID_KEY'
                 && err.deviceCode === 5001
         );
     });

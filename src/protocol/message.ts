@@ -91,7 +91,22 @@ export function decodeMessage(input: string | Buffer | unknown, key?: string): M
 
     const message = { header: header as MerossHeader, payload: payload as MerossPayload };
     if (key !== undefined && !verifySignature(message.header, key)) {
-        throw new ProtocolError('message signature is invalid', 'SIGNATURE_ERROR');
+        // ERROR 5001 is signed with the device key; a wrong caller key always
+        // fails verify. Accept it so PendingRequests can surface INVALID_KEY.
+        if (deviceErrorCode(message) !== 5001) {
+            throw new ProtocolError('message signature is invalid', 'SIGNATURE_ERROR');
+        }
     }
     return message;
+}
+
+/**
+ * Firmware `payload.error.code` on method ERROR, if present and numeric.
+ */
+export function deviceErrorCode(message: MerossMessage): number | undefined {
+    if (message.header.method !== 'ERROR') {
+        return undefined;
+    }
+    const rawCode = (message.payload as { error?: { code?: unknown } }).error?.code;
+    return typeof rawCode === 'number' ? rawCode : undefined;
 }

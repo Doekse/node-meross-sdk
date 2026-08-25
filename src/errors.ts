@@ -33,6 +33,7 @@ export class ProtocolError extends MerossError {
 
 /**
  * Command timeout, device ERROR method, or a cancelled pending request.
+ * Wrong-key replies use code `INVALID_KEY` with `deviceCode` 5001.
  * Not a public export until Session surfaces command failures to hosts.
  */
 export class CommandError extends MerossError {

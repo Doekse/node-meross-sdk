@@ -109,12 +109,30 @@ describe('ProtocolDispatcher with fake transport', () => {
         const pending = transport.request(request, 5_000);
 
         assert.equal(
-            transport.deliver(replyFor(request, 'ERROR', { error: { code: 5001 } })),
+            transport.deliver(replyFor(request, 'ERROR', { error: { code: 5000 } })),
             'reply'
         );
         await assert.rejects(
             pending,
             (err: unknown) => err instanceof CommandError && err.code === 'COMMAND_FAILED'
+        );
+    });
+
+    it('rejects a pending request with INVALID_KEY when the device replies ERROR 5001', async () => {
+        const dispatcher = new ProtocolDispatcher();
+        const transport = new FakeTransport(dispatcher);
+        const request = requestMessage('req-key');
+        const pending = transport.request(request, 5_000);
+
+        assert.equal(
+            transport.deliver(replyFor(request, 'ERROR', { error: { code: 5001 } })),
+            'reply'
+        );
+        await assert.rejects(
+            pending,
+            (err: unknown) => err instanceof CommandError
+                && err.code === 'INVALID_KEY'
+                && err.deviceCode === 5001
         );
     });
 

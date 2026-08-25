@@ -7,6 +7,7 @@ export {
     DEFAULT_TRIGGER_SRC,
     PAYLOAD_VERSION,
     decodeMessage,
+    deviceErrorCode,
     encodeMessage
 } from './message';
 export type {

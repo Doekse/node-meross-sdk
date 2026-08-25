@@ -139,6 +139,32 @@ describe('LanHttpTransport', () => {
         );
     });
 
+    it('surfaces ERROR 5001 as INVALID_KEY even when signed with the device key', async () => {
+        // Wrong caller key: device signs ERROR 5001 with its own key. Without the
+        // decodeMessage exception, this would land as SIGNATURE_ERROR.
+        const deviceKey = 'device-owned-key';
+        const { transport } = createTransport(async (_url, init) => {
+            const sent = decodeMessage(String(init.body), KEY);
+            return jsonResponse(encodeMessage({
+                namespace: sent.header.namespace,
+                method: 'ERROR',
+                key: deviceKey,
+                from: `/appliance/${UUID}/publish`,
+                messageId: sent.header.messageId,
+                timestamp: sent.header.timestamp,
+                uuid: UUID,
+                payload: { error: { code: 5001 } }
+            }));
+        });
+
+        await assert.rejects(
+            transport.request({ uuid: UUID, ip: IP, namespace: TOGGLEX_NAMESPACE, method: 'GET' }),
+            (err: unknown) => err instanceof CommandError
+                && err.code === 'INVALID_KEY'
+                && err.deviceCode === 5001
+        );
+    });
+
     it('throws LAN_HTTP_ERROR on a non-200 status and clears pending', async () => {
         let messageId = '';
         const dispatcher = new ProtocolDispatcher();
