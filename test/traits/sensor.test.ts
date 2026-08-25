@@ -194,27 +194,58 @@ describe('SensorTrait — smoke PUSH', () => {
             smokeAlarm: [{ id: SUB_DEVICE_ID, status: 25, timestamp: 1000, interConn: 0 }]
         }));
         assert.equal(changes[0].smoke, true);
-        assert.equal(changes[0].smokeStatus, 'alarm');
+        assert.equal(changes[0].smokeStatus, 'alarmSmoke');
         assert.equal(changes[0].interConn, false);
     });
 
-    it('treats status=170 as interconnect heartbeat, not an alarm', () => {
+    it('treats status=170 as idle/ok; interconnect is interConn', () => {
         const { trait, changes } = createHarness('smoke');
         trait.handlePush(pushMessage(HUB_SENSOR_SMOKE_NAMESPACE, {
             smokeAlarm: [{ id: SUB_DEVICE_ID, status: 170, timestamp: 1000, interConn: 1 }]
         }));
         assert.equal(changes[0].smoke, false);
-        assert.equal(changes[0].smokeStatus, 'link');
+        assert.equal(changes[0].smokeStatus, 'ok');
         assert.equal(changes[0].interConn, true);
     });
 
-    it('applies smoke=false from status=0', () => {
+    it('treats muted smoke alarm 27 as smoke + muted', () => {
+        const { trait, changes } = createHarness('smoke');
+        trait.handlePush(pushMessage(HUB_SENSOR_SMOKE_NAMESPACE, {
+            smokeAlarm: [{ id: SUB_DEVICE_ID, status: 27, timestamp: 1000 }]
+        }));
+        assert.equal(changes[0].smoke, true);
+        assert.equal(changes[0].smokeStatus, 'alarmSmoke');
+        assert.equal(changes[0].smokeMuted, true);
+        assert.equal(changes[0].smokeError, false);
+    });
+
+    it('treats test 23 as smoke with status test', () => {
+        const { trait, changes } = createHarness('smoke');
+        trait.handlePush(pushMessage(HUB_SENSOR_SMOKE_NAMESPACE, {
+            smokeAlarm: [{ id: SUB_DEVICE_ID, status: 23, timestamp: 1000 }]
+        }));
+        assert.equal(changes[0].smoke, true);
+        assert.equal(changes[0].smokeStatus, 'test');
+    });
+
+    it('treats muted fault 20 as error + muted, not an alarm', () => {
+        const { trait, changes } = createHarness('smoke');
+        trait.handlePush(pushMessage(HUB_SENSOR_SMOKE_NAMESPACE, {
+            smokeAlarm: [{ id: SUB_DEVICE_ID, status: 20, timestamp: 1000 }]
+        }));
+        assert.equal(changes[0].smoke, false);
+        assert.equal(changes[0].smokeStatus, 'errorTemperature');
+        assert.equal(changes[0].smokeError, true);
+        assert.equal(changes[0].smokeMuted, true);
+    });
+
+    it('surfaces unknown smoke status codes as unknown', () => {
         const { trait, changes } = createHarness('smoke');
         trait.handlePush(pushMessage(HUB_SENSOR_SMOKE_NAMESPACE, {
             smokeAlarm: [{ id: SUB_DEVICE_ID, status: 0, timestamp: 1000, interConn: 0 }]
         }));
         assert.equal(changes[0].smoke, false);
-        assert.equal(changes[0].smokeStatus, 'ok');
+        assert.equal(changes[0].smokeStatus, 'unknown');
     });
 
     it('applies smoke DND and detect values from Smoke.Config PUSH', () => {
@@ -387,15 +418,51 @@ describe('SensorTrait — extras', () => {
         assert.deepEqual(bands[0], [1, -100, 100]);
     });
 
-    it('mute() SETs smoke status 27', async () => {
+    it('mute() SETs 27 from a live smoke alarm (25)', async () => {
         const { trait, requests, changes } = createHarness('smoke');
+        trait.handlePush(pushMessage(HUB_SENSOR_SMOKE_NAMESPACE, {
+            smokeAlarm: [{ id: SUB_DEVICE_ID, status: 25, timestamp: 1000 }]
+        }));
+        requests.length = 0;
         await trait.mute();
         assert.equal(requests[0].header.namespace, HUB_SENSOR_SMOKE_NAMESPACE);
         assert.equal(requests[0].header.method, 'SET');
         const entry = (requests[0].payload.smokeAlarm as Array<Record<string, number>>)[0];
         assert.equal(entry.status, 27);
-        assert.equal(changes[0].smokeStatus, 'muted');
-        assert.equal(changes[0].smoke, false);
+        assert.equal(changes.at(-1)?.smokeMuted, true);
+    });
+
+    it('mute() SETs 26 from a live temperature alarm (24)', async () => {
+        const { trait, requests } = createHarness('smoke');
+        trait.handlePush(pushMessage(HUB_SENSOR_SMOKE_NAMESPACE, {
+            smokeAlarm: [{ id: SUB_DEVICE_ID, status: 24, timestamp: 1000 }]
+        }));
+        requests.length = 0;
+        await trait.mute();
+        const entry = (requests[0].payload.smokeAlarm as Array<Record<string, number>>)[0];
+        assert.equal(entry.status, 26);
+    });
+
+    it('mute() SETs 21 from a live smoke fault (18)', async () => {
+        const { trait, requests } = createHarness('smoke');
+        trait.handlePush(pushMessage(HUB_SENSOR_SMOKE_NAMESPACE, {
+            smokeAlarm: [{ id: SUB_DEVICE_ID, status: 18, timestamp: 1000 }]
+        }));
+        requests.length = 0;
+        await trait.mute();
+        const entry = (requests[0].payload.smokeAlarm as Array<Record<string, number>>)[0];
+        assert.equal(entry.status, 21);
+    });
+
+    it('mute() is a no-op when status is not mutable', async () => {
+        const { trait, requests } = createHarness('smoke');
+        trait.handlePush(pushMessage(HUB_SENSOR_SMOKE_NAMESPACE, {
+            smokeAlarm: [{ id: SUB_DEVICE_ID, status: 170, timestamp: 1000 }]
+        }));
+        requests.length = 0;
+        const result = await trait.mute();
+        assert.equal(requests.length, 0);
+        assert.deepEqual(result, {});
     });
 
     it('test() SETs smoke status 23', async () => {

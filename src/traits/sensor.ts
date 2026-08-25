@@ -67,8 +67,18 @@ export const SENSOR_FAMILY_MAP: ReadonlyMap<string, SensorFamily> = new Map([
     ['gs559', 'smoke']
 ]);
 
-/** Host-facing smoke condition derived from firmware status codes. */
-export type SensorSmokeStatus = 'ok' | 'alarm' | 'muted' | 'error' | 'test' | 'link';
+/**
+ * Known Hub.Sensor.Smoke conditions. Codes outside the firmware table are `unknown`.
+ */
+export type SensorSmokeStatus =
+    | 'ok'
+    | 'test'
+    | 'alarmSmoke'
+    | 'alarmTemperature'
+    | 'errorSmoke'
+    | 'errorTemperature'
+    | 'errorBattery'
+    | 'unknown';
 
 export type { SensorAlertBand };
 
@@ -107,7 +117,30 @@ export interface SensorTraitBind {
 }
 
 const SMOKE_TEST = 23;
-const SMOKE_MUTE = 27;
+
+/** SET mute is only valid from the matching live alarm/error; otherwise firmware returns 5000. */
+const SMOKE_MUTE_MAP: Readonly<Record<number, number>> = {
+    17: 20,
+    18: 21,
+    19: 22,
+    24: 26,
+    25: 27
+};
+
+const SMOKE_FROM_WIRE: Record<number, SensorValues> = {
+    17: { smoke: false, smokeStatus: 'errorTemperature', smokeError: true, smokeMuted: false },
+    18: { smoke: false, smokeStatus: 'errorSmoke', smokeError: true, smokeMuted: false },
+    19: { smoke: false, smokeStatus: 'errorBattery', smokeError: true, smokeMuted: false },
+    20: { smoke: false, smokeStatus: 'errorTemperature', smokeError: true, smokeMuted: true },
+    21: { smoke: false, smokeStatus: 'errorSmoke', smokeError: true, smokeMuted: true },
+    22: { smoke: false, smokeStatus: 'errorBattery', smokeError: true, smokeMuted: true },
+    23: { smoke: true, smokeStatus: 'test', smokeError: false, smokeMuted: false },
+    24: { smoke: true, smokeStatus: 'alarmTemperature', smokeError: false, smokeMuted: false },
+    25: { smoke: true, smokeStatus: 'alarmSmoke', smokeError: false, smokeMuted: false },
+    26: { smoke: true, smokeStatus: 'alarmTemperature', smokeError: false, smokeMuted: true },
+    27: { smoke: true, smokeStatus: 'alarmSmoke', smokeError: false, smokeMuted: true },
+    170: { smoke: false, smokeStatus: 'ok', smokeError: false, smokeMuted: false }
+};
 
 /**
  * Hub child sensor. Live readings plus temp/hum calibration, alerts, MS130
@@ -117,6 +150,8 @@ export class SensorTrait {
     private readonly bind: SensorTraitBind;
     private readonly namespaces: ReadonlySet<string>;
     private last: SensorValues = {};
+    /** Last Hub.Sensor.Smoke wire `status`; mute() maps from this. */
+    private lastSmokeStatus: number | undefined;
 
     constructor(bind: SensorTraitBind) {
         this.bind = bind;
@@ -177,10 +212,19 @@ export class SensorTrait {
     }
 
     /**
-     * Silences an active smoke alarm. No-op unless smoke family.
+     * Silences the current smoke/temperature alarm or fault.
+     * Firmware only accepts the mute code that matches the live status
+     * (smoke 25→27, temperature 24→26, faults 17–19→20–22). No-op when
+     * there is nothing to mute.
      */
     async mute(): Promise<SensorValues> {
-        return this.setSmokeStatus(SMOKE_MUTE);
+        const mapped = this.lastSmokeStatus === undefined
+            ? undefined
+            : SMOKE_MUTE_MAP[this.lastSmokeStatus];
+        if (mapped === undefined) {
+            return {};
+        }
+        return this.setSmokeStatus(mapped);
     }
 
     /**
@@ -247,7 +291,7 @@ export class SensorTrait {
         if (ns === HUB_SENSOR_SMOKE_NAMESPACE && family === 'smoke') {
             for (const entry of decodeSensorSmokePush(payload)) {
                 if (entry.id === id) {
-                    this.applyChange(smokePatch(entry));
+                    this.applySmoke(entry);
                 }
             }
             return;
@@ -287,7 +331,7 @@ export class SensorTrait {
         if (ns === HUB_SENSOR_ALL_NAMESPACE && this.has(ns)) {
             for (const entry of decodeSensorAllPush(payload)) {
                 if (entry.id === id) {
-                    this.applyChange(allPatch(family, entry));
+                    this.applyAll(family, entry);
                 }
             }
             return;
@@ -299,6 +343,21 @@ export class SensorTrait {
                 }
             }
         }
+    }
+
+    /** Records wire `status` so mute() can pick the firmware-legal SET code. */
+    private applySmoke(entry: SensorSmokeState): void {
+        this.lastSmokeStatus = entry.status;
+        this.applyChange(smokePatch(entry));
+    }
+
+    /** Hub.Sensor.All carries every family; smoke rows still need the wire status. */
+    private applyAll(family: SensorFamily, entry: SensorAllState): void {
+        if (family === 'smoke' && entry.smoke) {
+            this.applySmoke(entry.smoke);
+            return;
+        }
+        this.applyChange(allPatch(family, entry));
     }
 
     private applyChange(patch: SensorValues): void {
@@ -337,6 +396,7 @@ export class SensorTrait {
             method: 'SET',
             payload: encodeSensorSmokeSet({ id: this.bind.subDeviceId, status })
         });
+        this.lastSmokeStatus = status;
         this.applyChange(patch);
         return patch;
     }
@@ -377,7 +437,7 @@ export class SensorTrait {
                 });
                 const entry = decodeSensorAllGetAck(reply.payload).find((e) => e.id === this.bind.subDeviceId);
                 if (entry) {
-                    this.applyChange(allPatch(this.bind.family, entry));
+                    this.applyAll(this.bind.family, entry);
                 }
             } catch {
                 await this.pollHubFallback();
@@ -435,7 +495,7 @@ export class SensorTrait {
                 });
                 const entry = decodeSensorSmokeGetAck(reply.payload).find((e) => e.id === subDeviceId);
                 if (entry) {
-                    this.applyChange(smokePatch(entry));
+                    this.applySmoke(entry);
                 }
                 break;
             }
@@ -571,13 +631,10 @@ function allPatch(family: SensorFamily, entry: SensorAllState): SensorValues {
 }
 
 function smokePatch(entry: SensorSmokeState): SensorValues {
-    const status = smokeStatus(entry.status);
-    const patch: SensorValues = {
-        smoke: status === 'alarm',
-        smokeStatus: status,
-        smokeError: status === 'error',
-        smokeMuted: status === 'muted'
-    };
+    const mapped = SMOKE_FROM_WIRE[entry.status];
+    const patch: SensorValues = mapped === undefined
+        ? { smoke: false, smokeStatus: 'unknown', smokeError: false, smokeMuted: false }
+        : { ...mapped };
     if (entry.interConn !== undefined) {
         patch.interConn = entry.interConn !== 0;
     }
@@ -595,21 +652,3 @@ function smokeConfigPatch(entry: { dndEnabled?: boolean; detectEnabled?: boolean
     return patch;
 }
 
-function smokeStatus(status: number): SensorSmokeStatus {
-    if (status === 24 || status === 25) {
-        return 'alarm';
-    }
-    if (status === 26 || status === 27) {
-        return 'muted';
-    }
-    if (status >= 17 && status <= 22) {
-        return 'error';
-    }
-    if (status === 23) {
-        return 'test';
-    }
-    if (status === 170) {
-        return 'link';
-    }
-    return 'ok';
-}
