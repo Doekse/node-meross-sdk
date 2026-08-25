@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
-import { CONTROL_ALARM_NAMESPACE, encodeMessage, type MerossMessage } from '../../src/protocol';
+import {
+    CONTROL_ALARM_NAMESPACE,
+    encodeMessage,
+    type MerossMessage
+} from '../../src/protocol';
 import { AlarmTrait } from '../../src/traits/alarm';
 import type { AlarmTraitBind } from '../../src/traits/alarm';
 
@@ -68,17 +72,18 @@ function pushMessage(payload: Record<string, unknown>): MerossMessage {
     });
 }
 
-describe('AlarmTrait', () => {
-    it('polls Control.Alarm on start', async () => {
-        const { trait, requests, changes } = createHarness();
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.equal(requests[0]?.header.namespace, CONTROL_ALARM_NAMESPACE);
-        assert.deepEqual(requests[0]?.payload, { alarm: [{ channel: CHANNEL }] });
-        assert.equal(trait.isOn(), true);
-        assert.deepEqual(changes[0], { on: true, linked: false });
+function getAck(payload: Record<string, unknown>): MerossMessage {
+    return encodeMessage({
+        namespace: CONTROL_ALARM_NAMESPACE,
+        method: 'GETACK',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload
     });
+}
 
+describe('AlarmTrait', () => {
     it('setOn SETs event.security execute/normal with optional duration', async () => {
         const { trait, requests } = createHarness();
         await trait.setOn(true, 30);
@@ -159,8 +164,12 @@ describe('AlarmTrait', () => {
         const { trait, requests } = createHarness({
             maSecurity: { value: 2, timestamp: 0 }
         });
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
+        trait.handlePush(getAck({
+            alarm: [{
+                channel: CHANNEL,
+                event: { maSecurity: { value: 2, timestamp: 0 } }
+            }]
+        }));
         requests.length = 0;
 
         await trait.setOn(true, 15);

@@ -6,18 +6,12 @@ import {
     TOGGLEX_NAMESPACE,
     decodeFanBtnConfigPush,
     decodeFanConfigGetAck,
-    decodeFanGetAck,
     decodeFanPush,
     decodeFilterMaintenancePush,
-    decodeToggleXGetAck,
     decodeToggleXPush,
     encodeFanBtnConfigPushQuery,
     encodeFanBtnConfigSet,
-    encodeFanConfigGet,
-    encodeFanGet,
     encodeFanSet,
-    encodeFilterMaintenancePushQuery,
-    encodeToggleXGet,
     encodeToggleXSet,
     type FanButtonConfig,
     type FanButtonConfigSetOptions,
@@ -58,6 +52,7 @@ export interface FanTraitBind {
  * ToggleX/Toggle when the device has it; Control.Fan handles the rest. Speed is
  * host 0..1; wire is 0..maxSpeed from the last GETACK. Optional Fan.Config,
  * Fan.BtnConfig, and FilterMaintenance attach when Ability advertises them.
+ * FilterMaintenance stays PUSH-query only.
  */
 export class FanTrait {
     private readonly bind: FanTraitBind;
@@ -65,6 +60,9 @@ export class FanTrait {
     private last: FanValues = {};
     private maxSpeed = 1;
     private savedSpeed = 1;
+    private lastWireSpeed = 0;
+    /** True once Control.Fan reported a positive maxSpeed (Fan.Config must not override). */
+    private fanReportedMaxSpeed = false;
 
     constructor(bind: FanTraitBind) {
         this.bind = bind;
@@ -75,12 +73,7 @@ export class FanTrait {
         return this.namespaces.has(namespace);
     }
 
-    /** Fetches initial state. Idempotent; Session calls this once and does not await it. */
-    start(): void {
-        void this.pollInitial();
-    }
-
-    /** Last known on/off. Undefined until initial GET or PUSH fills it. */
+    /** Last known on/off. Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.last.on;
     }
@@ -132,7 +125,7 @@ export class FanTrait {
 
     /**
      * Reads Fan.BtnConfig via PUSH-query. GET disconnects on MFC100, so this is
-     * never polled from `start()`. Returns `undefined` when BtnConfig is absent.
+     * never polled from DevicePoller. Returns `undefined` when BtnConfig is absent.
      */
     async getButtonConfig(): Promise<FanButtonConfig | undefined> {
         if (!this.has(FAN_BTN_CONFIG_NAMESPACE)) {
@@ -163,7 +156,7 @@ export class FanTrait {
     }
 
     /**
-     * Applies a firmware PUSH for this endpoint.
+     * Applies a firmware PUSH or poller GETACK for this endpoint.
      */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
@@ -202,6 +195,24 @@ export class FanTrait {
             return;
         }
 
+        if (ns === FAN_CONFIG_NAMESPACE && this.has(ns)) {
+            for (const entry of decodeFanConfigGetAck(message.payload)) {
+                if (entry.channel !== this.bind.channel) {
+                    continue;
+                }
+                if (
+                    this.fanReportedMaxSpeed
+                    || entry.maxSpeed === undefined
+                    || entry.maxSpeed <= 0
+                ) {
+                    continue;
+                }
+                this.maxSpeed = entry.maxSpeed;
+                this.applyFanSpeed(this.lastWireSpeed);
+            }
+            return;
+        }
+
         if (ns === FILTER_MAINTENANCE_NAMESPACE && this.has(ns)) {
             for (const entry of decodeFilterMaintenancePush(message.payload)) {
                 if (entry.channel === this.bind.channel) {
@@ -220,7 +231,9 @@ export class FanTrait {
     }
 
     private applyFanEntry(entry: { speed: number; maxSpeed?: number }): void {
+        this.lastWireSpeed = entry.speed;
         if (entry.maxSpeed !== undefined && entry.maxSpeed > 0) {
+            this.fanReportedMaxSpeed = true;
             this.maxSpeed = Math.max(entry.maxSpeed, entry.speed, 1);
         } else {
             this.maxSpeed = Math.max(this.maxSpeed, entry.speed, 1);
@@ -254,76 +267,6 @@ export class FanTrait {
         }
         if (Object.keys(next).length > 0) {
             this.bind.emitChange(next);
-        }
-    }
-
-    private async pollInitial(): Promise<void> {
-        try {
-            const fanReply = await this.bind.request({
-                namespace: FAN_NAMESPACE,
-                method: 'GET',
-                payload: encodeFanGet({ channel: this.bind.channel })
-            });
-            const fan = decodeFanGetAck(fanReply.payload).find(
-                (entry) => entry.channel === this.bind.channel
-            );
-            if (fan) {
-                this.applyFanEntry(fan);
-            }
-
-            if (this.has(FAN_CONFIG_NAMESPACE)) {
-                const configReply = await this.bind.request({
-                    namespace: FAN_CONFIG_NAMESPACE,
-                    method: 'GET',
-                    payload: encodeFanConfigGet({ channel: this.bind.channel })
-                });
-                const config = decodeFanConfigGetAck(configReply.payload).find(
-                    (entry) => entry.channel === this.bind.channel
-                );
-                if (
-                    config?.maxSpeed !== undefined
-                    && config.maxSpeed > 0
-                    && (fan?.maxSpeed === undefined || fan.maxSpeed <= 0)
-                ) {
-                    this.maxSpeed = config.maxSpeed;
-                    if (fan) {
-                        this.applyFanSpeed(fan.speed);
-                    } else {
-                        this.applyChange({ maxSpeed: this.maxSpeed });
-                    }
-                }
-            }
-
-            if (this.has(FILTER_MAINTENANCE_NAMESPACE)) {
-                const filterReply = await this.bind.request({
-                    namespace: FILTER_MAINTENANCE_NAMESPACE,
-                    method: 'PUSH',
-                    payload: encodeFilterMaintenancePushQuery()
-                });
-                const filter = decodeFilterMaintenancePush(filterReply.payload).find(
-                    (entry) => entry.channel === this.bind.channel
-                );
-                if (filter) {
-                    this.applyChange({ filterLife: filter.life / 100 });
-                }
-            }
-
-            if (!this.bind.hasToggleX) {
-                return;
-            }
-            const toggleReply = await this.bind.request({
-                namespace: TOGGLEX_NAMESPACE,
-                method: 'GET',
-                payload: encodeToggleXGet({ channel: this.bind.channel })
-            });
-            const toggle = decodeToggleXGetAck(toggleReply.payload).find(
-                (entry) => entry.channel === this.bind.channel
-            );
-            if (toggle) {
-                this.applyChange({ on: toggle.on });
-            }
-        } catch {
-            // Next PUSH or setter call will recover.
         }
     }
 }

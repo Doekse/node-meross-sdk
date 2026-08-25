@@ -320,6 +320,11 @@ function decodeShutterConfig(payload: MerossPayload): ShutterConfig[] {
     });
 }
 
+/** Firmware GET `{ adjust: [{ channel }] }`. */
+export function encodeShutterAdjustGet(channel: number): MerossPayload {
+    return { adjust: [{ channel }] };
+}
+
 /** SET payload for RollerShutter.Adjust — single-channel object in `adjust`. */
 export function encodeShutterAdjustSet(channel: number, value: ShutterAdjustValue): MerossPayload {
     return { adjust: { channel, value } };

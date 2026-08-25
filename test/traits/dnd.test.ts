@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
-import { DND_MODE_NAMESPACE, encodeMessage, type MerossMessage } from '../../src/protocol';
+import {
+    DND_MODE_NAMESPACE,
+    encodeMessage,
+    type MerossMessage
+} from '../../src/protocol';
 import { DndTrait } from '../../src/traits/dnd';
 import type { DndTraitBind } from '../../src/traits/dnd';
 
@@ -59,15 +63,6 @@ function pushMessage(payload: Record<string, unknown>): MerossMessage {
 }
 
 describe('DndTrait', () => {
-    it('polls System.DNDMode on start', async () => {
-        const { trait, requests, changes } = createHarness();
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.equal(requests[0]?.header.namespace, DND_MODE_NAMESPACE);
-        assert.equal(trait.isOn(), true);
-        assert.equal(changes[0], true);
-    });
-
     it('setOn sends a SET with mode 0/1', async () => {
         const { trait, requests } = createHarness();
         await trait.setOn(false);

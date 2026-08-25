@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
-import { MP3_NAMESPACE, encodeMessage, type MerossMessage } from '../../src/protocol';
+import {
+    MP3_NAMESPACE,
+    encodeMessage,
+    type MerossMessage
+} from '../../src/protocol';
 import { MediaTrait } from '../../src/traits/media';
 import type { MediaTraitBind } from '../../src/traits/media';
 
@@ -63,11 +67,11 @@ function pushMessage(payload: Record<string, unknown>): MerossMessage {
 }
 
 describe('MediaTrait', () => {
-    it('polls Control.Mp3 on start and scales volume 0..1', async () => {
-        const { trait, requests, changes } = createHarness();
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.equal(requests[0]?.header.namespace, MP3_NAMESPACE);
+    it('handlePush scales volume 0..1', () => {
+        const { trait, changes } = createHarness();
+        trait.handlePush(pushMessage({
+            mp3: { channel: CHANNEL, mute: 1, volume: 8, song: 9 }
+        }));
         assert.equal(trait.isMuted(), true);
         assert.equal(trait.getVolume(), 0.5);
         assert.equal(trait.getSong(), 9);

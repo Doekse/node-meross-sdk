@@ -1,8 +1,6 @@
 import {
     CONTROL_ALARM_NAMESPACE,
-    decodeAlarmGetAck,
     decodeAlarmPush,
-    encodeAlarmGet,
     encodeAlarmLinkedSet,
     encodeAlarmSet,
     type AlarmChannelState,
@@ -39,12 +37,7 @@ export class AlarmTrait {
         this.bind = bind;
     }
 
-    /** Fetches initial state. Idempotent; Session calls this once and does not await it. */
-    start(): void {
-        void this.pollInitial();
-    }
-
-    /** True when the security siren is executing. Undefined until GET or PUSH fills it. */
+    /** True when the security siren is executing. Undefined until GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.last.on;
     }
@@ -121,25 +114,6 @@ export class AlarmTrait {
         }
         if (Object.keys(next).length > 0) {
             this.bind.emitChange(next);
-        }
-    }
-
-    private async pollInitial(): Promise<void> {
-        try {
-            const reply = await this.bind.request({
-                namespace: CONTROL_ALARM_NAMESPACE,
-                method: 'GET',
-                payload: encodeAlarmGet({ channel: this.bind.channel })
-            });
-            const entry = decodeAlarmGetAck(reply.payload).find((item) => this.matches(item));
-            if (entry) {
-                if (entry.maSecurity) {
-                    this.maSecurity = true;
-                }
-                this.applyChange(alarmPatch(entry));
-            }
-        } catch {
-            // Next PUSH or setter call will recover.
         }
     }
 }

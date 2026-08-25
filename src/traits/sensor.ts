@@ -9,42 +9,21 @@ import {
     HUB_SENSOR_WATERLEAK_NAMESPACE,
     SENSOR_LATESTX_NAMESPACE,
     SMOKE_CONFIG_NAMESPACE,
-    decodeSmokeConfigGetAck,
     decodeSmokeConfigPush,
-    decodeBatteryGetAck,
     decodeBatteryPush,
-    decodeLatestXGetAck,
     decodeLatestXPush,
-    decodeSensorAdjustGetAck,
     decodeSensorAdjustPush,
-    decodeSensorAlertGetAck,
     decodeSensorAlertPush,
-    decodeSensorAllGetAck,
     decodeSensorAllPush,
-    decodeSensorDoorWindowGetAck,
     decodeSensorDoorWindowPush,
-    decodeSensorSmokeGetAck,
     decodeSensorSmokePush,
-    decodeSensorTempHumGetAck,
     decodeSensorTempHumPush,
-    decodeSensorWaterLeakGetAck,
     decodeSensorWaterLeakPush,
-    encodeBatteryGet,
-    encodeLatestXGet,
-    encodeSensorAdjustGet,
     encodeSensorAdjustSet,
-    encodeSensorAlertGet,
     encodeSensorAlertSet,
-    encodeSensorAllGet,
-    encodeSensorDoorWindowGet,
-    encodeSensorSmokeGet,
     encodeSensorSmokeSet,
-    encodeSensorTempHumGet,
-    encodeSensorWaterLeakGet,
-    encodeSmokeConfigGet,
     encodeSmokeConfigSet,
     type MerossMessage,
-    type MerossPayload,
     type SensorAlertBand,
     type SensorAlertState,
     type SensorAllState,
@@ -158,11 +137,6 @@ export class SensorTrait {
         this.namespaces = bind.namespaces ?? new Set();
     }
 
-    /** Fetches initial state. Idempotent; Session calls this once and does not await it. */
-    start(): void {
-        void this.pollInitial();
-    }
-
     /**
      * Sets temperature/humidity calibration offsets in °C / RH%. No-op unless
      * this is a tempHum child and Adjust is advertised.
@@ -251,7 +225,7 @@ export class SensorTrait {
     }
 
     /**
-     * Applies a firmware PUSH for this endpoint.
+     * Applies a firmware PUSH or poller GETACK for this endpoint.
      */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
@@ -418,160 +392,6 @@ export class SensorTrait {
         this.applyChange(patch);
         return patch;
     }
-
-    private async pollInitial(): Promise<void> {
-        try {
-            await this.pollHub();
-        } catch {
-            // Next PUSH or setter call will recover.
-        }
-    }
-
-    private async pollHub(): Promise<void> {
-        if (this.has(HUB_SENSOR_ALL_NAMESPACE)) {
-            try {
-                const reply = await this.bind.request({
-                    namespace: HUB_SENSOR_ALL_NAMESPACE,
-                    method: 'GET',
-                    payload: encodeSensorAllGet(this.bind.subDeviceId)
-                });
-                const entry = decodeSensorAllGetAck(reply.payload).find((e) => e.id === this.bind.subDeviceId);
-                if (entry) {
-                    this.applyAll(this.bind.family, entry);
-                }
-            } catch {
-                await this.pollHubFallback();
-            }
-        } else {
-            await this.pollHubFallback();
-        }
-        await this.pollHubExtras();
-    }
-
-    private async pollHubFallback(): Promise<void> {
-        const { subDeviceId, family, request } = this.bind;
-        switch (family) {
-            case 'tempHum': {
-                const reply = await request({
-                    namespace: HUB_SENSOR_TEMPHUM_NAMESPACE,
-                    method: 'GET',
-                    payload: encodeSensorTempHumGet(subDeviceId)
-                });
-                const entry = decodeSensorTempHumGetAck(reply.payload).find((e) => e.id === subDeviceId);
-                if (entry) {
-                    this.applyChange(tempHumPatch(entry));
-                }
-                break;
-            }
-            case 'contact': {
-                const reply = await request({
-                    namespace: HUB_SENSOR_DOORWINDOW_NAMESPACE,
-                    method: 'GET',
-                    payload: encodeSensorDoorWindowGet(subDeviceId)
-                });
-                const entry = decodeSensorDoorWindowGetAck(reply.payload).find((e) => e.id === subDeviceId);
-                if (entry) {
-                    this.applyChange({ open: entry.open });
-                }
-                break;
-            }
-            case 'leak': {
-                const reply = await request({
-                    namespace: HUB_SENSOR_WATERLEAK_NAMESPACE,
-                    method: 'GET',
-                    payload: encodeSensorWaterLeakGet(subDeviceId)
-                });
-                const entry = decodeSensorWaterLeakGetAck(reply.payload).find((e) => e.id === subDeviceId);
-                if (entry) {
-                    this.applyChange({ leak: entry.leak });
-                }
-                break;
-            }
-            case 'smoke': {
-                const reply = await request({
-                    namespace: HUB_SENSOR_SMOKE_NAMESPACE,
-                    method: 'GET',
-                    payload: encodeSensorSmokeGet(subDeviceId)
-                });
-                const entry = decodeSensorSmokeGetAck(reply.payload).find((e) => e.id === subDeviceId);
-                if (entry) {
-                    this.applySmoke(entry);
-                }
-                break;
-            }
-        }
-    }
-
-    private async pollHubExtras(): Promise<void> {
-        const { subDeviceId, family } = this.bind;
-        const extras = [
-            this.pollHubNs(HUB_BATTERY_NAMESPACE, encodeBatteryGet(subDeviceId), (payload) => {
-                const entry = decodeBatteryGetAck(payload).find((b) => b.id === subDeviceId);
-                if (entry?.battery !== undefined) {
-                    this.applyChange({ battery: entry.battery });
-                }
-            })
-        ];
-        if (family === 'tempHum') {
-            extras.push(
-                this.pollHubNs(HUB_SENSOR_ADJUST_NAMESPACE, encodeSensorAdjustGet(subDeviceId), (payload) => {
-                    const entry = decodeSensorAdjustGetAck(payload).find((e) => e.id === subDeviceId);
-                    if (entry) {
-                        this.applyChange(adjustPatch(entry));
-                    }
-                }),
-                this.pollHubNs(HUB_SENSOR_ALERT_NAMESPACE, encodeSensorAlertGet(subDeviceId), (payload) => {
-                    const entry = decodeSensorAlertGetAck(payload).find((e) => e.id === subDeviceId);
-                    if (entry) {
-                        this.applyChange(alertPatch(entry));
-                    }
-                }),
-                this.pollHubNs(
-                    SENSOR_LATESTX_NAMESPACE,
-                    encodeLatestXGet({
-                        channel: 0,
-                        subId: subDeviceId,
-                        keys: ['light', 'temp', 'humi']
-                    }),
-                    (payload) => {
-                        const entry = decodeLatestXGetAck(payload).find((e) => e.subId === subDeviceId);
-                        if (entry) {
-                            this.applyChange(latestXPatch(entry));
-                        }
-                    }
-                )
-            );
-        }
-        if (family === 'smoke') {
-            extras.push(this.pollHubNs(
-                SMOKE_CONFIG_NAMESPACE,
-                encodeSmokeConfigGet({ channel: 0, subId: subDeviceId }),
-                (payload) => {
-                    const entry = decodeSmokeConfigGetAck(payload).find((e) => e.subId === subDeviceId);
-                    if (entry) {
-                        this.applyChange(smokeConfigPatch(entry));
-                    }
-                }
-            ));
-        }
-        await Promise.all(extras);
-    }
-
-    private async pollHubNs(
-        namespace: string,
-        payload: MerossPayload,
-        apply: (payload: MerossPayload) => void
-    ): Promise<void> {
-        if (!this.has(namespace)) {
-            return;
-        }
-        try {
-            const reply = await this.bind.request({ namespace, method: 'GET', payload });
-            apply(reply.payload);
-        } catch {
-            // Next PUSH or setter call will recover.
-        }
-    }
 }
 
 function tempHumPatch(entry: { temperature?: number; humidity?: number }): SensorValues {
@@ -655,4 +475,3 @@ function smokeConfigPatch(entry: { dndEnabled?: boolean; detectEnabled?: boolean
     }
     return patch;
 }
-

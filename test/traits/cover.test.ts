@@ -83,6 +83,17 @@ function push(namespace: string, payload: MerossMessage['payload']): MerossMessa
     });
 }
 
+function getAck(namespace: string, payload: MerossMessage['payload']): MerossMessage {
+    return encodeMessage({
+        namespace,
+        method: 'GETACK',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload
+    });
+}
+
 describe('CoverTrait.open/close', () => {
     it('open() sends GarageDoor.State SET and returns SETACK current state', async () => {
         const { trait, requests } = createCoverHarness('garage');
@@ -298,19 +309,17 @@ describe('CoverTrait.getConfig / setConfig (GarageDoor.Config)', () => {
         config: { signalDuration: 2000, buzzerEnable: 1, doorOpenDuration: 15000, doorCloseDuration: 15000 }
     };
 
-    it('getConfig() sends GarageDoor.Config GET and returns decoded config', async () => {
+    it('getConfig() is undefined until poller GarageDoor.Config GETACK fills it', () => {
         const { trait, requests } = createCoverHarness(
             'garage',
-            new Set([GARAGE_CONFIG_NAMESPACE]),
-            { [GARAGE_CONFIG_NAMESPACE]: configPayload }
+            new Set([GARAGE_CONFIG_NAMESPACE])
         );
 
-        const result = await trait.getConfig();
+        assert.equal(trait.getConfig(), undefined);
+        trait.handlePush(getAck(GARAGE_CONFIG_NAMESPACE, configPayload));
 
-        assert.equal(requests.length, 1);
-        assert.equal(requests[0]?.header.namespace, GARAGE_CONFIG_NAMESPACE);
-        assert.equal(requests[0]?.header.method, 'GET');
-        assert.deepEqual(result, {
+        assert.equal(requests.length, 0);
+        assert.deepEqual(trait.getConfig(), {
             signalDuration: 2000,
             buzzerEnable: 1,
             doorOpenDuration: 15000,
@@ -334,10 +343,9 @@ describe('CoverTrait.getConfig / setConfig (GarageDoor.Config)', () => {
         });
     });
 
-    it('getConfig() returns undefined when no config namespace is advertised', async () => {
+    it('getConfig() returns undefined when no config namespace is advertised', () => {
         const { trait, requests } = createCoverHarness('garage');
-        const result = await trait.getConfig();
-        assert.equal(result, undefined);
+        assert.equal(trait.getConfig(), undefined);
         assert.equal(requests.length, 0);
     });
 
@@ -359,21 +367,49 @@ describe('CoverTrait.getConfig / setConfig (GarageDoor.MultipleConfig)', () => {
         ]
     };
 
-    it('getConfig() prefers MultipleConfig over Config and returns the matching channel entry', async () => {
-        const { trait, requests } = createCoverHarness(
+    it('getConfig() prefers MultipleConfig GETACK over Config when both are advertised', () => {
+        const { trait } = createCoverHarness(
             'garage',
-            new Set([GARAGE_CONFIG_NAMESPACE, GARAGE_MULTIPLE_CONFIG_NAMESPACE]),
-            { [GARAGE_MULTIPLE_CONFIG_NAMESPACE]: multipleConfigPayload }
+            new Set([GARAGE_CONFIG_NAMESPACE, GARAGE_MULTIPLE_CONFIG_NAMESPACE])
         );
 
-        const result = await trait.getConfig();
+        trait.handlePush(getAck(GARAGE_CONFIG_NAMESPACE, {
+            config: { signalDuration: 2000, buzzerEnable: 1 }
+        }));
+        trait.handlePush(getAck(GARAGE_MULTIPLE_CONFIG_NAMESPACE, multipleConfigPayload));
 
-        assert.equal(requests.length, 1);
-        assert.equal(requests[0]?.header.namespace, GARAGE_MULTIPLE_CONFIG_NAMESPACE);
-        assert.deepEqual(result, {
+        assert.deepEqual(trait.getConfig(), {
             channel: 0, signalClose: 2000, signalOpen: 2000,
             doorOpenDuration: 15000, doorCloseDuration: 15000, buzzerEnable: 1
         });
+    });
+
+    it('getConfig() serves poller MultipleConfig GETACK for the bound channel', () => {
+        const { trait, requests } = createCoverHarness(
+            'garage',
+            new Set([GARAGE_MULTIPLE_CONFIG_NAMESPACE])
+        );
+
+        trait.handlePush(getAck(GARAGE_MULTIPLE_CONFIG_NAMESPACE, multipleConfigPayload));
+
+        assert.equal(requests.length, 0);
+        assert.deepEqual(trait.getConfig(), {
+            channel: 0, signalClose: 2000, signalOpen: 2000,
+            doorOpenDuration: 15000, doorCloseDuration: 15000, buzzerEnable: 1
+        });
+    });
+
+    it('handlePush ignores MultipleConfig entries for other channels', () => {
+        const { trait } = createCoverHarness(
+            'garage',
+            new Set([GARAGE_MULTIPLE_CONFIG_NAMESPACE])
+        );
+
+        trait.handlePush(getAck(GARAGE_MULTIPLE_CONFIG_NAMESPACE, {
+            config: [{ channel: 1, signalClose: 2000, signalOpen: 2000 }]
+        }));
+
+        assert.equal(trait.getConfig(), undefined);
     });
 
     it('setConfig() uses MultipleConfig SET and merges the bound channel', async () => {
@@ -401,37 +437,46 @@ describe('CoverTrait.getShutterConfig / setTravelTimes / setDirection', () => {
         ]
     };
 
-    it('getShutterConfig() sends RollerShutter.Config GET and returns matching channel', async () => {
+    it('getShutterConfig() is undefined until poller RollerShutter.Config GETACK fills it', () => {
         const { trait, requests } = createCoverHarness(
             'shutter',
-            new Set([SHUTTER_CONFIG_NAMESPACE]),
-            { [SHUTTER_CONFIG_NAMESPACE]: shutterConfigPayload }
+            new Set([SHUTTER_CONFIG_NAMESPACE])
         );
 
-        const result = await trait.getShutterConfig();
+        assert.equal(trait.getShutterConfig(), undefined);
+        trait.handlePush(getAck(SHUTTER_CONFIG_NAMESPACE, shutterConfigPayload));
 
-        assert.equal(requests.length, 1);
-        assert.equal(requests[0]?.header.namespace, SHUTTER_CONFIG_NAMESPACE);
-        assert.equal(requests[0]?.header.method, 'GET');
-        assert.deepEqual(result, {
+        assert.equal(requests.length, 0);
+        assert.deepEqual(trait.getShutterConfig(), {
             channel: 0, signalOpen: 20000, signalClose: 20000, signalMiddle: 10000, autoAdjust: 1
         });
     });
 
-    it('getShutterConfig() returns undefined when namespace is not advertised', async () => {
+    it('handlePush ignores RollerShutter.Config entries for other channels', () => {
+        const { trait } = createCoverHarness(
+            'shutter',
+            new Set([SHUTTER_CONFIG_NAMESPACE])
+        );
+
+        trait.handlePush(getAck(SHUTTER_CONFIG_NAMESPACE, {
+            config: [{ channel: 1, signalOpen: 10000, signalClose: 10000 }]
+        }));
+
+        assert.equal(trait.getShutterConfig(), undefined);
+    });
+
+    it('getShutterConfig() returns undefined when namespace is not advertised', () => {
         const { trait, requests } = createCoverHarness('shutter');
-        const result = await trait.getShutterConfig();
-        assert.equal(result, undefined);
+        assert.equal(trait.getShutterConfig(), undefined);
         assert.equal(requests.length, 0);
     });
 
-    it('getShutterConfig() returns undefined for garage kind', async () => {
+    it('getShutterConfig() returns undefined for garage kind', () => {
         const { trait, requests } = createCoverHarness(
             'garage',
             new Set([SHUTTER_CONFIG_NAMESPACE])
         );
-        const result = await trait.getShutterConfig();
-        assert.equal(result, undefined);
+        assert.equal(trait.getShutterConfig(), undefined);
         assert.equal(requests.length, 0);
     });
 

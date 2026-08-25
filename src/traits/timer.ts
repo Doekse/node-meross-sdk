@@ -5,21 +5,13 @@ import {
     decodeDigestTimerXGetAck,
     decodeTimerXGetAck,
     decodeTimerXPush,
-    encodeDigestTimerXGet,
     encodeTimerXDelete,
     encodeTimerXGet,
     encodeTimerXSet,
-    type DigestTimerXRow,
     type MerossMessage,
     type TimerXEntry
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
-
-/**
- * Digest.TimerX is board-wide. Share one in-flight GET across channels so a
- * strip does not query the same index once per outlet.
- */
-const digestInflight = new Map<string, Promise<DigestTimerXRow[]>>();
 
 export type TimerEntry = TimerXEntry;
 
@@ -55,7 +47,8 @@ export interface TimerTraitBind {
 
 /**
  * Per-channel clock schedules via Appliance.Control.TimerX.
- * Digest.TimerX is only an id index for the initial GET-by-id poll.
+ * Digest.TimerX is only an id index; poller GETACK triggers Control.TimerX
+ * GET-by-id in {@link handlePush} (ids are dynamic, not static jobs).
  */
 export class TimerTrait {
     private readonly bind: TimerTraitBind;
@@ -65,12 +58,7 @@ export class TimerTrait {
         this.bind = bind;
     }
 
-    /** Fetches initial schedules. Idempotent; Session calls this once and does not await it. */
-    start(): void {
-        void this.pollInitial();
-    }
-
-    /** Last known schedules for this channel (after start / set / PUSH). */
+    /** Last known schedules for this channel (after digest resolve / set / PUSH). */
     list(): TimerEntry[] {
         return this.entries.map(cloneEntry);
     }
@@ -113,12 +101,17 @@ export class TimerTrait {
     }
 
     /**
-     * Applies a firmware PUSH for this endpoint (modified rows only after SET).
+     * Applies a firmware PUSH or poller GETACK for this endpoint.
+     * Digest GETACK triggers async Control.TimerX GET-by-id for this channel.
      */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
         if (!uuid || uuid !== this.bind.uuid) {
+            return;
+        }
+        if (message.header.namespace === DIGEST_TIMERX_NAMESPACE) {
+            void this.resolveFromDigest(message);
             return;
         }
         if (message.header.namespace !== TIMERX_NAMESPACE) {
@@ -139,35 +132,9 @@ export class TimerTrait {
         this.applyEntries(next);
     }
 
-    private has(namespace: string): boolean {
-        return this.bind.namespaces?.has(namespace) ?? false;
-    }
-
-    private upsert(entry: TimerEntry): void {
-        const next = this.entries.map(cloneEntry);
-        const index = next.findIndex((item) => item.id === entry.id);
-        if (index >= 0) {
-            next[index] = cloneEntry(entry);
-        } else {
-            next.push(cloneEntry(entry));
-        }
-        this.applyEntries(next);
-    }
-
-    private applyEntries(next: TimerEntry[]): void {
-        if (sameEntries(this.entries, next)) {
-            return;
-        }
-        this.entries = next.map(cloneEntry);
-        this.bind.emitChange({ entries: this.list() });
-    }
-
-    private async pollInitial(): Promise<void> {
-        if (!this.has(DIGEST_TIMERX_NAMESPACE)) {
-            return;
-        }
+    private async resolveFromDigest(message: MerossMessage): Promise<void> {
         try {
-            const ids = (await loadDigest(this.bind.uuid, this.bind.request))
+            const ids = decodeDigestTimerXGetAck(message.payload)
                 .filter((row) => row.channel === this.bind.channel)
                 .map((row) => row.id);
             const groups = await Promise.all(ids.map(async (id) => {
@@ -188,27 +155,25 @@ export class TimerTrait {
             // Next PUSH or setter call will recover.
         }
     }
-}
 
-function loadDigest(
-    uuid: string,
-    request: TimerTraitBind['request']
-): Promise<DigestTimerXRow[]> {
-    const existing = digestInflight.get(uuid);
-    if (existing) {
-        return existing;
+    private upsert(entry: TimerEntry): void {
+        const next = this.entries.map(cloneEntry);
+        const index = next.findIndex((item) => item.id === entry.id);
+        if (index >= 0) {
+            next[index] = cloneEntry(entry);
+        } else {
+            next.push(cloneEntry(entry));
+        }
+        this.applyEntries(next);
     }
-    const pending = request({
-        namespace: DIGEST_TIMERX_NAMESPACE,
-        method: 'GET',
-        payload: encodeDigestTimerXGet()
-    })
-        .then((reply) => decodeDigestTimerXGetAck(reply.payload))
-        .finally(() => {
-            digestInflight.delete(uuid);
-        });
-    digestInflight.set(uuid, pending);
-    return pending;
+
+    private applyEntries(next: TimerEntry[]): void {
+        if (sameEntries(this.entries, next)) {
+            return;
+        }
+        this.entries = next.map(cloneEntry);
+        this.bind.emitChange({ entries: this.list() });
+    }
 }
 
 function normalizeSet(input: TimerSetInput, channel: number): TimerEntry {

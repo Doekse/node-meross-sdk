@@ -147,23 +147,29 @@ function pushMessage(namespace: string, payload: Record<string, unknown>): Meros
     });
 }
 
-describe('FanTrait', () => {
-    it('polls Fan then ToggleX on start', async () => {
-        const { trait, requests, changes } = createHarness();
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.equal(requests[0]?.header.namespace, FAN_NAMESPACE);
-        assert.equal(requests[1]?.header.namespace, TOGGLEX_NAMESPACE);
-        assert.equal(trait.getSpeed(), 0.75);
-        assert.equal(trait.isOn(), true);
-        assert.ok(changes.some((c) => c.speed === 0.75));
-        assert.ok(changes.some((c) => c.on === true));
+function getAck(namespace: string, payload: Record<string, unknown>): MerossMessage {
+    return encodeMessage({
+        namespace,
+        method: 'GETACK',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload
     });
+}
 
+/** Seeds Control.Fan maxSpeed/speed the way DevicePoller GETACK would. */
+function seedFan(
+    trait: FanTrait,
+    payload: Record<string, unknown> = { fan: [{ channel: CHANNEL, speed: 3, maxSpeed: 4 }] }
+): void {
+    trait.handlePush(getAck(FAN_NAMESPACE, payload));
+}
+
+describe('FanTrait', () => {
     it('setOn uses ToggleX when advertised', async () => {
         const { trait, requests } = createHarness();
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
+        seedFan(trait);
         requests.length = 0;
         await trait.setOn(false);
         await trait.setOn(true);
@@ -175,8 +181,7 @@ describe('FanTrait', () => {
 
     it('setOn without ToggleX or Toggle writes Control.Fan speed', async () => {
         const { trait, requests } = createHarness({ hasToggleX: false, hasToggle: false });
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
+        seedFan(trait);
         requests.length = 0;
         await trait.setOn(false);
         assert.equal(requests[0]?.header.namespace, FAN_NAMESPACE);
@@ -186,8 +191,7 @@ describe('FanTrait', () => {
 
     it('setSpeed writes wire 0..maxSpeed', async () => {
         const { trait, requests } = createHarness();
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
+        seedFan(trait);
         requests.length = 0;
         await trait.setSpeed(0.5);
         assert.deepEqual(requests[0]?.payload, { fan: [{ channel: CHANNEL, speed: 2 }] });
@@ -228,58 +232,38 @@ describe('FanTrait', () => {
         assert.equal(changes.length, 0);
     });
 
-    it('polls Fan.Config after Fan and ignores zero maxSpeed when Fan already set it', async () => {
-        const { trait, requests, changes } = createHarness({
+    it('applies Fan.Config and ignores zero maxSpeed when Fan already set it', () => {
+        const { trait, changes } = createHarness({
             namespaces: new Set([FAN_CONFIG_NAMESPACE])
         });
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.equal(requests[0]?.header.namespace, FAN_NAMESPACE);
-        assert.equal(requests[1]?.header.namespace, FAN_CONFIG_NAMESPACE);
-        assert.equal(requests[1]?.header.method, 'GET');
+        seedFan(trait);
+        trait.handlePush(getAck(FAN_CONFIG_NAMESPACE, { config: [{ channel: CHANNEL, maxSpeed: 0 }] }));
         assert.equal(trait.getSpeed(), 0.75);
         assert.ok(!changes.some((c) => c.maxSpeed === 0));
     });
 
-    it('applies Fan.Config maxSpeed when Control.Fan omitted it', async () => {
+    it('applies Fan.Config maxSpeed when Control.Fan omitted it', () => {
         const { trait, changes } = createHarness({
             namespaces: new Set([FAN_CONFIG_NAMESPACE]),
-            fanGetAck: { fan: [{ channel: CHANNEL, speed: 2 }] },
-            configGetAck: { config: [{ channel: CHANNEL, maxSpeed: 4 }] },
             hasToggleX: false,
             hasToggle: false
         });
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
+        seedFan(trait, { fan: [{ channel: CHANNEL, speed: 2 }] });
+        trait.handlePush(getAck(FAN_CONFIG_NAMESPACE, { config: [{ channel: CHANNEL, maxSpeed: 4 }] }));
         assert.ok(changes.some((c) => c.maxSpeed === 4));
         assert.equal(trait.getSpeed(), 0.5);
     });
 
-    it('applies Fan.Config maxSpeed from a meross_lan fan-keyed GETACK', async () => {
+    it('applies Fan.Config maxSpeed from a meross_lan fan-keyed GETACK', () => {
         const { trait, changes } = createHarness({
             namespaces: new Set([FAN_CONFIG_NAMESPACE]),
-            fanGetAck: { fan: [{ channel: CHANNEL, speed: 2 }] },
-            configGetAck: { fan: [{ channel: CHANNEL, maxSpeed: 4 }] },
             hasToggleX: false,
             hasToggle: false
         });
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
+        seedFan(trait, { fan: [{ channel: CHANNEL, speed: 2 }] });
+        trait.handlePush(getAck(FAN_CONFIG_NAMESPACE, { fan: [{ channel: CHANNEL, maxSpeed: 4 }] }));
         assert.ok(changes.some((c) => c.maxSpeed === 4));
         assert.equal(trait.getSpeed(), 0.5);
-    });
-
-    it('PUSH-queries FilterMaintenance on start and emits filterLife 0..1', async () => {
-        const { trait, requests, changes } = createHarness({
-            namespaces: new Set([FILTER_MAINTENANCE_NAMESPACE])
-        });
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        const filterReq = requests.find((r) => r.header.namespace === FILTER_MAINTENANCE_NAMESPACE);
-        assert.equal(filterReq?.header.method, 'PUSH');
-        assert.deepEqual(filterReq?.payload, {});
-        assert.equal(trait.getFilterLife(), 0.8);
-        assert.ok(changes.some((c) => c.filterLife === 0.8));
     });
 
     it('applies FilterMaintenance PUSH', () => {
@@ -293,14 +277,10 @@ describe('FanTrait', () => {
         assert.deepEqual(changes[0], { filterLife: 0.4 });
     });
 
-    it('getButtonConfig uses PUSH-query and does not run on start', async () => {
+    it('getButtonConfig uses PUSH-query', async () => {
         const { trait, requests } = createHarness({
             namespaces: new Set([FAN_BTN_CONFIG_NAMESPACE])
         });
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.ok(!requests.some((r) => r.header.namespace === FAN_BTN_CONFIG_NAMESPACE));
-        requests.length = 0;
         const config = await trait.getButtonConfig();
         assert.equal(requests[0]?.header.namespace, FAN_BTN_CONFIG_NAMESPACE);
         assert.equal(requests[0]?.header.method, 'PUSH');

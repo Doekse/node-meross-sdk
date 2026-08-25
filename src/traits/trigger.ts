@@ -5,22 +5,14 @@ import {
     decodeDigestTriggerXGetAck,
     decodeTriggerXGetAck,
     decodeTriggerXPush,
-    encodeDigestTriggerXGet,
     encodeTriggerXDelete,
     encodeTriggerXGet,
     encodeTriggerXSet,
-    type DigestTriggerXRow,
     type MerossMessage,
     type TriggerXEntry,
     type TriggerXRule
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
-
-/**
- * Digest.TriggerX is board-wide. Share one in-flight GET across channels so a
- * strip does not query the same index once per outlet.
- */
-const digestInflight = new Map<string, Promise<DigestTriggerXRow[]>>();
 
 export type TriggerEntry = TriggerXEntry;
 export type TriggerRule = TriggerXRule;
@@ -55,7 +47,8 @@ export interface TriggerTraitBind {
 
 /**
  * Per-channel countdowns via Appliance.Control.TriggerX.
- * Digest.TriggerX is only an id index for the initial GET-by-id poll.
+ * Digest.TriggerX is only an id index; poller GETACK triggers Control.TriggerX
+ * GET-by-id in {@link handlePush} (ids are dynamic, not static jobs).
  */
 export class TriggerTrait {
     private readonly bind: TriggerTraitBind;
@@ -65,12 +58,7 @@ export class TriggerTrait {
         this.bind = bind;
     }
 
-    /** Fetches initial countdowns. Idempotent; Session calls this once and does not await it. */
-    start(): void {
-        void this.pollInitial();
-    }
-
-    /** Last known countdowns for this channel (after start / set / PUSH). */
+    /** Last known countdowns for this channel (after digest resolve / set / PUSH). */
     list(): TriggerEntry[] {
         return this.entries.map(cloneEntry);
     }
@@ -113,12 +101,17 @@ export class TriggerTrait {
     }
 
     /**
-     * Applies a firmware PUSH for this endpoint (modified rows only after SET).
+     * Applies a firmware PUSH or poller GETACK for this endpoint.
+     * Digest GETACK triggers async Control.TriggerX GET-by-id for this channel.
      */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
         if (!uuid || uuid !== this.bind.uuid) {
+            return;
+        }
+        if (message.header.namespace === DIGEST_TRIGGERX_NAMESPACE) {
+            void this.resolveFromDigest(message);
             return;
         }
         if (message.header.namespace !== TRIGGERX_NAMESPACE) {
@@ -139,35 +132,9 @@ export class TriggerTrait {
         this.applyEntries(next);
     }
 
-    private has(namespace: string): boolean {
-        return this.bind.namespaces?.has(namespace) ?? false;
-    }
-
-    private upsert(entry: TriggerEntry): void {
-        const next = this.entries.map(cloneEntry);
-        const index = next.findIndex((item) => item.id === entry.id);
-        if (index >= 0) {
-            next[index] = cloneEntry(entry);
-        } else {
-            next.push(cloneEntry(entry));
-        }
-        this.applyEntries(next);
-    }
-
-    private applyEntries(next: TriggerEntry[]): void {
-        if (sameEntries(this.entries, next)) {
-            return;
-        }
-        this.entries = next.map(cloneEntry);
-        this.bind.emitChange({ entries: this.list() });
-    }
-
-    private async pollInitial(): Promise<void> {
-        if (!this.has(DIGEST_TRIGGERX_NAMESPACE)) {
-            return;
-        }
+    private async resolveFromDigest(message: MerossMessage): Promise<void> {
         try {
-            const ids = (await loadDigest(this.bind.uuid, this.bind.request))
+            const ids = decodeDigestTriggerXGetAck(message.payload)
                 .filter((row) => row.channel === this.bind.channel)
                 .map((row) => row.id);
             const groups = await Promise.all(ids.map(async (id) => {
@@ -188,27 +155,25 @@ export class TriggerTrait {
             // Next PUSH or setter call will recover.
         }
     }
-}
 
-function loadDigest(
-    uuid: string,
-    request: TriggerTraitBind['request']
-): Promise<DigestTriggerXRow[]> {
-    const existing = digestInflight.get(uuid);
-    if (existing) {
-        return existing;
+    private upsert(entry: TriggerEntry): void {
+        const next = this.entries.map(cloneEntry);
+        const index = next.findIndex((item) => item.id === entry.id);
+        if (index >= 0) {
+            next[index] = cloneEntry(entry);
+        } else {
+            next.push(cloneEntry(entry));
+        }
+        this.applyEntries(next);
     }
-    const pending = request({
-        namespace: DIGEST_TRIGGERX_NAMESPACE,
-        method: 'GET',
-        payload: encodeDigestTriggerXGet()
-    })
-        .then((reply) => decodeDigestTriggerXGetAck(reply.payload))
-        .finally(() => {
-            digestInflight.delete(uuid);
-        });
-    digestInflight.set(uuid, pending);
-    return pending;
+
+    private applyEntries(next: TriggerEntry[]): void {
+        if (sameEntries(this.entries, next)) {
+            return;
+        }
+        this.entries = next.map(cloneEntry);
+        this.bind.emitChange({ entries: this.list() });
+    }
 }
 
 function normalizeSet(input: TriggerSetInput, channel: number): TriggerEntry {

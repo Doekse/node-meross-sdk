@@ -15,6 +15,22 @@ import type { DigestToggle, SystemAll } from './system-all';
 
 export { ABILITY_NAMESPACE, abilityMaxCmdNum, decodeAbilityGetAck } from './ability';
 export type { AbilityMap } from './ability';
+export {
+    CLOUDMQTT_PERIOD_MS,
+    DEFAULT_POLL_INTERVAL_MS,
+    DevicePoller,
+    ENERGY_CLOUD_PERIOD_MS,
+    ENERGY_PERIOD_MS,
+    HUB_BATTERY_PERIOD_MS,
+    SENSOR_FAST_CLOUD_PERIOD_MS,
+    SENSOR_FAST_PERIOD_MS,
+    SENSOR_SLOW_CLOUD_PERIOD_MS,
+    SENSOR_SLOW_PERIOD_MS,
+    SYSTEM_ALL_PERIOD_MS
+} from './poller';
+export type { DevicePollerOptions, PollJob, PollStrategy } from './poller';
+export { buildPollJobs } from './poll-jobs';
+export type { PollEndpoint } from './poll-jobs';
 export { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from './system-all';
 export type { SystemAll } from './system-all';
 
@@ -24,7 +40,7 @@ const SENSOR_SUBDEVICES = new Set([
 ]);
 const SPRINKLER_SUBDEVICES = new Set(['mst100']);
 
-/** meross_lan digest keys that differ from cloud subDeviceType strings. */
+/** Digest type strings that do not match cloud subDeviceType. */
 const HUB_MODEL_ALIASES: Record<string, string> = {
     mst: 'mst100',
     temphum: 'ms100',

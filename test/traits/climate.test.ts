@@ -278,18 +278,10 @@ describe('ClimateTrait board ModeC generation', () => {
         assert.equal(change.values.currentTemperature, 22);
     });
 
-    it('handlePush applies Thermostat.System without GETing on start', async () => {
-        const { endpoint, trait, requests } = createBoardHarness('modeC', [THERMOSTAT_SYSTEM_NAMESPACE]);
+    it('handlePush applies Thermostat.System', () => {
+        const { endpoint, trait } = createBoardHarness('modeC', [THERMOSTAT_SYSTEM_NAMESPACE]);
         const changes: unknown[] = [];
         endpoint.on('change', (c) => changes.push(c));
-
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.equal(
-            requests.some((r) => r.header.namespace === THERMOSTAT_SYSTEM_NAMESPACE),
-            false
-        );
 
         trait.handlePush(push(THERMOSTAT_SYSTEM_NAMESPACE, {
             control: [{
@@ -722,15 +714,6 @@ describe('ClimateTrait board sensor readings', () => {
         assert.equal(change.values.humidity, 59.6);
     });
 
-    it('GETs Sensor.Latest on start when advertised', async () => {
-        const { trait, requests, changes } = createSensorHarness([SENSOR_LATEST_NAMESPACE]);
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.ok(requests.some((r) => r.header.namespace === SENSOR_LATEST_NAMESPACE));
-        assert.equal(changes.find((c) => c.humidity !== undefined)?.humidity, 59.6);
-    });
-
     it('getHistory returns undefined when Sensor.History is not advertised', async () => {
         const { trait, requests } = createBoardHarness('mode');
 
@@ -795,18 +778,5 @@ describe('ClimateTrait board sensor readings', () => {
         assert.equal(history?.temperature?.length, 2);
         assert.equal(history?.temperature?.[0]?.temperature, 16.6);
         assert.equal(history?.humidity?.[0]?.humidity, 60.7);
-    });
-
-    it('does not GET Sensor.HistoryX on start when advertised', async () => {
-        const { trait, requests } = createSensorHarness([SENSOR_HISTORYX_NAMESPACE]);
-
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        await new Promise((resolve) => setImmediate(resolve));
-
-        assert.equal(
-            requests.some((r) => r.header.namespace === SENSOR_HISTORYX_NAMESPACE),
-            false
-        );
     });
 });

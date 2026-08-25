@@ -15,6 +15,8 @@ export interface DeviceAvailabilityOptions {
         method: 'GET',
         payload?: MerossPayload
     ) => Promise<MerossMessage>;
+    /** Notifies DevicePoller so cold-start / MQTT-active reset stay in sync. */
+    onOnlineChange?: (online: boolean) => void;
     heartbeatIntervalMs?: number;
     now?: () => number;
 }
@@ -26,6 +28,7 @@ export class DeviceAvailability {
     private readonly uuid: string;
     private readonly endpoints: readonly Endpoint[];
     private readonly request: DeviceAvailabilityOptions['request'];
+    private readonly onOnlineChange?: (online: boolean) => void;
     private readonly heartbeat: Heartbeat;
 
     private online: boolean;
@@ -34,6 +37,7 @@ export class DeviceAvailability {
         this.uuid = options.uuid;
         this.endpoints = options.endpoints;
         this.request = options.request;
+        this.onOnlineChange = options.onOnlineChange;
         this.online = options.initialOnline;
         this.heartbeat = new Heartbeat({
             intervalMs: options.heartbeatIntervalMs,
@@ -53,6 +57,10 @@ export class DeviceAvailability {
 
     stop(): void {
         this.heartbeat.stop();
+    }
+
+    isOnline(): boolean {
+        return this.online;
     }
 
     handleMessage(message: MerossMessage): void {
@@ -100,5 +108,6 @@ export class DeviceAvailability {
         for (const endpoint of this.endpoints) {
             endpoint.setAvailability(online);
         }
+        this.onOnlineChange?.(online);
     }
 }

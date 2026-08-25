@@ -116,6 +116,7 @@ export {
     encodeShutterPositionSet,
     encodeShutterConfigGet,
     encodeShutterConfigSet,
+    encodeShutterAdjustGet,
     encodeShutterAdjustSet
 } from './codecs/cover';
 export type {

@@ -123,31 +123,45 @@ function pushMessage(payload: Record<string, unknown>): MerossMessage {
     });
 }
 
+function digestGetAck(digest: Array<Record<string, unknown>>): MerossMessage {
+    return encodeMessage({
+        namespace: DIGEST_TRIGGERX_NAMESPACE,
+        method: 'GETACK',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload: { digest }
+    });
+}
+
+/** DevicePoller GETACK path: Digest resolve then Control.TriggerX GET-by-id. */
+async function seedFromDigest(
+    trait: TriggerTrait,
+    digest: Array<Record<string, unknown>> = [{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]
+): Promise<void> {
+    trait.handlePush(digestGetAck(digest));
+    await flush();
+}
+
 describe('TriggerTrait', () => {
-    it('polls Digest.TriggerX then GET by id on start', async () => {
+    it('resolves GET by id from Digest GETACK', async () => {
         const { trait, requests, changes } = createHarness();
-        trait.start();
-        await flush();
-        assert.equal(requests[0]?.header.namespace, DIGEST_TRIGGERX_NAMESPACE);
-        assert.deepEqual(requests[0]?.payload, {});
-        assert.equal(requests[1]?.header.namespace, TRIGGERX_NAMESPACE);
-        assert.deepEqual(requests[1]?.payload, { triggerx: { id: WIRE_ENTRY.id } });
+
+        await seedFromDigest(trait);
+        assert.equal(requests[0]?.header.namespace, TRIGGERX_NAMESPACE);
+        assert.deepEqual(requests[0]?.payload, { triggerx: { id: WIRE_ENTRY.id } });
         assert.deepEqual(trait.list(), [HOST_ENTRY]);
         assert.equal((changes[0]?.entries as unknown[])?.length, 1);
     });
 
-    it('skips the initial poll when Digest.TriggerX is not advertised', async () => {
-        const { trait, requests, changes } = createHarness({
+    it('list stays empty when Digest.TriggerX is not advertised', () => {
+        const { trait } = createHarness({
             namespaces: new Set([TRIGGERX_NAMESPACE])
         });
-        trait.start();
-        await flush();
-        assert.equal(requests.length, 0);
         assert.deepEqual(trait.list(), []);
-        assert.equal(changes.length, 0);
     });
 
-    it('shares one Digest.TriggerX GET across channels on the same uuid', async () => {
+    it('each channel resolves its own Digest ids after a shared Digest GETACK', async () => {
         const requests: MerossMessage[] = [];
         const namespaces = new Set([TRIGGERX_NAMESPACE, DIGEST_TRIGGERX_NAMESPACE]);
         const request: TriggerTraitBind['request'] = async (requestOptions) => {
@@ -160,22 +174,6 @@ describe('TriggerTrait', () => {
                 uuid: UUID
             });
             requests.push(message);
-            if (requestOptions.namespace === DIGEST_TRIGGERX_NAMESPACE) {
-                return encodeMessage({
-                    namespace: requestOptions.namespace,
-                    method: 'GETACK',
-                    key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    messageId: message.header.messageId,
-                    uuid: UUID,
-                    payload: {
-                        digest: [
-                            { channel: 0, id: 'trigger-ch0', count: 1 },
-                            { channel: 1, id: 'trigger-ch1', count: 1 }
-                        ]
-                    }
-                });
-            }
             const raw = requestOptions.payload.triggerx;
             const id = typeof raw === 'object' && raw !== null && typeof (raw as { id?: unknown }).id === 'string'
                 ? (raw as { id: string }).id
@@ -207,13 +205,19 @@ describe('TriggerTrait', () => {
             request,
             emitChange: () => {}
         });
-        trait0.start();
-        trait1.start();
+
+        const digest = digestGetAck([
+            { channel: 0, id: 'trigger-ch0', count: 1 },
+            { channel: 1, id: 'trigger-ch1', count: 1 }
+        ]);
+        trait0.handlePush(digest);
+        trait1.handlePush(digest);
         await flush();
         await flush();
+
         assert.equal(
             requests.filter((message) => message.header.namespace === DIGEST_TRIGGERX_NAMESPACE).length,
-            1
+            0
         );
         assert.equal(trait0.list()[0]?.id, 'trigger-ch0');
         assert.equal(trait1.list()[0]?.id, 'trigger-ch1');
@@ -246,8 +250,7 @@ describe('TriggerTrait', () => {
 
     it('setEnabled SETs enable from a cached entry', async () => {
         const { trait, requests } = createHarness();
-        trait.start();
-        await flush();
+        await seedFromDigest(trait);
         requests.length = 0;
         await trait.setEnabled(HOST_ENTRY.id, false);
         assert.equal(requests[0]?.header.method, 'SET');
@@ -265,8 +268,7 @@ describe('TriggerTrait', () => {
 
     it('remove DELETEs by id and drops the local row without waiting for PUSH', async () => {
         const { trait, requests, changes } = createHarness();
-        trait.start();
-        await flush();
+        await seedFromDigest(trait);
         changes.length = 0;
         requests.length = 0;
         await trait.remove(HOST_ENTRY.id);
@@ -301,8 +303,7 @@ describe('TriggerTrait', () => {
 
     it('handlePush does not emit when the list is unchanged', async () => {
         const { trait, changes } = createHarness();
-        trait.start();
-        await flush();
+        await seedFromDigest(trait);
         changes.length = 0;
         trait.handlePush(pushMessage({ triggerx: [WIRE_ENTRY] }));
         assert.equal(changes.length, 0);

@@ -122,22 +122,6 @@ describe('PresenceTrait', () => {
         assert.equal(changes.length, 0);
     });
 
-    it('GETs LatestX presence and light on start', async () => {
-        const { trait, requests, changes } = createHarness([]);
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.equal(requests[0].header.namespace, SENSOR_LATESTX_NAMESPACE);
-        assert.deepEqual(
-            (requests[0].payload.latest as Array<{ data: string[] }>)[0].data,
-            ['presence', 'light']
-        );
-        assert.equal(changes[0].present, true);
-        assert.equal(changes[0].distance, 0.76);
-        assert.equal(changes[0].light, 24);
-        assert.equal(requests.length, 1);
-    });
-
     it('ignores PUSH when uuid does not match the bind', () => {
         const { trait, changes } = createHarness();
         trait.handlePush(encodeMessage({
@@ -244,15 +228,5 @@ describe('PresenceTrait', () => {
         const { trait, requests } = createHarness();
         await trait.startStudy();
         assert.equal(requests.length, 0);
-    });
-
-    it('start polls LatestX then Presence.Config when advertised', async () => {
-        const { trait, requests } = createHarness();
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        await new Promise((resolve) => setImmediate(resolve));
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.equal(requests[0].header.namespace, SENSOR_LATESTX_NAMESPACE);
-        assert.equal(requests[1].header.namespace, PRESENCE_CONFIG_NAMESPACE);
     });
 });

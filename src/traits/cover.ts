@@ -11,19 +11,13 @@ import {
     decodeGarageMultipleConfigGetAck,
     decodeGaragePush,
     decodeShutterConfigGetAck,
-    decodeShutterPositionGetAck,
     decodeShutterPositionPush,
     decodeShutterStatePush,
-    encodeGarageConfigGet,
     encodeGarageConfigSet,
-    encodeGarageGet,
-    encodeGarageMultipleConfigGet,
     encodeGarageMultipleConfigSet,
     encodeGarageSet,
     encodeShutterAdjustSet,
-    encodeShutterConfigGet,
     encodeShutterConfigSet,
-    encodeShutterPositionGet,
     encodeShutterPositionSet,
     type MerossMessage
 } from '../protocol';
@@ -68,6 +62,9 @@ export class CoverTrait {
     private on: boolean | undefined;
     private position: number | undefined;
     private moving: boolean | undefined;
+    private lastGarageConfig: GarageDoorConfig | undefined;
+    private lastMultipleConfig: GarageMultipleConfigEntry | undefined;
+    private lastShutterConfig: ShutterConfig | undefined;
 
     constructor(bind: CoverTraitBind) {
         this.bind = bind;
@@ -78,12 +75,7 @@ export class CoverTrait {
         return this.bind.namespaces?.has(namespace) ?? false;
     }
 
-    /** Polls initial state. Idempotent; Session calls this once and does not await it. */
-    start(): void {
-        void this.pollInitial();
-    }
-
-    /** Last known open/closed. Undefined until initial GET or PUSH fills it. */
+    /** Last known open/closed. Undefined until poller GETACK or PUSH fills it. */
     isOpen(): boolean | undefined {
         return this.on;
     }
@@ -158,30 +150,18 @@ export class CoverTrait {
     }
 
     /**
-     * Retrieves the garage door config from the device.
-     * Prefers MultipleConfig (MSG200) when advertised, falls back to Config (MSG100).
-     * Returns `undefined` when unsupported or when no entry exists for this channel.
+     * Last known garage config. Undefined until poller GETACK or PUSH fills it.
+     * Prefers MultipleConfig when both namespaces are advertised.
      */
-    async getConfig(): Promise<GarageMultipleConfigEntry | GarageDoorConfig | undefined> {
+    getConfig(): GarageMultipleConfigEntry | GarageDoorConfig | undefined {
         if (this.bind.kind !== 'garage') {
             return undefined;
         }
         if (this.has(GARAGE_MULTIPLE_CONFIG_NAMESPACE)) {
-            const reply = await this.bind.request({
-                namespace: GARAGE_MULTIPLE_CONFIG_NAMESPACE,
-                method: 'GET',
-                payload: encodeGarageMultipleConfigGet()
-            });
-            const entries = decodeGarageMultipleConfigGetAck(reply.payload);
-            return entries.find((e) => e.channel === this.bind.channel);
+            return this.lastMultipleConfig && { ...this.lastMultipleConfig };
         }
         if (this.has(GARAGE_CONFIG_NAMESPACE)) {
-            const reply = await this.bind.request({
-                namespace: GARAGE_CONFIG_NAMESPACE,
-                method: 'GET',
-                payload: encodeGarageConfigGet()
-            });
-            return decodeGarageConfigGetAck(reply.payload);
+            return this.lastGarageConfig && { ...this.lastGarageConfig };
         }
         return undefined;
     }
@@ -198,41 +178,40 @@ export class CoverTrait {
             return;
         }
         if (this.has(GARAGE_MULTIPLE_CONFIG_NAMESPACE)) {
-            const entry = config as GarageMultipleConfigEntry;
+            const entry = {
+                ...(config as GarageMultipleConfigEntry),
+                channel: this.bind.channel
+            };
             await this.bind.request({
                 namespace: GARAGE_MULTIPLE_CONFIG_NAMESPACE,
                 method: 'SET',
-                payload: encodeGarageMultipleConfigSet({
-                    ...entry,
-                    channel: this.bind.channel
-                })
+                payload: encodeGarageMultipleConfigSet(entry)
             });
+            this.lastMultipleConfig = { ...this.lastMultipleConfig, ...entry };
             return;
         }
         if (this.has(GARAGE_CONFIG_NAMESPACE)) {
+            const patch = config as Partial<GarageDoorConfig>;
             await this.bind.request({
                 namespace: GARAGE_CONFIG_NAMESPACE,
                 method: 'SET',
-                payload: encodeGarageConfigSet(config as Partial<GarageDoorConfig>)
+                payload: encodeGarageConfigSet(patch)
             });
+            if (this.lastGarageConfig !== undefined) {
+                this.lastGarageConfig = { ...this.lastGarageConfig, ...patch };
+            }
         }
     }
 
     /**
-     * Reads the travel-time and direction config for the bound shutter channel.
-     * Returns `undefined` when the namespace is not advertised or the kind is garage.
+     * Last known travel-time and direction config for the bound shutter channel.
+     * Undefined until poller GETACK or PUSH fills it, or when the kind is garage.
      */
-    async getShutterConfig(): Promise<ShutterConfig | undefined> {
+    getShutterConfig(): ShutterConfig | undefined {
         if (this.bind.kind !== 'shutter' || !this.has(SHUTTER_CONFIG_NAMESPACE)) {
             return undefined;
         }
-        const reply = await this.bind.request({
-            namespace: SHUTTER_CONFIG_NAMESPACE,
-            method: 'GET',
-            payload: encodeShutterConfigGet()
-        });
-        const entries = decodeShutterConfigGetAck(reply.payload);
-        return entries.find((e) => e.channel === this.bind.channel);
+        return this.lastShutterConfig && { ...this.lastShutterConfig };
     }
 
     /**
@@ -243,11 +222,13 @@ export class CoverTrait {
         if (this.bind.kind !== 'shutter' || !this.has(SHUTTER_CONFIG_NAMESPACE)) {
             return;
         }
+        const next = { ...options, channel: this.bind.channel };
         await this.bind.request({
             namespace: SHUTTER_CONFIG_NAMESPACE,
             method: 'SET',
-            payload: encodeShutterConfigSet({ ...options, channel: this.bind.channel })
+            payload: encodeShutterConfigSet(next)
         });
+        this.lastShutterConfig = { ...this.lastShutterConfig, ...next };
     }
 
     /**
@@ -282,7 +263,7 @@ export class CoverTrait {
     }
 
     /**
-     * Applies a firmware PUSH for this endpoint.
+     * Applies a firmware PUSH or poller GETACK for this endpoint.
      */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
@@ -291,8 +272,9 @@ export class CoverTrait {
             return;
         }
 
+        const ns = message.header.namespace;
         if (this.bind.kind === 'garage') {
-            if (message.header.namespace === GARAGE_STATE_NAMESPACE) {
+            if (ns === GARAGE_STATE_NAMESPACE) {
                 for (const entry of decodeGaragePush(message.payload)) {
                     if (entry.channel === this.bind.channel) {
                         this.applyGarage(entry.open);
@@ -301,6 +283,18 @@ export class CoverTrait {
                         }
                     }
                 }
+                return;
+            }
+            if (ns === GARAGE_MULTIPLE_CONFIG_NAMESPACE && this.has(ns)) {
+                const entry = decodeGarageMultipleConfigGetAck(message.payload)
+                    .find((e) => e.channel === this.bind.channel);
+                if (entry) {
+                    this.lastMultipleConfig = entry;
+                }
+                return;
+            }
+            if (ns === GARAGE_CONFIG_NAMESPACE && this.has(ns)) {
+                this.lastGarageConfig = decodeGarageConfigGetAck(message.payload);
             }
             return;
         }
@@ -308,7 +302,7 @@ export class CoverTrait {
         if (this.bind.kind !== 'shutter') {
             return;
         }
-        if (message.header.namespace === SHUTTER_POSITION_NAMESPACE) {
+        if (ns === SHUTTER_POSITION_NAMESPACE) {
             for (const entry of decodeShutterPositionPush(message.payload)) {
                 if (entry.channel === this.bind.channel) {
                     this.applyShutter(entry.position);
@@ -316,7 +310,7 @@ export class CoverTrait {
             }
             return;
         }
-        if (message.header.namespace === SHUTTER_STATE_NAMESPACE) {
+        if (ns === SHUTTER_STATE_NAMESPACE) {
             for (const entry of decodeShutterStatePush(message.payload)) {
                 if (entry.channel === this.bind.channel) {
                     this.applyMoving(entry.state !== 0);
@@ -324,35 +318,12 @@ export class CoverTrait {
             }
             return;
         }
-    }
-
-    private async pollInitial(): Promise<void> {
-        try {
-            if (this.bind.kind === 'garage') {
-                const reply = await this.bind.request({
-                    namespace: GARAGE_STATE_NAMESPACE,
-                    method: 'GET',
-                    payload: encodeGarageGet({ channel: this.bind.channel })
-                });
-                for (const entry of decodeGarageGetAck(reply.payload)) {
-                    if (entry.channel === this.bind.channel) {
-                        this.applyGarage(entry.open);
-                    }
-                }
-                return;
+        if (ns === SHUTTER_CONFIG_NAMESPACE && this.has(ns)) {
+            const entry = decodeShutterConfigGetAck(message.payload)
+                .find((e) => e.channel === this.bind.channel);
+            if (entry) {
+                this.lastShutterConfig = entry;
             }
-            const reply = await this.bind.request({
-                namespace: SHUTTER_POSITION_NAMESPACE,
-                method: 'GET',
-                payload: encodeShutterPositionGet()
-            });
-            for (const entry of decodeShutterPositionGetAck(reply.payload)) {
-                if (entry.channel === this.bind.channel) {
-                    this.applyShutter(entry.position);
-                }
-            }
-        } catch {
-            // Next PUSH or setter call will recover.
         }
     }
 

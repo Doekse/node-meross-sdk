@@ -136,6 +136,30 @@ function enrollmentAck(sent: MerossMessage, options: { innerIp?: boolean; encryp
         }
         return ackFor(sent, 'GETACK', payload);
     }
+    if (sent.header.namespace === 'Appliance.Control.Multiple' && sent.header.method === 'SET') {
+        const commands = Array.isArray(sent.payload.multiple) ? sent.payload.multiple : [];
+        return ackFor(sent, 'SETACK', {
+            multiple: commands.map((command) => {
+                const sub = command as {
+                    header: { namespace: string; method: string };
+                    payload: MerossMessage['payload'];
+                };
+                const ack = enrollmentAck({
+                    header: {
+                        ...sent.header,
+                        namespace: sub.header.namespace,
+                        method: 'GET',
+                        messageId: sent.header.messageId
+                    },
+                    payload: sub.payload
+                }, options);
+                return {
+                    header: { namespace: sub.header.namespace, method: 'GETACK' },
+                    payload: ack.payload
+                };
+            })
+        });
+    }
     if (sent.header.namespace === 'Appliance.Control.Electricity') {
         return ackFor(sent, 'GETACK', {
             electricity: {
@@ -148,6 +172,14 @@ function enrollmentAck(sent: MerossMessage, options: { innerIp?: boolean; encryp
     }
     if (sent.header.namespace === 'Appliance.Control.ConsumptionX') {
         return ackFor(sent, 'GETACK', { consumptionx: [] });
+    }
+    if (sent.header.namespace === 'Appliance.Control.ToggleX') {
+        return ackFor(sent, 'GETACK', {
+            togglex: { channel: 0, onoff: 1, entity: 1, lmTime: 1 }
+        });
+    }
+    if (sent.header.namespace === 'Appliance.System.Online') {
+        return ackFor(sent, 'GETACK', { online: { status: 1 } });
     }
     return ackFor(sent, 'GETACK');
 }
@@ -176,26 +208,55 @@ function createMqttConnect(clientRef: { current?: FakeMqttClient }) {
     };
 }
 
-async function ackNextGet(
+async function waitMacrotask(): Promise<void> {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+function isPendingGet(sent: MerossMessage, alreadyAcked: Set<string>): boolean {
+    if (alreadyAcked.has(sent.header.messageId)) {
+        return false;
+    }
+    return sent.header.method === 'GET'
+        || (
+            sent.header.method === 'SET'
+            && sent.header.namespace === 'Appliance.Control.Multiple'
+        );
+}
+
+/**
+ * Acks every outstanding GET / Multiple until a short quiet window — covers
+ * Ability + System.All enrollment and the poller's cold-start batch.
+ */
+async function drainPendingGets(
     client: FakeMqttClient,
     alreadyAcked: Set<string>,
     options?: { innerIp?: boolean; encrypt?: boolean }
 ): Promise<void> {
-    for (let attempt = 0; attempt < 50; attempt++) {
-        await Promise.resolve();
+    for (let quiet = 0; quiet < 5; ) {
+        let ackedOne = false;
         for (const entry of client.published) {
             const sent = JSON.parse(entry.payload) as MerossMessage;
-            if (sent.header.method !== 'GET' || alreadyAcked.has(sent.header.messageId)) {
+            if (!isPendingGet(sent, alreadyAcked)) {
                 continue;
             }
             alreadyAcked.add(sent.header.messageId);
             client.deliver(enrollmentAck(sent, options));
-            return;
+            ackedOne = true;
+            break;
         }
+        if (ackedOne) {
+            quiet = 0;
+            await Promise.resolve();
+            continue;
+        }
+        await waitMacrotask();
+        quiet++;
     }
-    assert.fail('MQTT GET was not published');
 }
 
+/**
+ * Ability + System.All enrollment, then DevicePoller schedule(0) cold-start GETs.
+ */
 async function connectSession(session: Session, clientRef: { current?: FakeMqttClient }): Promise<void> {
     const connectPromise = session.connect();
     await Promise.resolve();
@@ -203,11 +264,9 @@ async function connectSession(session: Session, clientRef: { current?: FakeMqttC
     assert.ok(client, 'MQTT client was not created');
 
     const acked = new Set<string>();
-    await ackNextGet(client, acked);
-    await ackNextGet(client, acked);
+    await drainPendingGets(client, acked);
     await connectPromise;
-    await ackNextGet(client, acked);
-    await ackNextGet(client, acked);
+    await drainPendingGets(client, acked);
 }
 
 describe('Session.login and restore', () => {
@@ -403,11 +462,9 @@ describe('Session.connect', () => {
             JSON.parse(entry.payload) as MerossMessage
         ).header.messageId));
         const syncPromise = session.sync();
-        await ackNextGet(client, acked);
-        await ackNextGet(client, acked);
+        await drainPendingGets(client, acked);
         await syncPromise;
-        await ackNextGet(client, acked);
-        await ackNextGet(client, acked);
+        await drainPendingGets(client, acked);
 
         assert.equal(session.inventory.endpoints().length, 2);
         assert.equal(session.endpoint(`${added.uuid}:0`).id, `${added.uuid}:0`);
@@ -448,11 +505,9 @@ describe('Session.connect', () => {
         await Promise.resolve();
         const client = clientRef.current!;
         const acked = new Set<string>();
-        await ackNextGet(client, acked, { encrypt: true });
-        await ackNextGet(client, acked, { innerIp: true, encrypt: true });
+        await drainPendingGets(client, acked, { encrypt: true, innerIp: true });
         await connectPromise;
-        await Promise.resolve();
-        await Promise.resolve();
+        await drainPendingGets(client, acked, { encrypt: true, innerIp: true });
 
         assert.ok(lanCalls.length >= 1);
         const headers = lanCalls[0]!.headers as Record<string, string>;

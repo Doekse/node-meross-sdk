@@ -1,8 +1,6 @@
 import {
     DND_MODE_NAMESPACE,
-    decodeDndGetAck,
     decodeDndPush,
-    encodeDndGet,
     encodeDndSet,
     type MerossMessage
 } from '../protocol';
@@ -29,12 +27,7 @@ export class DndTrait {
         this.bind = bind;
     }
 
-    /** Fetches initial state. Idempotent; Session calls this once and does not await it. */
-    start(): void {
-        void this.pollInitial();
-    }
-
-    /** True when DND is active (LED off). Undefined until initial GET or PUSH fills it. */
+    /** True when DND is active (LED off). Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.on;
     }
@@ -53,7 +46,7 @@ export class DndTrait {
     }
 
     /**
-     * Applies a firmware PUSH for this device.
+     * Applies a firmware PUSH or poller GETACK for this device.
      */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
@@ -73,18 +66,5 @@ export class DndTrait {
         }
         this.on = on;
         this.bind.emitChange(on);
-    }
-
-    private async pollInitial(): Promise<void> {
-        try {
-            const reply = await this.bind.request({
-                namespace: DND_MODE_NAMESPACE,
-                method: 'GET',
-                payload: encodeDndGet()
-            });
-            this.applyState(decodeDndGetAck(reply.payload).on);
-        } catch {
-            // Next PUSH or setter call will recover.
-        }
     }
 }

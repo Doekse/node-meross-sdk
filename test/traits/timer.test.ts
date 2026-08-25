@@ -128,31 +128,45 @@ function pushMessage(payload: Record<string, unknown>): MerossMessage {
     });
 }
 
+function digestGetAck(digest: Array<Record<string, unknown>>): MerossMessage {
+    return encodeMessage({
+        namespace: DIGEST_TIMERX_NAMESPACE,
+        method: 'GETACK',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload: { digest }
+    });
+}
+
+/** DevicePoller GETACK path: Digest resolve then Control.TimerX GET-by-id. */
+async function seedFromDigest(
+    trait: TimerTrait,
+    digest: Array<Record<string, unknown>> = [{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]
+): Promise<void> {
+    trait.handlePush(digestGetAck(digest));
+    await flush();
+}
+
 describe('TimerTrait', () => {
-    it('polls Digest.TimerX then GET by id on start', async () => {
+    it('resolves GET by id from Digest GETACK', async () => {
         const { trait, requests, changes } = createHarness();
-        trait.start();
-        await flush();
-        assert.equal(requests[0]?.header.namespace, DIGEST_TIMERX_NAMESPACE);
-        assert.deepEqual(requests[0]?.payload, {});
-        assert.equal(requests[1]?.header.namespace, TIMERX_NAMESPACE);
-        assert.deepEqual(requests[1]?.payload, { timerx: { id: WIRE_ENTRY.id } });
+
+        await seedFromDigest(trait);
+        assert.equal(requests[0]?.header.namespace, TIMERX_NAMESPACE);
+        assert.deepEqual(requests[0]?.payload, { timerx: { id: WIRE_ENTRY.id } });
         assert.deepEqual(trait.list(), [HOST_ENTRY]);
         assert.equal((changes[0]?.entries as unknown[])?.length, 1);
     });
 
-    it('skips the initial poll when Digest.TimerX is not advertised', async () => {
-        const { trait, requests, changes } = createHarness({
+    it('list stays empty when Digest.TimerX is not advertised', () => {
+        const { trait } = createHarness({
             namespaces: new Set([TIMERX_NAMESPACE])
         });
-        trait.start();
-        await flush();
-        assert.equal(requests.length, 0);
         assert.deepEqual(trait.list(), []);
-        assert.equal(changes.length, 0);
     });
 
-    it('shares one Digest.TimerX GET across channels on the same uuid', async () => {
+    it('each channel resolves its own Digest ids after a shared Digest GETACK', async () => {
         const requests: MerossMessage[] = [];
         const namespaces = new Set([TIMERX_NAMESPACE, DIGEST_TIMERX_NAMESPACE]);
         const request: TimerTraitBind['request'] = async (requestOptions) => {
@@ -165,22 +179,6 @@ describe('TimerTrait', () => {
                 uuid: UUID
             });
             requests.push(message);
-            if (requestOptions.namespace === DIGEST_TIMERX_NAMESPACE) {
-                return encodeMessage({
-                    namespace: requestOptions.namespace,
-                    method: 'GETACK',
-                    key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    messageId: message.header.messageId,
-                    uuid: UUID,
-                    payload: {
-                        digest: [
-                            { channel: 0, id: 'timer-ch0', count: 1 },
-                            { channel: 1, id: 'timer-ch1', count: 1 }
-                        ]
-                    }
-                });
-            }
             const raw = requestOptions.payload.timerx;
             const id = typeof raw === 'object' && raw !== null && typeof (raw as { id?: unknown }).id === 'string'
                 ? (raw as { id: string }).id
@@ -212,13 +210,19 @@ describe('TimerTrait', () => {
             request,
             emitChange: () => {}
         });
-        trait0.start();
-        trait1.start();
+
+        const digest = digestGetAck([
+            { channel: 0, id: 'timer-ch0', count: 1 },
+            { channel: 1, id: 'timer-ch1', count: 1 }
+        ]);
+        trait0.handlePush(digest);
+        trait1.handlePush(digest);
         await flush();
         await flush();
+
         assert.equal(
             requests.filter((message) => message.header.namespace === DIGEST_TIMERX_NAMESPACE).length,
-            1
+            0
         );
         assert.equal(trait0.list()[0]?.id, 'timer-ch0');
         assert.equal(trait1.list()[0]?.id, 'timer-ch1');
@@ -257,8 +261,7 @@ describe('TimerTrait', () => {
 
     it('setEnabled SETs enable from a cached entry', async () => {
         const { trait, requests } = createHarness();
-        trait.start();
-        await flush();
+        await seedFromDigest(trait);
         requests.length = 0;
         await trait.setEnabled(HOST_ENTRY.id, false);
         assert.equal(requests[0]?.header.method, 'SET');
@@ -276,8 +279,7 @@ describe('TimerTrait', () => {
 
     it('remove DELETEs by id and drops the local row without waiting for PUSH', async () => {
         const { trait, requests, changes } = createHarness();
-        trait.start();
-        await flush();
+        await seedFromDigest(trait);
         changes.length = 0;
         requests.length = 0;
         await trait.remove(HOST_ENTRY.id);
@@ -314,8 +316,7 @@ describe('TimerTrait', () => {
 
     it('handlePush does not emit when the list is unchanged', async () => {
         const { trait, changes } = createHarness();
-        trait.start();
-        await flush();
+        await seedFromDigest(trait);
         changes.length = 0;
         trait.handlePush(pushMessage({ timerx: [WIRE_ENTRY] }));
         assert.equal(changes.length, 0);

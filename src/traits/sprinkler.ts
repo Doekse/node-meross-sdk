@@ -4,17 +4,11 @@ import {
     DEVICE_CFG_NAMESPACE,
     HUB_BATTERY_NAMESPACE,
     WATER_PLAN_NAMESPACE,
-    decodeBatteryGetAck,
     decodeBatteryPush,
-    decodeDeviceCfgGetAck,
     decodeDeviceCfgPush,
-    decodeWaterGetAck,
     decodeWaterPlanGetAck,
     decodeWaterPush,
-    encodeBatteryGet,
-    encodeDeviceCfgGet,
     encodeDeviceCfgSet,
-    encodeWaterGet,
     encodeWaterPlanGet,
     encodeWaterPlanSet,
     encodeWaterSet,
@@ -61,12 +55,7 @@ export class SprinklerTrait {
         this.namespaces = bind.namespaces ?? new Set();
     }
 
-    /** Fetches initial state. Idempotent; Session calls this once and does not await it. */
-    start(): void {
-        void this.pollInitial();
-    }
-
-    /** Last known on/off. Undefined until initial GET or PUSH fills it. */
+    /** Last known on/off. Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.last.on;
     }
@@ -154,7 +143,7 @@ export class SprinklerTrait {
     }
 
     /**
-     * Applies a firmware PUSH for this endpoint.
+     * Applies a firmware PUSH or poller GETACK for this endpoint.
      */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
@@ -208,51 +197,6 @@ export class SprinklerTrait {
 
     private has(namespace: string): boolean {
         return this.namespaces.has(namespace);
-    }
-
-    private async pollInitial(): Promise<void> {
-        try {
-            await this.pollHub();
-        } catch {
-            // Next PUSH or setter call will recover.
-        }
-    }
-
-    private async pollHub(): Promise<void> {
-        const subId = this.bind.subDeviceId;
-        const waterAck = await this.bind.request({
-            namespace: CONTROL_WATER_NAMESPACE,
-            method: 'GET',
-            payload: encodeWaterGet({ subId })
-        });
-        const water = decodeWaterGetAck(waterAck.payload).find((entry) => entry.subId === subId);
-        if (water) {
-            this.applyChange(waterPatch(water));
-        }
-
-        if (this.has(DEVICE_CFG_NAMESPACE)) {
-            const cfgAck = await this.bind.request({
-                namespace: DEVICE_CFG_NAMESPACE,
-                method: 'GET',
-                payload: encodeDeviceCfgGet({ subId })
-            });
-            const cfg = decodeDeviceCfgGetAck(cfgAck.payload).find((entry) => entry.subId === subId);
-            if (cfg?.duration !== undefined) {
-                this.applyChange({ duration: cfg.duration });
-            }
-        }
-
-        if (this.has(HUB_BATTERY_NAMESPACE)) {
-            const batteryAck = await this.bind.request({
-                namespace: HUB_BATTERY_NAMESPACE,
-                method: 'GET',
-                payload: encodeBatteryGet(subId)
-            });
-            const battery = decodeBatteryGetAck(batteryAck.payload).find((entry) => entry.id === subId);
-            if (battery?.battery !== undefined) {
-                this.applyChange({ battery: battery.battery });
-            }
-        }
     }
 }
 

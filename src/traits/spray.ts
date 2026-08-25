@@ -1,8 +1,6 @@
 import {
     SPRAY_NAMESPACE,
-    decodeSprayGetAck,
     decodeSprayPush,
-    encodeSprayGet,
     encodeSpraySet,
     type MerossMessage,
     type SprayMode
@@ -38,12 +36,7 @@ export class SprayTrait {
         this.bind = bind;
     }
 
-    /** Fetches initial state. Idempotent; Session calls this once and does not await it. */
-    start(): void {
-        void this.pollInitial();
-    }
-
-    /** Last known spray mode. Undefined until initial GET or PUSH fills it. */
+    /** Last known spray mode. Undefined until poller GETACK or PUSH fills it. */
     getMode(): SprayMode | undefined {
         return this.last.mode;
     }
@@ -95,21 +88,4 @@ export class SprayTrait {
         }
     }
 
-    private async pollInitial(): Promise<void> {
-        try {
-            const reply = await this.bind.request({
-                namespace: SPRAY_NAMESPACE,
-                method: 'GET',
-                payload: encodeSprayGet()
-            });
-            const entry = decodeSprayGetAck(reply.payload).find(
-                (item) => item.channel === this.bind.channel
-            );
-            if (entry) {
-                this.applyChange({ mode: entry.mode });
-            }
-        } catch {
-            // Next PUSH or setter call will recover.
-        }
-    }
 }

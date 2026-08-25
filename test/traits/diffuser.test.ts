@@ -92,36 +92,6 @@ function pushMessage(namespace: string, payload: Record<string, unknown>): Meros
 }
 
 describe('DiffuserTrait', () => {
-    it('polls light, spray, and sensor on start', async () => {
-        const { trait, requests, changes } = createHarness();
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.deepEqual(requests.map((r) => r.header.namespace), [
-            DIFFUSER_LIGHT_NAMESPACE,
-            DIFFUSER_SPRAY_NAMESPACE,
-            DIFFUSER_SENSOR_NAMESPACE
-        ]);
-        assert.equal(trait.isOn(), true);
-        assert.equal(trait.getBrightness(), 0.5);
-        assert.equal(trait.getSprayMode(), 'off');
-        assert.ok(changes.some((c) => c.sprayMode === 'off'));
-        assert.ok(changes.some((c) => c.humidity === 70 && c.temperature === 36.5));
-    });
-
-    it('skips Diffuser.Sensor when the namespace is not advertised', async () => {
-        const { trait, requests } = createHarness(new Set([
-            DIFFUSER_LIGHT_NAMESPACE,
-            DIFFUSER_SPRAY_NAMESPACE
-        ]));
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.deepEqual(requests.map((r) => r.header.namespace), [
-            DIFFUSER_LIGHT_NAMESPACE,
-            DIFFUSER_SPRAY_NAMESPACE
-        ]);
-        assert.equal(trait.getSprayMode(), 'off');
-    });
-
     it('setSprayMode uses Diffuser.Spray wire values', async () => {
         const { trait, requests } = createHarness();
         await trait.setSprayMode('strong');

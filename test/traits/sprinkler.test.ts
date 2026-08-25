@@ -87,26 +87,6 @@ function pushMessage(namespace: string, payload: Record<string, unknown>): Meros
 }
 
 describe('SprinklerTrait', () => {
-    it('polls Control.Water and DeviceCfg on start but not WaterPlan', async () => {
-        const { trait, requests, changes } = createHarness({
-            [CONTROL_WATER_NAMESPACE]: {
-                control: [{ channel: 0, subId: SUB_DEVICE_ID, onoff: 2, dura: 7200 }]
-            },
-            [DEVICE_CFG_NAMESPACE]: {
-                config: [{ channel: 0, subId: SUB_DEVICE_ID, mstCfg: { dura: 3600 } }]
-            }
-        });
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-
-        assert.equal(requests.length, 2);
-        assert.equal(requests[0]?.header.namespace, CONTROL_WATER_NAMESPACE);
-        assert.equal(requests[1]?.header.namespace, DEVICE_CFG_NAMESPACE);
-        assert.equal(trait.isOn(), false);
-        assert.equal(trait.getDuration(), 3600);
-        assert.deepEqual(changes[changes.length - 1], { duration: 3600 });
-    });
-
     it('setOn uses Control.Water onoff 1/2 and never Hub.ToggleX', async () => {
         const { trait, requests } = createHarness();
         await trait.setOn(true);

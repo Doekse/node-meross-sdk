@@ -23,9 +23,6 @@ import {
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
 
-export const DEFAULT_ELECTRICITY_INTERVAL_MS = 30_000;
-export const DEFAULT_CONSUMPTION_INTERVAL_MS = 60_000;
-
 export interface EnergyValues {
     power?: number;
     current?: number;
@@ -51,75 +48,26 @@ export interface EnergyTraitBind {
     namespaces?: ReadonlySet<string>;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
     emitChange: (values: EnergyValues) => void;
-    electricityIntervalMs?: number;
-    consumptionIntervalMs?: number;
 }
 
 export type { ElectricityConfig };
 
 /**
- * Power plus consumption samples for one enrolled endpoint. Electricity and
- * consumption namespaces are request/response, so this trait owns poll timers.
+ * Power plus consumption samples for one enrolled endpoint. DevicePoller owns
+ * the schedule; this trait applies GETACK/PUSH and exposes on-demand `poll()`.
  */
 export class EnergyTrait {
     private readonly bind: EnergyTraitBind;
     private readonly namespaces: ReadonlySet<string>;
-    private readonly electricityIntervalMs: number;
-    private readonly consumptionIntervalMs: number;
-    private electricityTimer: ReturnType<typeof setInterval> | undefined;
-    private consumptionTimer: ReturnType<typeof setInterval> | undefined;
-    private stopped = false;
     private last: EnergyValues = {};
 
     constructor(bind: EnergyTraitBind) {
         this.bind = bind;
         this.namespaces = bind.namespaces ?? new Set();
-        this.electricityIntervalMs = bind.electricityIntervalMs ?? DEFAULT_ELECTRICITY_INTERVAL_MS;
-        this.consumptionIntervalMs = bind.consumptionIntervalMs ?? DEFAULT_CONSUMPTION_INTERVAL_MS;
     }
 
     private has(namespace: string): boolean {
         return this.namespaces.has(namespace);
-    }
-
-    /** Starts trait-owned poll loops. Idempotent. */
-    start(): void {
-        this.stopped = false;
-        if ((this.bind.hasElectricity || this.bind.hasElectricityX) && this.electricityTimer === undefined) {
-            void this.pollElectricity();
-            this.electricityTimer = setInterval(
-                () => void this.pollElectricity(),
-                this.electricityIntervalMs
-            );
-            this.electricityTimer.unref();
-        }
-        if (this.bind.hasConsumptionX && this.consumptionTimer === undefined) {
-            void this.pollConsumption();
-            this.consumptionTimer = setInterval(
-                () => void this.pollConsumption(),
-                this.consumptionIntervalMs
-            );
-            this.consumptionTimer.unref();
-        } else if (this.bind.hasConsumptionH && this.consumptionTimer === undefined) {
-            void this.pollHourlyConsumption();
-            this.consumptionTimer = setInterval(
-                () => void this.pollHourlyConsumption(),
-                this.consumptionIntervalMs
-            );
-            this.consumptionTimer.unref();
-        }
-    }
-
-    stop(): void {
-        this.stopped = true;
-        if (this.electricityTimer !== undefined) {
-            clearInterval(this.electricityTimer);
-            this.electricityTimer = undefined;
-        }
-        if (this.consumptionTimer !== undefined) {
-            clearInterval(this.consumptionTimer);
-            this.consumptionTimer = undefined;
-        }
     }
 
     async poll(): Promise<EnergyValues> {
@@ -219,9 +167,6 @@ export class EnergyTrait {
                     method: 'GET',
                     payload: encodeElectricityGet({ channel: this.bind.channel })
                 });
-                if (this.stopped) {
-                    return;
-                }
                 const sample = decodeElectricityGetAck(reply.payload);
                 if (sample.channel === this.bind.channel) {
                     this.applyElectricity(sample);
@@ -233,16 +178,13 @@ export class EnergyTrait {
                 method: 'GET',
                 payload: encodeElectricityXGet()
             });
-            if (this.stopped) {
-                return;
-            }
             const sample = decodeElectricityXGetAck(reply.payload)
                 .find((entry) => entry.channel === this.bind.channel);
             if (sample) {
                 this.applyElectricity(sample);
             }
         } catch {
-            // Next interval retries.
+            // Next poller tick or on-demand poll retries.
         }
     }
 
@@ -253,12 +195,9 @@ export class EnergyTrait {
                 method: 'GET',
                 payload: encodeConsumptionXGet()
             });
-            if (this.stopped) {
-                return;
-            }
             this.applyConsumption(decodeConsumptionXGetAck(reply.payload));
         } catch {
-            // Next interval retries.
+            // Next poller tick or on-demand poll retries.
         }
     }
 
@@ -269,16 +208,13 @@ export class EnergyTrait {
                 method: 'GET',
                 payload: encodeConsumptionHGet(this.bind.channel)
             });
-            if (this.stopped) {
-                return;
-            }
             const sample = decodeConsumptionHGetAck(reply.payload)
                 .find((entry) => entry.channel === this.bind.channel);
             if (sample) {
                 this.applyHourlyConsumption(sample.hourly);
             }
         } catch {
-            // Next interval retries.
+            // Next poller tick or on-demand poll retries.
         }
     }
 

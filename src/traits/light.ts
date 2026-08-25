@@ -5,18 +5,13 @@ import {
     LIGHT_CAPACITY_TEMPERATURE,
     LIGHT_EFFECT_NAMESPACE,
     LIGHT_NAMESPACE,
-    decodeLightEffectGetAck,
     decodeLightEffectPush,
     decodeLightGetAck,
     decodeLightPush,
-    encodeLightEffectGet,
     encodeLightEffectSet,
-    encodeLightGet,
     encodeLightSet,
     TOGGLEX_NAMESPACE,
-    decodeToggleXGetAck,
     decodeToggleXPush,
-    encodeToggleXGet,
     encodeToggleXSet,
     type LightChannelWireState,
     type LightEffectEntry,
@@ -77,12 +72,7 @@ export class LightTrait {
         this.lightCapacity = bind.lightCapacity;
     }
 
-    /** Polls initial state. Idempotent; Session calls this once and does not await it. */
-    start(): void {
-        void this.pollInitial();
-    }
-
-    /** Last known on/off. Undefined until initial GET or PUSH fills it. */
+    /** Last known on/off. Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.on;
     }
@@ -251,43 +241,6 @@ export class LightTrait {
 
         if (message.header.namespace === LIGHT_EFFECT_NAMESPACE && this.bind.hasLightEffect) {
             this.effectCatalog = decodeLightEffectPush(message.payload);
-        }
-    }
-
-    private async pollInitial(): Promise<void> {
-        try {
-            const lightReply = await this.bind.request({
-                namespace: LIGHT_NAMESPACE,
-                method: 'GET',
-                payload: encodeLightGet()
-            });
-            const light = decodeLightGetAck(lightReply.payload);
-            this.lightCapacity = light.capacity;
-            this.applyLight(light, !this.bind.hasToggleX && !this.bind.hasToggle);
-
-            if (this.bind.hasToggleX) {
-                const toggleReply = await this.bind.request({
-                    namespace: TOGGLEX_NAMESPACE,
-                    method: 'GET',
-                    payload: encodeToggleXGet({ channel: this.bind.channel })
-                });
-                const toggle = decodeToggleXGetAck(toggleReply.payload)
-                    .find((entry) => entry.channel === this.bind.channel);
-                if (toggle) {
-                    this.on = toggle.on;
-                }
-            }
-
-            if (this.bind.hasLightEffect) {
-                const effectReply = await this.bind.request({
-                    namespace: LIGHT_EFFECT_NAMESPACE,
-                    method: 'GET',
-                    payload: encodeLightEffectGet()
-                });
-                this.effectCatalog = decodeLightEffectGetAck(effectReply.payload);
-            }
-        } catch {
-            // Next PUSH or setter call will recover.
         }
     }
 

@@ -11,7 +11,6 @@ import {
     LIGHT_EFFECT_NAMESPACE,
     TOGGLEX_NAMESPACE,
     encodeMessage,
-    encodeLightEffectGet,
     encodeLightEffectSet,
     encodeLightSet,
     encodeToggleXSet
@@ -291,7 +290,7 @@ describe('LightTrait.setEffect', () => {
         assert.deepEqual(changes, [{ trait: 'light', values: { effect: 2 } }]);
     });
 
-    it('GETs Light.Effect on start only when advertised', async () => {
+    it('loads Light.Effect catalog from GETACK when advertised', () => {
         const catalog = [
             { Id: '1', effectName: 'Night', enable: 0 },
             { Id: '2', effectName: 'Day', enable: 0 }
@@ -300,23 +299,18 @@ describe('LightTrait.setEffect', () => {
             hasLightEffect: true,
             lightEffectCatalog: catalog
         });
-        withEffect.trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        await new Promise((resolve) => setImmediate(resolve));
 
-        const effectGet = withEffect.requests.find((request) => request.header.namespace === LIGHT_EFFECT_NAMESPACE);
-        assert.equal(effectGet?.header.method, 'GET');
-        assert.deepEqual(effectGet?.payload, encodeLightEffectGet());
+        withEffect.trait.handlePush(encodeMessage({
+            namespace: LIGHT_EFFECT_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { effect: catalog }
+        }));
         assert.deepEqual(withEffect.trait.getEffectNames(), ['Night', 'Day']);
 
         const withoutEffect = createLightHarness({ hasLightEffect: false });
-        withoutEffect.trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.equal(
-            withoutEffect.requests.some((request) => request.header.namespace === LIGHT_EFFECT_NAMESPACE),
-            false
-        );
         assert.deepEqual(withoutEffect.trait.getEffectNames(), []);
     });
 
@@ -330,9 +324,14 @@ describe('LightTrait.setEffect', () => {
             hasLightEffect: true,
             lightEffectCatalog: catalog
         });
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        await new Promise((resolve) => setImmediate(resolve));
+        trait.handlePush(encodeMessage({
+            namespace: LIGHT_EFFECT_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { effect: catalog }
+        }));
         requests.length = 0;
 
         const changes: unknown[] = [];

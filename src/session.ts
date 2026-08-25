@@ -6,10 +6,12 @@ import {
     ABILITY_NAMESPACE,
     DeviceGraph,
     SYSTEM_ALL_NAMESPACE,
+    buildPollJobs,
     decodeAbilityGetAck
 } from './graph';
 import type { GraphEndpoint, PhysicalDevice } from './graph';
 import { DeviceAvailability } from './graph/availability';
+import { DevicePoller } from './graph/poller';
 import { Inventory } from './inventory';
 import {
     CONSUMPTIONH_NAMESPACE,
@@ -87,7 +89,10 @@ export class Session {
     private readonly lanFetch?: typeof globalThis.fetch;
     private graph = new DeviceGraph();
     private readonly endpoints = new Map<string, Endpoint>();
-    private readonly availability = new Map<string, DeviceAvailability>();
+    private readonly boards = new Map<string, {
+        availability: DeviceAvailability;
+        poller: DevicePoller;
+    }>();
     private router: TransportRouter | undefined;
 
     private constructor(
@@ -184,11 +189,8 @@ export class Session {
      * Closes transports without discarding the stored token.
      */
     async disconnect(): Promise<void> {
-        for (const endpoint of this.endpoints.values()) {
-            endpoint.energy?.stop();
-        }
         this.endpoints.clear();
-        this.stopAvailability();
+        this.stopBoards();
         this.graph = new DeviceGraph();
         this.inventory.replace([]);
         const router = this.router;
@@ -208,6 +210,13 @@ export class Session {
     }
 
     private handlePush(message: MerossMessage): void {
+        if (message.header.method === 'PUSH') {
+            const uuid = message.header.uuid
+                ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
+            if (uuid) {
+                this.boards.get(uuid)?.poller.recordPush(message);
+            }
+        }
         for (const endpoint of this.endpoints.values()) {
             endpoint.switch?.handlePush(message);
             endpoint.energy?.handlePush(message);
@@ -229,16 +238,17 @@ export class Session {
     }
 
     private handleInbound(message: MerossMessage): void {
-        for (const monitor of this.availability.values()) {
-            monitor.handleMessage(message);
+        for (const { availability } of this.boards.values()) {
+            availability.handleMessage(message);
         }
     }
 
-    private stopAvailability(): void {
-        for (const monitor of this.availability.values()) {
-            monitor.stop();
+    private stopBoards(): void {
+        for (const { availability, poller } of this.boards.values()) {
+            poller.stop();
+            availability.stop();
         }
-        this.availability.clear();
+        this.boards.clear();
     }
 
     private async enroll(cloudDevice: CloudDevice): Promise<void> {
@@ -277,12 +287,14 @@ export class Session {
             byUuid.set(uuid, group);
         }
         for (const [uuid, endpoints] of byUuid) {
-            if (this.availability.has(uuid)) {
+            if (this.boards.has(uuid)) {
                 continue;
             }
             const physical = this.graph.getPhysical(uuid)!;
+            const lan = this.lanBind(physical);
             const request = this.deviceRequest(physical);
-            const monitor = new DeviceAvailability({
+            let poller!: DevicePoller;
+            const availability = new DeviceAvailability({
                 uuid,
                 initialOnline: physical.online,
                 endpoints,
@@ -290,10 +302,26 @@ export class Session {
                     namespace,
                     method,
                     payload: payload ?? {}
-                })
+                }),
+                onOnlineChange: (online) => poller.setOnline(online)
             });
-            this.availability.set(uuid, monitor);
-            monitor.start();
+            poller = new DevicePoller({
+                uuid,
+                isOnline: () => availability.isOnline(),
+                isCloudPath: () => this.router!.isCloudPath(uuid, physical.innerIp),
+                maxCmdNum: () => physical.maxCmdNum,
+                requestGets: (gets, maxCmdNum) => this.router!.requestGets({
+                    uuid,
+                    gets,
+                    maxCmdNum,
+                    ...lan
+                }),
+                onAck: (message) => this.handlePush(message),
+                jobs: buildPollJobs(physical.ability, physical.endpoints)
+            });
+            this.boards.set(uuid, { availability, poller });
+            availability.start();
+            poller.start();
         }
     }
 
@@ -589,33 +617,24 @@ export class Session {
             trigger: triggerTrait,
             initialOnline: graphEndpoint.online
         });
-        energyTrait?.start();
-        lightTrait?.start();
-        coverTrait?.start();
-        climateTrait?.start();
-        sensorTrait?.start();
-        presenceTrait?.start();
-        sprinklerTrait?.start();
-        sprayTrait?.start();
-        fanTrait?.start();
-        diffuserTrait?.start();
-        mediaTrait?.start();
-        alarmTrait?.start();
-        dndTrait?.start();
-        timerTrait?.start();
-        triggerTrait?.start();
         return endpoint;
     }
 
+    private lanBind(physical: PhysicalDevice) {
+        return {
+            ip: physical.innerIp,
+            encryptionKey: supportsLanEncryption(physical.ability) && physical.macAddress
+                ? deriveEncryptionKey(physical.uuid, this.token.key, physical.macAddress)
+                : undefined
+        };
+    }
+
     private deviceRequest(physical: PhysicalDevice) {
-        const encryptionKey = supportsLanEncryption(physical.ability) && physical.macAddress
-            ? deriveEncryptionKey(physical.uuid, this.token.key, physical.macAddress)
-            : undefined;
+        const lan = this.lanBind(physical);
         return (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) =>
             this.router!.request({
                 uuid: physical.uuid,
-                ip: physical.innerIp,
-                encryptionKey,
+                ...lan,
                 ...options
             });
     }

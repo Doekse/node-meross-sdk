@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
-import { SPRAY_NAMESPACE, encodeMessage, type MerossMessage } from '../../src/protocol';
+import {
+    SPRAY_NAMESPACE,
+    encodeMessage,
+    type MerossMessage
+} from '../../src/protocol';
 import { SprayTrait } from '../../src/traits/spray';
 import type { SprayTraitBind } from '../../src/traits/spray';
 
@@ -61,16 +65,6 @@ function pushMessage(payload: Record<string, unknown>): MerossMessage {
 }
 
 describe('SprayTrait', () => {
-    it('polls Control.Spray on start', async () => {
-        const { trait, requests, changes } = createHarness();
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.equal(requests[0]?.header.namespace, SPRAY_NAMESPACE);
-        assert.deepEqual(requests[0]?.payload, { spray: {} });
-        assert.equal(trait.getMode(), 'continuous');
-        assert.deepEqual(changes[0], { mode: 'continuous' });
-    });
-
     it('setMode sends a dict SET', async () => {
         const { trait, requests } = createHarness();
         await trait.setMode('intermittent');

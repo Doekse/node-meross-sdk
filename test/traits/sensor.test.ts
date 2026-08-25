@@ -302,61 +302,21 @@ describe('SensorTrait — battery PUSH', () => {
     });
 });
 
-describe('SensorTrait — start() initial GET', () => {
-    it('GETs Sensor.All when advertised', async () => {
-        const { trait, requests, changes } = createHarness('tempHum', {
-            all: [{
-                id: SUB_DEVICE_ID,
-                temperature: { latest: 250 },
-                humidity: { latest: 700 }
-            }]
-        });
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        await new Promise((resolve) => setImmediate(resolve));
-        const namespaces = requests.map((r) => r.header.namespace);
-        assert.ok(namespaces.includes(HUB_SENSOR_ALL_NAMESPACE));
-        assert.ok(!namespaces.includes(HUB_SENSOR_TEMPHUM_NAMESPACE));
-        assert.equal(changes.find((c) => c.temperature !== undefined)?.temperature, 25);
-        assert.equal(changes.find((c) => c.humidity !== undefined)?.humidity, 70);
-    });
-
-    it('issues a GET for tempHum and battery when All is not advertised', async () => {
-        const { trait, requests } = createHarness('tempHum', {
-            tempHum: [{ id: SUB_DEVICE_ID, latestTemperature: 220, latestHumidity: 600 }]
-        }, new Set([HUB_SENSOR_TEMPHUM_NAMESPACE, HUB_BATTERY_NAMESPACE]));
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        await new Promise((resolve) => setImmediate(resolve));
-        const namespaces = requests.map((r) => r.header.namespace);
-        assert.ok(namespaces.includes(HUB_SENSOR_TEMPHUM_NAMESPACE), 'should GET TempHum');
-        assert.ok(namespaces.includes(HUB_BATTERY_NAMESPACE), 'should GET Battery');
-    });
-
-    it('applies initial values from tempHum GETACK', async () => {
-        const { trait, changes } = createHarness('tempHum', {
-            tempHum: [{ id: SUB_DEVICE_ID, latestTemperature: 250, latestHumidity: 700 }]
-        }, new Set([HUB_SENSOR_TEMPHUM_NAMESPACE]));
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        await new Promise((resolve) => setImmediate(resolve));
+describe('SensorTrait — handlePush', () => {
+    it('applies values from tempHum GETACK via handlePush', () => {
+        const { trait, changes } = createHarness('tempHum', {}, new Set([HUB_SENSOR_TEMPHUM_NAMESPACE]));
+        trait.handlePush(encodeMessage({
+            namespace: HUB_SENSOR_TEMPHUM_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { tempHum: [{ id: SUB_DEVICE_ID, latestTemperature: 250, latestHumidity: 700 }] }
+        }));
         const tempChange = changes.find((c) => c.temperature !== undefined);
         assert.ok(tempChange, 'should emit temperature');
         assert.equal(tempChange!.temperature, 25);
         assert.equal(tempChange!.humidity, 70);
-    });
-
-    it('GETs Smoke.Config when advertised for smoke family', async () => {
-        const { trait, requests } = createHarness('smoke', {
-            smokeAlarm: [{ id: SUB_DEVICE_ID, status: 0 }],
-            config: [{ channel: 0, subId: SUB_DEVICE_ID, dnd: { enable: 1 } }]
-        }, new Set([HUB_SENSOR_SMOKE_NAMESPACE, SMOKE_CONFIG_NAMESPACE]));
-        trait.start();
-        await new Promise((resolve) => setImmediate(resolve));
-        await new Promise((resolve) => setImmediate(resolve));
-        const namespaces = requests.map((r) => r.header.namespace);
-        assert.ok(namespaces.includes(HUB_SENSOR_SMOKE_NAMESPACE), 'should GET Hub.Sensor.Smoke');
-        assert.ok(namespaces.includes(SMOKE_CONFIG_NAMESPACE), 'should GET Control.Smoke.Config');
     });
 });
 

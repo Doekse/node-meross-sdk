@@ -82,6 +82,14 @@ export class TransportRouter {
     }
 
     /**
+     * True when {@link request} would skip LAN (no IP or error budget spent).
+     * DevicePoller uses this for cloud smart/once caps.
+     */
+    isCloudPath(uuid: string, ip?: string | null): boolean {
+        return !ip || this.budgetEntry(uuid).budget < 1;
+    }
+
+    /**
      * Prefer LAN when `ip` is set and the device still has error budget;
      * MQTT otherwise. A device ERROR method is a delivered command, not a
      * transport failure, so it does not failover.

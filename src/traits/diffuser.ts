@@ -2,16 +2,10 @@ import {
     DIFFUSER_LIGHT_NAMESPACE,
     DIFFUSER_SENSOR_NAMESPACE,
     DIFFUSER_SPRAY_NAMESPACE,
-    decodeDiffuserLightGetAck,
     decodeDiffuserLightPush,
-    decodeDiffuserSensorGetAck,
     decodeDiffuserSensorPush,
-    decodeDiffuserSprayGetAck,
     decodeDiffuserSprayPush,
-    encodeDiffuserLightGet,
     encodeDiffuserLightSet,
-    encodeDiffuserSensorGet,
-    encodeDiffuserSprayGet,
     encodeDiffuserSpraySet,
     type DiffuserLightMode,
     type DiffuserLightState,
@@ -60,12 +54,7 @@ export class DiffuserTrait {
         this.namespaces = bind.namespaces ?? new Set();
     }
 
-    /** Fetches initial state. Idempotent; Session calls this once and does not await it. */
-    start(): void {
-        void this.pollInitial();
-    }
-
-    /** Last known on/off. Undefined until initial GET or PUSH fills it. */
+    /** Last known on/off. Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.last.on;
     }
@@ -161,7 +150,7 @@ export class DiffuserTrait {
     }
 
     /**
-     * Applies a firmware PUSH for this endpoint.
+     * Applies a firmware PUSH or poller GETACK for this endpoint.
      */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
@@ -214,46 +203,6 @@ export class DiffuserTrait {
         }
         if (Object.keys(next).length > 0) {
             this.bind.emitChange(next);
-        }
-    }
-
-    private async pollInitial(): Promise<void> {
-        try {
-            const lightReply = await this.bind.request({
-                namespace: DIFFUSER_LIGHT_NAMESPACE,
-                method: 'GET',
-                payload: encodeDiffuserLightGet()
-            });
-            const light = decodeDiffuserLightGetAck(lightReply.payload).find(
-                (entry) => entry.channel === this.bind.channel
-            );
-            if (light) {
-                this.applyChange(lightPatch(light));
-            }
-
-            const sprayReply = await this.bind.request({
-                namespace: DIFFUSER_SPRAY_NAMESPACE,
-                method: 'GET',
-                payload: encodeDiffuserSprayGet()
-            });
-            const spray = decodeDiffuserSprayGetAck(sprayReply.payload).find(
-                (entry) => entry.channel === this.bind.channel
-            );
-            if (spray) {
-                this.applyChange({ sprayMode: spray.mode });
-            }
-
-            if (!this.has(DIFFUSER_SENSOR_NAMESPACE)) {
-                return;
-            }
-            const sensorReply = await this.bind.request({
-                namespace: DIFFUSER_SENSOR_NAMESPACE,
-                method: 'GET',
-                payload: encodeDiffuserSensorGet()
-            });
-            this.applyChange(decodeDiffuserSensorGetAck(sensorReply.payload));
-        } catch {
-            // Next PUSH or setter call will recover.
         }
     }
 }

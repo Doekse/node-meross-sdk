@@ -225,6 +225,9 @@ describe('TransportRouter', () => {
         });
         await router.connect();
 
+        assert.equal(router.isCloudPath(UUID, IP), false);
+        assert.equal(router.isCloudPath(UUID, null), true);
+
         await connectAndAckMqtt(mqtt, router.request({
             uuid: UUID,
             ip: IP,
@@ -240,6 +243,7 @@ describe('TransportRouter', () => {
 
         assert.equal(lanCalls.length, 1);
         assert.equal(mqtt.getClient().published.length, 2);
+        assert.equal(router.isCloudPath(UUID, IP), true);
     });
 
     it('does not spend budget or failover on a device ERROR method', async () => {

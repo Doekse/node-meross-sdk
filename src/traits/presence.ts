@@ -2,11 +2,9 @@ import {
     PRESENCE_CONFIG_NAMESPACE,
     PRESENCE_STUDY_NAMESPACE,
     SENSOR_LATESTX_NAMESPACE,
-    decodeLatestXGetAck,
     decodeLatestXPush,
     decodePresenceConfigGetAck,
     decodePresenceConfigPush,
-    encodeLatestXGet,
     encodePresenceConfigGet,
     encodePresenceConfigSet,
     encodePresenceStudySet,
@@ -66,13 +64,8 @@ export class PresenceTrait {
         return this.bind.namespaces?.has(namespace) ?? false;
     }
 
-    /** Fetches initial state. Idempotent; Session calls this once and does not await it. */
-    start(): void {
-        void this.pollInitial();
-    }
-
     /**
-     * Applies a firmware PUSH for this endpoint.
+     * Applies a firmware PUSH or poller GETACK for this endpoint.
      */
     handlePush(message: MerossMessage): void {
         const uuid = message.header.uuid
@@ -169,42 +162,6 @@ export class PresenceTrait {
         }
         if (Object.keys(next).length > 0) {
             this.bind.emitChange(next);
-        }
-    }
-
-    private async pollInitial(): Promise<void> {
-        try {
-            const latestReply = await this.bind.request({
-                namespace: SENSOR_LATESTX_NAMESPACE,
-                method: 'GET',
-                payload: encodeLatestXGet({
-                    channel: this.bind.channel,
-                    keys: ['presence', 'light']
-                })
-            });
-            const latestEntry = decodeLatestXGetAck(latestReply.payload).find((e) =>
-                !e.subId && e.channel === this.bind.channel
-            );
-            if (latestEntry) {
-                this.applyChange(presencePatch(latestEntry));
-            }
-
-            if (!this.has(PRESENCE_CONFIG_NAMESPACE)) {
-                return;
-            }
-            const configReply = await this.bind.request({
-                namespace: PRESENCE_CONFIG_NAMESPACE,
-                method: 'GET',
-                payload: encodePresenceConfigGet(this.bind.channel)
-            });
-            const configEntry = decodePresenceConfigGetAck(configReply.payload).find(
-                (e) => e.channel === this.bind.channel
-            );
-            if (configEntry) {
-                this.applyChange(configPatch(configEntry));
-            }
-        } catch {
-            // Next PUSH or setter call will recover.
         }
     }
 }

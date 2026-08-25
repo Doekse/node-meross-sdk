@@ -1,9 +1,7 @@
 import {
     MP3_NAMESPACE,
     MP3_VOLUME_MAX,
-    decodeMp3GetAck,
     decodeMp3Push,
-    encodeMp3Get,
     encodeMp3Set,
     type MerossMessage,
     type Mp3State
@@ -38,11 +36,6 @@ export class MediaTrait {
 
     constructor(bind: MediaTraitBind) {
         this.bind = bind;
-    }
-
-    /** Fetches initial state. Idempotent; Session calls this once and does not await it. */
-    start(): void {
-        void this.pollInitial();
     }
 
     /** Last known mute. Firmware mute 1 is stopped/idle. */
@@ -130,22 +123,6 @@ export class MediaTrait {
         }
         if (Object.keys(next).length > 0) {
             this.bind.emitChange(next);
-        }
-    }
-
-    private async pollInitial(): Promise<void> {
-        try {
-            const reply = await this.bind.request({
-                namespace: MP3_NAMESPACE,
-                method: 'GET',
-                payload: encodeMp3Get({ channel: this.bind.channel })
-            });
-            const decoded = decodeMp3GetAck(reply.payload);
-            if (decoded.channel === this.bind.channel) {
-                this.applyChange(mediaPatch(decoded));
-            }
-        } catch {
-            // Next PUSH or setter call will recover.
         }
     }
 }

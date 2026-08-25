@@ -42,14 +42,11 @@ import {
     decodeHubAdjust,
     decodeHubConfig,
     decodeHubMts100All,
-    decodeHubMts100ModeGetAck,
     decodeHubMts100ModePush,
-    decodeHubMts100TemperatureGetAck,
     decodeHubMts100TemperaturePush,
     decodeHubSchedule,
     decodeHubSuperCtl,
     decodeHubTimeSync,
-    decodeHubToggleXGetAck,
     decodeHubToggleXPush,
     decodeOverheat,
     decodeSchedule,
@@ -58,11 +55,8 @@ import {
     decodeTempUnit,
     decodePhysicalLock,
     decodeScreenBrightness,
-    decodeThermostatModeBGetAck,
     decodeThermostatModeBPush,
-    decodeThermostatModeCGetAck,
     decodeThermostatModeCPush,
-    decodeThermostatModeGetAck,
     decodeThermostatModePush,
     decodeThermostatSystemPush,
     decodeTimer,
@@ -76,29 +70,20 @@ import {
     encodeHoldActionSet,
     encodeHubAdjustSet,
     encodeHubConfigSet,
-    encodeHubIdGet,
-    encodeHubMts100ModeGet,
     encodeHubMts100ModeSet,
-    encodeHubMts100TemperatureGet,
     encodeHubMts100TemperatureSet,
     encodeHubScheduleSet,
     encodeHubSuperCtlSet,
-    encodeHubToggleXGet,
     encodeHubToggleXSet,
     encodeOverheatSet,
-    encodePhysicalLockGet,
     encodePhysicalLockSet,
     encodeScheduleSet,
     encodeScreenBrightnessSet,
     encodeSensorModeSet,
     encodeSummerModeSet,
     encodeTempUnitSet,
-    encodeThermostatChannelGet,
-    encodeThermostatModeBGet,
     encodeThermostatModeBSet,
-    encodeThermostatModeCGet,
     encodeThermostatModeCSet,
-    encodeThermostatModeGet,
     encodeThermostatModeSet,
     encodeThermostatSystemSet,
     encodeTimerSet,
@@ -119,7 +104,6 @@ import {
     SENSOR_LATEST_NAMESPACE,
     SENSOR_HISTORY_NAMESPACE,
     SENSOR_HISTORYX_NAMESPACE,
-    decodeSensorLatestGetAck,
     decodeSensorLatestPush,
     encodeSensorHistoryGet,
     decodeSensorHistoryGetAck,
@@ -254,6 +238,7 @@ const MODE_MODES = new Set<ClimateMode>(['off', 'heat', 'cool', 'auto', 'eco', '
 /**
  * Climate control for one enrolled thermostat or hub valve. Board generation
  * and hub wiring stay in the bind; the host API is the same for both.
+ * DevicePoller owns the schedule.
  */
 export class ClimateTrait {
     private readonly bind: ClimateTraitBind;
@@ -266,12 +251,7 @@ export class ClimateTrait {
         this.namespaces = bind.namespaces ?? new Set();
     }
 
-    /** Fetches initial state. Idempotent; Session calls this once and does not await it. */
-    start(): void {
-        void this.pollInitial();
-    }
-
-    /** Last known on/off. Undefined until initial GET or PUSH fills it. */
+    /** Last known on/off. Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.last.on;
     }
@@ -1040,6 +1020,19 @@ export class ClimateTrait {
             return;
         }
         const subId = this.bind.subDeviceId;
+        if (ns === HUB_MTS100_ALL_NAMESPACE && this.has(ns)) {
+            for (const entry of decodeHubMts100All(payload)) {
+                if (entry.id !== subId) {
+                    continue;
+                }
+                const { id: _id, modeRaw, ...rest } = entry;
+                this.applyChange({
+                    ...rest,
+                    ...(modeRaw !== undefined ? { mode: HUB_MODE_FROM_WIRE[modeRaw] ?? 'custom' } : {})
+                });
+            }
+            return;
+        }
         if (ns === HUB_TOGGLEX_NAMESPACE) {
             this.applyMatching(decodeHubToggleXPush(payload).map((entry) => ({
                 id: entry.id,
@@ -1056,6 +1049,14 @@ export class ClimateTrait {
         }
         if (ns === HUB_MTS100_TEMPERATURE_NAMESPACE) {
             this.applyMatching(decodeHubMts100TemperaturePush(payload));
+            return;
+        }
+        if (ns === HUB_MTS100_ADJUST_NAMESPACE && this.has(ns)) {
+            this.applyMatching(decodeHubAdjust(payload).filter((entry) => entry.id === subId));
+            return;
+        }
+        if (ns === HUB_MTS100_CONFIG_NAMESPACE && this.has(ns)) {
+            this.applyMatching(decodeHubConfig(payload).filter((entry) => entry.id === subId));
             return;
         }
         if (ns === HUB_MTS100_SUPERCTL_NAMESPACE && this.has(ns)) {
@@ -1186,220 +1187,6 @@ export class ClimateTrait {
                 this.lastSystem = { ...this.lastSystem, ...system };
             }
             return;
-        }
-    }
-
-    private async pollInitial(): Promise<void> {
-        try {
-            if (this.bind.kind === 'hub') {
-                await this.pollHub();
-                return;
-            }
-            await this.pollBoard();
-        } catch {
-            // Next PUSH or setter call will recover.
-        }
-    }
-
-    private async pollBoard(): Promise<void> {
-        if (this.bind.kind !== 'board') {
-            return;
-        }
-        const channel = this.bind.channel;
-        if (this.bind.generation === 'modeC') {
-            const reply = await this.bind.request({
-                namespace: THERMOSTAT_MODEC_NAMESPACE,
-                method: 'GET',
-                payload: encodeThermostatModeCGet({ channel })
-            });
-            this.applyMatching(decodeThermostatModeCGetAck(reply.payload));
-        } else if (this.bind.generation === 'modeB') {
-            const reply = await this.bind.request({
-                namespace: THERMOSTAT_MODEB_NAMESPACE,
-                method: 'GET',
-                payload: encodeThermostatModeBGet({ channel })
-            });
-            this.applyMatching(decodeThermostatModeBGetAck(reply.payload));
-        } else {
-            const reply = await this.bind.request({
-                namespace: THERMOSTAT_MODE_NAMESPACE,
-                method: 'GET',
-                payload: encodeThermostatModeGet({ channel })
-            });
-            this.applyMatching(decodeThermostatModeGetAck(reply.payload));
-        }
-        await this.pollBoardExtras();
-    }
-
-    private async pollBoardExtras(): Promise<void> {
-        if (this.bind.kind !== 'board') {
-            return;
-        }
-        const scale = this.boardScale();
-        await Promise.all([
-            this.pollNs(HOLD_ACTION_NAMESPACE, 'holdAction', decodeHoldAction),
-            this.pollNs(WINDOW_OPENED_NAMESPACE, 'windowOpened', decodeWindowOpened),
-            this.pollNs(SENSOR_NAMESPACE, 'sensor', decodeSensorMode),
-            this.pollNs(FROST_NAMESPACE, 'frost', (payload) => decodeFrost(payload, scale)),
-            this.pollNs(CALIBRATION_NAMESPACE, 'calibration', (payload) => decodeCalibration(payload, scale)),
-            this.pollNs(OVERHEAT_NAMESPACE, 'overheat', decodeOverheat),
-            this.pollNs(DEAD_ZONE_NAMESPACE, 'deadZone', (payload) => decodeDeadZone(payload, scale)),
-            this.pollNs(SUMMER_MODE_NAMESPACE, 'summerMode', decodeSummerMode),
-            this.pollNs(COMPRESSOR_DELAY_NAMESPACE, 'delay', decodeCompressorDelay),
-            this.pollNs(CTL_RANGE_NAMESPACE, 'ctlRange', decodeCtlRange),
-            this.pollNs(TIMER_NAMESPACE, 'timer', decodeTimer),
-            this.pollNs(ALARM_NAMESPACE, 'alarm', decodeAlarm),
-            this.pollNs(ALARM_CONFIG_NAMESPACE, 'alarmConfig', decodeAlarmConfig),
-            this.pollNs(SCHEDULE_NAMESPACE, 'schedule', (payload) => decodeSchedule(payload, 10, 'schedule')),
-            this.pollNs(SCHEDULEB_NAMESPACE, 'scheduleB', (payload) => decodeSchedule(payload, 100, 'scheduleB')),
-            this.pollNs(TEMP_UNIT_NAMESPACE, 'tempUnit', decodeTempUnit),
-            this.pollNs(PHYSICAL_LOCK_NAMESPACE, 'lock', decodePhysicalLock),
-            this.pollNs(SCREEN_BRIGHTNESS_NAMESPACE, 'brightness', decodeScreenBrightness),
-            this.pollNs(
-                SENSOR_LATEST_NAMESPACE,
-                'latest',
-                (payload) => decodeSensorLatestGetAck(payload, scale).map(sensorLatestToClimatePatch)
-            )
-        ]);
-    }
-
-    private async pollHub(): Promise<void> {
-        if (this.bind.kind !== 'hub') {
-            return;
-        }
-        const subId = this.bind.subDeviceId;
-        if (this.has(HUB_MTS100_ALL_NAMESPACE)) {
-            try {
-                const reply = await this.bind.request({
-                    namespace: HUB_MTS100_ALL_NAMESPACE,
-                    method: 'GET',
-                    payload: encodeHubIdGet('all', subId)
-                });
-                for (const entry of decodeHubMts100All(reply.payload)) {
-                    if (entry.id !== subId) {
-                        continue;
-                    }
-                    const { id: _id, modeRaw, ...rest } = entry;
-                    this.applyChange({
-                        ...rest,
-                        ...(modeRaw !== undefined ? { mode: HUB_MODE_FROM_WIRE[modeRaw] ?? 'custom' } : {})
-                    });
-                }
-            } catch {
-                await this.pollHubFallback();
-            }
-        } else {
-            await this.pollHubFallback();
-        }
-        await this.pollHubExtras();
-    }
-
-    private async pollHubFallback(): Promise<void> {
-        if (this.bind.kind !== 'hub') {
-            return;
-        }
-        const subId = this.bind.subDeviceId;
-        const [toggleAck, modeAck, tempAck] = await Promise.all([
-            this.bind.request({
-                namespace: HUB_TOGGLEX_NAMESPACE,
-                method: 'GET',
-                payload: encodeHubToggleXGet({ id: subId })
-            }),
-            this.bind.request({
-                namespace: HUB_MTS100_MODE_NAMESPACE,
-                method: 'GET',
-                payload: encodeHubMts100ModeGet({ id: subId })
-            }),
-            this.bind.request({
-                namespace: HUB_MTS100_TEMPERATURE_NAMESPACE,
-                method: 'GET',
-                payload: encodeHubMts100TemperatureGet({ id: subId })
-            })
-        ]);
-        this.applyMatching(decodeHubToggleXGetAck(toggleAck.payload));
-        this.applyMatching(decodeHubMts100ModeGetAck(modeAck.payload).map((entry) => ({
-            id: entry.id,
-            mode: HUB_MODE_FROM_WIRE[entry.state] ?? 'custom'
-        })));
-        this.applyMatching(decodeHubMts100TemperatureGetAck(tempAck.payload));
-    }
-
-    private async pollHubExtras(): Promise<void> {
-        if (this.bind.kind !== 'hub') {
-            return;
-        }
-        await Promise.all([
-            this.pollHubNs(HUB_MTS100_ADJUST_NAMESPACE, 'adjust', decodeHubAdjust),
-            this.pollHubNs(HUB_MTS100_CONFIG_NAMESPACE, 'config', decodeHubConfig),
-            this.pollHubNs(HUB_MTS100_SUPERCTL_NAMESPACE, 'superCtl', decodeHubSuperCtl),
-            this.pollHubNs(HUB_MTS100_TIMESYNC_NAMESPACE, 'timeSync', decodeHubTimeSync),
-            this.pollHubNs(
-                this.has(HUB_MTS100_SCHEDULEB_NAMESPACE)
-                    ? HUB_MTS100_SCHEDULEB_NAMESPACE
-                    : HUB_MTS100_SCHEDULE_NAMESPACE,
-                'schedule',
-                (payload) => decodeHubSchedule(payload, 10)
-            ),
-            this.pollPhysicalLock()
-        ]);
-    }
-
-    private async pollPhysicalLock(): Promise<void> {
-        if (!this.has(PHYSICAL_LOCK_NAMESPACE)) {
-            return;
-        }
-        try {
-            const payload = this.bind.kind === 'hub'
-                ? encodePhysicalLockGet({ channel: 0, subId: this.bind.subDeviceId })
-                : encodePhysicalLockGet({ channel: this.bind.channel });
-            const reply = await this.bind.request({
-                namespace: PHYSICAL_LOCK_NAMESPACE,
-                method: 'GET',
-                payload
-            });
-            this.applyMatching(decodePhysicalLock(reply.payload));
-        } catch {
-            // Next PUSH or setter call will recover.
-        }
-    }
-
-    private async pollNs(
-        namespace: string,
-        key: string,
-        decode: (payload: MerossPayload) => ClimatePatch[]
-    ): Promise<void> {
-        if (!this.has(namespace) || this.bind.kind !== 'board') {
-            return;
-        }
-        try {
-            const reply = await this.bind.request({
-                namespace,
-                method: 'GET',
-                payload: encodeThermostatChannelGet(key, this.bind.channel)
-            });
-            this.applyMatching(decode(reply.payload));
-        } catch {
-            // Next PUSH or setter call will recover.
-        }
-    }
-
-    private async pollHubNs(
-        namespace: string,
-        key: string,
-        decode: (payload: MerossPayload) => ClimatePatch[]
-    ): Promise<void> {
-        if (!this.has(namespace) || this.bind.kind !== 'hub') {
-            return;
-        }
-        try {
-            const reply = await this.bind.request({
-                namespace,
-                method: 'GET',
-                payload: encodeHubIdGet(key, this.bind.subDeviceId)
-            });
-            this.applyMatching(decode(reply.payload));
-        } catch {
-            // Next PUSH or setter call will recover.
         }
     }
 
