@@ -54,7 +54,7 @@ import {
     ELECTRICITYX_ALL_CHANNELS,
     ELECTRICITYX_NAMESPACE
 } from '../protocol/codecs/electricity';
-import { FAN_CONFIG_NAMESPACE, FAN_NAMESPACE } from '../protocol/codecs/fan';
+import { FAN_CONFIG_NAMESPACE, FAN_NAMESPACE, FILTER_MAINTENANCE_NAMESPACE } from '../protocol/codecs/fan';
 import { LIGHT_EFFECT_NAMESPACE, LIGHT_NAMESPACE } from '../protocol/codecs/light';
 import { MP3_NAMESPACE } from '../protocol/codecs/mp3';
 import { HUB_TOGGLEX_NAMESPACE } from '../protocol/codecs/multiple';
@@ -127,6 +127,7 @@ type PayloadSpec =
 interface PollSpec extends PollCadence {
     skipIf?: string;
     payload?: PayloadSpec;
+    method?: 'GET' | 'PUSH';
 }
 
 const DEFAULT: PollCadence = {
@@ -213,12 +214,19 @@ function subIdList(list: string, trait: TraitName): PayloadSpec {
 
 /**
  * GET schedule keyed by Ability. Unadvertised namespaces stay off the wire.
+ * FilterMaintenance is PUSH-query (GET disconnects MAP100).
  */
 const POLL: Record<string, PollSpec> = {
     [SYSTEM_ALL_NAMESPACE]: {
         strategy: 'all',
         periodMs: SYSTEM_ALL_PERIOD_MS,
         periodCloudMs: 0
+    },
+    'Appliance.System.Runtime': SMART_CONFIG,
+    'Appliance.Config.OverTemp': SMART_CONFIG,
+    'Appliance.Config.Sensor.Association': {
+        ...SMART_CONFIG,
+        payload: { list: 'config' }
     },
 
     // Digest / board state
@@ -275,6 +283,10 @@ const POLL: Record<string, PollSpec> = {
     [FAN_CONFIG_NAMESPACE]: {
         ...SMART_CONFIG,
         payload: channelList('config', 'fan')
+    },
+    [FILTER_MAINTENANCE_NAMESPACE]: {
+        ...SMART_CLOUDMQTT,
+        method: 'PUSH'
     },
     [DIFFUSER_SENSOR_NAMESPACE]: SMART_SLOW,
     [DND_MODE_NAMESPACE]: SMART_CONFIG,
@@ -513,7 +525,8 @@ export function buildPollJobs(
             strategy: spec.strategy,
             periodMs: spec.periodMs,
             periodCloudMs: spec.periodCloudMs,
-            payload: spec.payload ? encodePayload(spec.payload, endpoints) : {}
+            payload: spec.payload ? encodePayload(spec.payload, endpoints) : {},
+            ...(spec.method ? { method: spec.method } : {})
         });
     }
     return jobs;

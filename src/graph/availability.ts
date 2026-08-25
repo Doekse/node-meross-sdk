@@ -5,6 +5,7 @@ import {
     decodeOnlineStatus
 } from '../protocol/codecs/online';
 import { Heartbeat } from './heartbeat';
+import { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from './system-all';
 
 export interface DeviceAvailabilityOptions {
     uuid: string;
@@ -81,6 +82,11 @@ export class DeviceAvailability {
             return;
         }
 
+        if (namespace === SYSTEM_ALL_NAMESPACE && (method === 'PUSH' || method === 'GETACK')) {
+            this.applySystemAll(message);
+            return;
+        }
+
         if (namespace === 'Appliance.System.Runtime' && method === 'GETACK') {
             const runtime = message.payload.runtime;
             if (runtime && typeof runtime === 'object' && !Array.isArray(runtime)) {
@@ -92,11 +98,20 @@ export class DeviceAvailability {
         }
     }
 
+    /**
+     * meross_lan probes System.All for liveness, not System.Online.
+     */
     private async pollOnline(): Promise<void> {
-        const reply = await this.request(ONLINE_NAMESPACE, 'GET', {});
-        const status = decodeOnlineStatus(reply.payload);
-        if (status !== undefined) {
-            this.setOnline(status === 1);
+        const reply = await this.request(SYSTEM_ALL_NAMESPACE, 'GET', {});
+        this.applySystemAll(reply);
+    }
+
+    private applySystemAll(message: MerossMessage): void {
+        try {
+            const all = decodeSystemAllGetAck(message.payload);
+            this.setOnline(all.online.status === 1);
+        } catch {
+            // Malformed All is ignored; Heartbeat silence still marks offline.
         }
     }
 

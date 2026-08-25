@@ -206,7 +206,7 @@ describe('buildPollJobs', () => {
         ]);
     });
 
-    it('registers Fan and Fan.Config but not FilterMaintenance or BtnConfig', () => {
+    it('registers Fan, Fan.Config, and FilterMaintenance as PUSH-query', () => {
         const endpoints: PollEndpoint[] = [{ channel: CHANNEL, traits: ['fan'] }];
         const jobs = buildPollJobs(
             ability(
@@ -233,7 +233,15 @@ describe('buildPollJobs', () => {
             periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { config: [{ channel: CHANNEL }] }
         });
-        assert.equal(namespaces(jobs).includes(FILTER_MAINTENANCE_NAMESPACE), false);
+        const filter = jobs.find((entry) => entry.namespace === FILTER_MAINTENANCE_NAMESPACE);
+        assert.deepEqual(filter, {
+            namespace: FILTER_MAINTENANCE_NAMESPACE,
+            strategy: 'smart',
+            periodMs: CLOUDMQTT_PERIOD_MS,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
+            payload: {},
+            method: 'PUSH'
+        });
         assert.equal(namespaces(jobs).includes(FAN_BTN_CONFIG_NAMESPACE), false);
     });
 
@@ -464,5 +472,40 @@ describe('buildPollJobs', () => {
             [{ channel: CHANNEL, traits: ['climate'] }]
         );
         assert.deepEqual(jobs, []);
+    });
+
+    it('registers Runtime, OverTemp, and Sensor.Association as smart config', () => {
+        const jobs = buildPollJobs(
+            ability(
+                'Appliance.System.Runtime',
+                'Appliance.Config.OverTemp',
+                'Appliance.Config.Sensor.Association'
+            ),
+            [{ channel: CHANNEL, traits: ['climate'] }]
+        );
+        assert.deepEqual(jobs.find((entry) => entry.namespace === 'Appliance.System.Runtime'), {
+            namespace: 'Appliance.System.Runtime',
+            strategy: 'smart',
+            periodMs: SENSOR_SLOW_PERIOD_MS,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
+            payload: {}
+        });
+        assert.deepEqual(jobs.find((entry) => entry.namespace === 'Appliance.Config.OverTemp'), {
+            namespace: 'Appliance.Config.OverTemp',
+            strategy: 'smart',
+            periodMs: SENSOR_SLOW_PERIOD_MS,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
+            payload: {}
+        });
+        assert.deepEqual(
+            jobs.find((entry) => entry.namespace === 'Appliance.Config.Sensor.Association'),
+            {
+                namespace: 'Appliance.Config.Sensor.Association',
+                strategy: 'smart',
+                periodMs: SENSOR_SLOW_PERIOD_MS,
+                periodCloudMs: CLOUDMQTT_PERIOD_MS,
+                payload: { config: [] }
+            }
+        );
     });
 });

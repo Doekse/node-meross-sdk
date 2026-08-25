@@ -51,6 +51,8 @@ export interface PollJob {
     periodMs: number;
     periodCloudMs: number;
     payload?: MerossPayload;
+    /** FilterMaintenance (and other PUSHQ ns) must not GET. */
+    method?: 'GET' | 'PUSH';
 }
 
 export interface DevicePollerOptions {
@@ -76,6 +78,7 @@ interface JobState {
     periodMs: number;
     periodCloudMs: number;
     payload: MerossPayload;
+    method: 'GET' | 'PUSH';
     /** `null` means cold start / re-online — must poll even under MQTT skip. */
     nextMs: number | null;
     lastRequestMs: number;
@@ -96,7 +99,7 @@ export class DevicePoller {
     private readonly now: () => number;
 
     private readonly jobs = new Map<string, JobState>();
-    private mqttActive = false;
+    private lastPushMs: number | null = null;
     private offlineDelayMs: number;
     private timer: ReturnType<typeof setTimeout> | undefined;
     private running = false;
@@ -134,6 +137,7 @@ export class DevicePoller {
                 periodMs: job.periodMs,
                 periodCloudMs: job.periodCloudMs,
                 payload: job.payload ?? {},
+                method: job.method ?? 'GET',
                 nextMs: prior?.nextMs ?? null,
                 lastRequestMs: prior?.lastRequestMs ?? 0
             });
@@ -157,8 +161,9 @@ export class DevicePoller {
     }
 
     /**
-     * Cloud MQTT is this SDK's only broker; any PUSH for the board means
-     * default/all state can ride PUSH instead of GET.
+     * Cloud MQTT is this SDK's only broker. A recent PUSH means default/all
+     * state can ride PUSH instead of GET. The flag expires after the heartbeat
+     * window so a leftover cloud PUSH does not leave HTTP-only boards stale.
      */
     recordPush(message: MerossMessage): void {
         if (message.header.method !== 'PUSH') {
@@ -167,7 +172,7 @@ export class DevicePoller {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
         if (uuid === this.uuid) {
-            this.mqttActive = true;
+            this.lastPushMs = this.now();
         }
     }
 
@@ -183,7 +188,15 @@ export class DevicePoller {
             }
             return;
         }
-        this.mqttActive = false;
+        this.lastPushMs = null;
+    }
+
+    /**
+     * True while a PUSH arrived inside the firmware heartbeat window.
+     */
+    private mqttActive(): boolean {
+        return this.lastPushMs !== null
+            && this.now() - this.lastPushMs < SYSTEM_ALL_PERIOD_MS;
     }
 
     private schedule(delayMs: number): void {
@@ -254,12 +267,13 @@ export class DevicePoller {
             }
         };
 
+        const mqttActive = this.mqttActive();
         let pollAll = false;
         for (const job of this.jobs.values()) {
             if (job.strategy !== 'all') {
                 continue;
             }
-            pollAll = job.nextMs === null || (!this.mqttActive && epoch >= job.nextMs);
+            pollAll = job.nextMs === null || (!mqttActive && epoch >= job.nextMs);
             if (pollAll) {
                 pending.push(job);
             }
@@ -271,10 +285,10 @@ export class DevicePoller {
                 case 'all':
                     break;
                 case 'default':
-                    if (this.mqttActive && job.nextMs !== null) {
+                    if (mqttActive && job.nextMs !== null) {
                         break;
                     }
-                    if (pollAll && !this.mqttActive) {
+                    if (pollAll && !mqttActive) {
                         break;
                     }
                     pending.push(job);
@@ -311,7 +325,11 @@ export class DevicePoller {
         let replies: MerossMessage[];
         try {
             replies = await this.requestGets(
-                pending.map((job) => ({ namespace: job.namespace, payload: job.payload })),
+                pending.map((job) => ({
+                    namespace: job.namespace,
+                    payload: job.payload,
+                    method: job.method
+                })),
                 maxCmdNum
             );
         } catch {

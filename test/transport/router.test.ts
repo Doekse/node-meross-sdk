@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { describe, it } from 'node:test';
 
-import { CommandError, ProtocolError, TransportError } from '../../src/errors';
+import { CommandError, TransportError } from '../../src/errors';
 import {
     HUB_TOGGLEX_NAMESPACE,
     MULTIPLE_NAMESPACE,
@@ -432,26 +432,70 @@ describe('TransportRouter', () => {
         assert.equal(decodeMessage(String(lanCalls[1]!.init.body), KEY).header.namespace, ELECTRICITY);
     });
 
-    it('throws when a packed SETACK count does not match the GET batch', async () => {
-        const { router } = createRouted({
-            lan: async (sent) => jsonResponse(ackFor(sent, 'SETACK', {
-                multiple: [{ header: { namespace: TOGGLEX_NAMESPACE, method: 'GETACK' }, payload: {} }]
-            }))
+    it('retries a truncated Control.Multiple as singles', async () => {
+        const { router, lanCalls } = createRouted({
+            lan: async (sent) => {
+                if (sent.header.namespace === MULTIPLE_NAMESPACE) {
+                    return jsonResponse(ackFor(sent, 'SETACK', {
+                        multiple: [{
+                            header: { namespace: TOGGLEX_NAMESPACE, method: 'GETACK' },
+                            payload: {}
+                        }]
+                    }));
+                }
+                return defaultLanOk(sent);
+            }
         });
         await router.connect();
 
-        await assert.rejects(
-            router.requestGets({
-                uuid: UUID,
-                ip: IP,
-                maxCmdNum: 3,
-                gets: [
-                    { namespace: TOGGLEX_NAMESPACE },
-                    { namespace: ELECTRICITY }
-                ]
-            }),
-            ProtocolError
+        const replies = await router.requestGets({
+            uuid: UUID,
+            ip: IP,
+            maxCmdNum: 3,
+            gets: [
+                { namespace: TOGGLEX_NAMESPACE },
+                { namespace: ELECTRICITY }
+            ]
+        });
+
+        assert.equal(lanCalls.length, 3);
+        assert.equal(
+            decodeMessage(String(lanCalls[0]!.init.body), KEY).header.namespace,
+            MULTIPLE_NAMESPACE
         );
+        assert.equal(
+            decodeMessage(String(lanCalls[1]!.init.body), KEY).header.namespace,
+            TOGGLEX_NAMESPACE
+        );
+        assert.equal(
+            decodeMessage(String(lanCalls[2]!.init.body), KEY).header.namespace,
+            ELECTRICITY
+        );
+        assert.equal(replies.length, 2);
+        assert.equal(replies[0]?.header.method, 'GETACK');
+    });
+
+    it('sends PUSH-query jobs individually and does not pack them', async () => {
+        const { router, lanCalls } = createRouted();
+        await router.connect();
+
+        await router.requestGets({
+            uuid: UUID,
+            ip: IP,
+            maxCmdNum: 3,
+            gets: [
+                { namespace: 'Appliance.Control.FilterMaintenance', method: 'PUSH' },
+                { namespace: TOGGLEX_NAMESPACE },
+                { namespace: ELECTRICITY }
+            ]
+        });
+
+        assert.equal(lanCalls.length, 2);
+        const first = decodeMessage(String(lanCalls[0]!.init.body), KEY);
+        assert.equal(first.header.namespace, 'Appliance.Control.FilterMaintenance');
+        assert.equal(first.header.method, 'PUSH');
+        const packed = decodeMessage(String(lanCalls[1]!.init.body), KEY);
+        assert.equal(packed.header.namespace, MULTIPLE_NAMESPACE);
     });
 
     it('clears the error budget on disconnect so LAN is retried', async () => {

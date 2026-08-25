@@ -121,6 +121,33 @@ describe('DeviceAvailability', () => {
         monitor.stop();
     });
 
+    it('applies System.All GETACK online.status to all endpoints', () => {
+        const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: false });
+        const seen: boolean[] = [];
+        endpoint.on('availability', (online) => seen.push(online));
+
+        const monitor = new DeviceAvailability({
+            uuid: UUID,
+            initialOnline: false,
+            endpoints: [endpoint],
+            request: async () => encodeMessage({
+                namespace: 'Appliance.System.All',
+                method: 'GETACK',
+                key: KEY,
+                from: `/appliance/${UUID}/publish`,
+                uuid: UUID,
+                payload: {}
+            })
+        });
+        monitor.start();
+        seen.length = 0;
+
+        monitor.handleMessage(loadFixture('system-all-getack.json'));
+
+        assert.deepEqual(seen, [true]);
+        monitor.stop();
+    });
+
     it('marks offline when Runtime reports abnormal iotStatus', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
         const seen: boolean[] = [];
@@ -162,12 +189,21 @@ describe('DeviceAvailability', () => {
             heartbeatIntervalMs: INTERVAL_MS,
             now: () => clock,
             request: async () => encodeMessage({
-                namespace: 'Appliance.System.Online',
+                namespace: 'Appliance.System.All',
                 method: 'GETACK',
                 key: KEY,
                 from: `/appliance/${UUID}/publish`,
                 uuid: UUID,
-                payload: { online: { status: 2 } }
+                payload: {
+                    all: {
+                        system: {
+                            hardware: { type: 'mss110', uuid: UUID },
+                            firmware: {},
+                            online: { status: 2 }
+                        },
+                        digest: {}
+                    }
+                }
             })
         });
 
@@ -177,6 +213,7 @@ describe('DeviceAvailability', () => {
         clock = INTERVAL_MS + 1;
 
         t.mock.timers.tick(INTERVAL_MS + 1);
+        await Promise.resolve();
         await Promise.resolve();
         await Promise.resolve();
 

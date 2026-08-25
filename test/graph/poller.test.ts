@@ -153,6 +153,32 @@ describe('DevicePoller', () => {
         harness.poller.stop();
     });
 
+    it('resumes default jobs after the heartbeat window without another PUSH', async (t) => {
+        const harness = createHarness(t, {
+            jobs: [{
+                namespace: 'Appliance.Control.ToggleX',
+                strategy: 'default',
+                periodMs: 0,
+                periodCloudMs: 0
+            }]
+        });
+
+        harness.poller.start();
+        await harness.advance(0);
+        harness.poller.recordPush(push('Appliance.Control.ToggleX'));
+        await harness.advance(INTERVAL_MS);
+        assert.equal(harness.requestGets.mock.callCount(), 1);
+
+        await harness.advance(SYSTEM_ALL_PERIOD_MS);
+        assert.ok(harness.requestGets.mock.callCount() > 1);
+        assert.equal(
+            harness.getsHistory.at(-1)?.[0]?.namespace,
+            'Appliance.Control.ToggleX'
+        );
+
+        harness.poller.stop();
+    });
+
     it('polls electricity every cycle even when MQTT is active', async (t) => {
         const harness = createHarness(t, {
             jobs: [{

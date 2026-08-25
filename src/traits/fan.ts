@@ -52,7 +52,8 @@ export interface FanTraitBind {
  * ToggleX/Toggle when the device has it; Control.Fan handles the rest. Speed is
  * host 0..1; wire is 0..maxSpeed from the last GETACK. Optional Fan.Config,
  * Fan.BtnConfig, and FilterMaintenance attach when Ability advertises them.
- * FilterMaintenance stays PUSH-query only.
+ * FilterMaintenance is PUSH-query only (GET disconnects MAP100). DevicePoller
+ * issues that PUSH on the cloudmqtt cadence; this trait only applies the ACK.
  */
 export class FanTrait {
     private readonly bind: FanTraitBind;

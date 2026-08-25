@@ -24,6 +24,7 @@ export interface RoutedRequestOptions {
 export interface GetCommand {
     namespace: string;
     payload?: MerossPayload;
+    method?: 'GET' | 'PUSH';
 }
 
 export interface RequestGetsOptions {
@@ -125,6 +126,8 @@ export class TransportRouter {
     /**
      * Pack GETs into `Appliance.Control.Multiple` batches of `maxCmdNum`.
      * Unpacks the SETACK so callers still see one GETACK (or ERROR) per GET.
+     * PUSH-query and System.All / Hub.ToggleX stay unscoped. When a packed
+     * Multiple fails, the chunk is retried as singles (HTTP truncation).
      */
     async requestGets(options: RequestGetsOptions): Promise<MerossMessage[]> {
         const maxCmdNum = options.maxCmdNum ?? 0;
@@ -135,7 +138,7 @@ export class TransportRouter {
         const leading: GetCommand[] = [];
         const packable: GetCommand[] = [];
         for (const get of options.gets) {
-            if (canPackInMultiple(get.namespace)) {
+            if ((get.method ?? 'GET') === 'GET' && canPackInMultiple(get.namespace)) {
                 packable.push(get);
             } else {
                 leading.push(get);
@@ -143,14 +146,22 @@ export class TransportRouter {
         }
 
         const results = await this.sendGets(leading, options);
-        for (let index = 0; index < packable.length;) {
-            const chunk = packable.slice(index, index + maxCmdNum);
-            index += chunk.length;
+        for (let i = 0; i < packable.length; i += maxCmdNum) {
+            const chunk = packable.slice(i, i + maxCmdNum);
             if (chunk.length === 1) {
                 results.push(...await this.sendGets(chunk, options));
                 continue;
             }
+            results.push(...await this.sendPacked(chunk, options));
+        }
+        return results;
+    }
 
+    private async sendPacked(
+        chunk: GetCommand[],
+        options: RequestGetsOptions
+    ): Promise<MerossMessage[]> {
+        try {
             const packed = await this.request({
                 uuid: options.uuid,
                 namespace: MULTIPLE_NAMESPACE,
@@ -168,18 +179,20 @@ export class TransportRouter {
                     `Control.Multiple SETACK count ${subs.length} != ${chunk.length}`
                 );
             }
-            for (const sub of subs) {
-                results.push({
-                    header: {
-                        ...packed.header,
-                        namespace: sub.header.namespace,
-                        method: sub.header.method
-                    },
-                    payload: sub.payload
-                });
+            return subs.map((sub) => ({
+                header: {
+                    ...packed.header,
+                    namespace: sub.header.namespace,
+                    method: sub.header.method
+                },
+                payload: sub.payload
+            }));
+        } catch (error) {
+            if (error instanceof CommandError) {
+                throw error;
             }
+            return this.sendGets(chunk, options);
         }
-        return results;
     }
 
     private async sendGets(gets: GetCommand[], options: RequestGetsOptions): Promise<MerossMessage[]> {
@@ -188,7 +201,7 @@ export class TransportRouter {
             results.push(await this.request({
                 uuid: options.uuid,
                 namespace: get.namespace,
-                method: 'GET',
+                method: get.method ?? 'GET',
                 payload: get.payload,
                 ip: options.ip,
                 encryptionKey: options.encryptionKey
