@@ -70,6 +70,13 @@ describe('Fan.Config codec', () => {
             [{ channel: 0, maxSpeed: 0 }]
         );
     });
+
+    it('decodes meross_lan fan-keyed GETACK', () => {
+        assert.deepEqual(
+            decodeFanConfigGetAck({ fan: [{ channel: 0, maxSpeed: 3 }] }),
+            [{ channel: 0, maxSpeed: 3 }]
+        );
+    });
 });
 
 describe('Fan.BtnConfig codec', () => {
@@ -102,6 +109,23 @@ describe('Fan.BtnConfig codec', () => {
                 { channel: 1, controlBtn: { onoffType: 1, levelType: 2 } },
                 { channel: 2, controlBtn: { onoffType: 1, levelType: 2 } }
             ]
+        );
+    });
+
+    it('decodes meross_lan fan-keyed PUSH', () => {
+        assert.deepEqual(
+            decodeFanBtnConfigPush({ fan: [{ channel: 0, powerBtn: { type: 1 } }] }),
+            [{ channel: 0, powerBtn: { type: 1 } }]
+        );
+    });
+
+    it('prefers config when both keys are present', () => {
+        assert.deepEqual(
+            decodeFanBtnConfigPush({
+                config: [{ channel: 0, powerBtn: { type: 1 } }],
+                fan: [{ channel: 0, powerBtn: { type: 9 } }]
+            }),
+            [{ channel: 0, powerBtn: { type: 1 } }]
         );
     });
 });

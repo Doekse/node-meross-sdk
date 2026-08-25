@@ -255,6 +255,20 @@ describe('FanTrait', () => {
         assert.equal(trait.getSpeed(), 0.5);
     });
 
+    it('applies Fan.Config maxSpeed from a meross_lan fan-keyed GETACK', async () => {
+        const { trait, changes } = createHarness({
+            namespaces: new Set([FAN_CONFIG_NAMESPACE]),
+            fanGetAck: { fan: [{ channel: CHANNEL, speed: 2 }] },
+            configGetAck: { fan: [{ channel: CHANNEL, maxSpeed: 4 }] },
+            hasToggleX: false,
+            hasToggle: false
+        });
+        trait.start();
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.ok(changes.some((c) => c.maxSpeed === 4));
+        assert.equal(trait.getSpeed(), 0.5);
+    });
+
     it('PUSH-queries FilterMaintenance on start and emits filterLife 0..1', async () => {
         const { trait, requests, changes } = createHarness({
             namespaces: new Set([FILTER_MAINTENANCE_NAMESPACE])

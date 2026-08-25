@@ -74,13 +74,15 @@ export function decodeFanPush(payload: MerossPayload): FanChannelState[] {
     return decodeFan(payload);
 }
 
-/** GET `{ config: [{ channel }] }`. Traces use `config`, not `fan`. */
+/**
+ * meross_lan descriptors use `fan`, but MFC100 GETACK is `{ config: [...] }`.
+ */
 export function encodeFanConfigGet(options: { channel: number }): MerossPayload {
     return { config: [{ channel: options.channel }] };
 }
 
 export function decodeFanConfigGetAck(payload: MerossPayload): FanConfigState[] {
-    return decodeKeyedList(payload, 'config', 'Fan.Config').map(decodeFanConfigEntry);
+    return decodeFanConfigKeyedList(payload, 'Fan.Config').map(decodeFanConfigEntry);
 }
 
 /**
@@ -90,7 +92,9 @@ export function encodeFanBtnConfigPushQuery(): MerossPayload {
     return {};
 }
 
-/** SET `{ config: [{ channel, powerBtn? | controlBtn? }] }`. */
+/**
+ * SET repeats the MFC100 PUSH key. meross_lan descriptors use `fan` instead.
+ */
 export function encodeFanBtnConfigSet(options: FanButtonConfigSetOptions): MerossPayload {
     const entry: Record<string, unknown> = { channel: options.channel };
     if (options.powerBtn !== undefined) {
@@ -103,7 +107,7 @@ export function encodeFanBtnConfigSet(options: FanButtonConfigSetOptions): Meros
 }
 
 export function decodeFanBtnConfigPush(payload: MerossPayload): FanButtonConfig[] {
-    return decodeKeyedList(payload, 'config', 'Fan.BtnConfig').map(decodeFanBtnConfigEntry);
+    return decodeFanConfigKeyedList(payload, 'Fan.BtnConfig').map(decodeFanBtnConfigEntry);
 }
 
 /**
@@ -119,6 +123,20 @@ export function decodeFilterMaintenancePush(payload: MerossPayload): FilterMaint
 
 function decodeFan(payload: MerossPayload): FanChannelState[] {
     return decodeKeyedList(payload, 'fan', 'Control.Fan').map(decodeFanEntry);
+}
+
+/**
+ * Prefer `config` (MFC100 GETACK/PUSH). Fall back to `fan` so meross_lan-shaped
+ * payloads still parse.
+ */
+function decodeFanConfigKeyedList(payload: MerossPayload, label: string): unknown[] {
+    if ('config' in payload) {
+        return decodeKeyedList(payload, 'config', label);
+    }
+    if ('fan' in payload) {
+        return decodeKeyedList(payload, 'fan', label);
+    }
+    throw new ProtocolError(`${label} payload must contain a config object or array`);
 }
 
 function decodeKeyedList(payload: MerossPayload, key: string, label: string): unknown[] {
