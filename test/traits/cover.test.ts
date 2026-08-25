@@ -54,7 +54,7 @@ function createCoverHarness(
             requests.push(message);
             const ackPayload = getAckPayloads[options.namespace] ?? (
                 options.method === 'SET' && options.namespace === GARAGE_STATE_NAMESPACE
-                    ? { state: { ...(options.payload.state as object), execute: 1 } }
+                    ? { state: { ...((options.payload?.state ?? {}) as object), execute: 1 } }
                     : {}
             );
             return encodeMessage({

@@ -46,6 +46,7 @@
     "build": "tsc --project tsconfig.json",
     "clean": "rm -rf dist",
     "test": "npm run build && node scripts/run-tests.cjs",
+    "typecheck": "tsc --project test/tsconfig.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "prepublishOnly": "npm run build"

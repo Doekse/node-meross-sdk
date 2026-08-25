@@ -174,7 +174,7 @@ describe('TriggerTrait', () => {
                 uuid: UUID
             });
             requests.push(message);
-            const raw = requestOptions.payload.triggerx;
+            const raw = requestOptions.payload?.triggerx;
             const id = typeof raw === 'object' && raw !== null && typeof (raw as { id?: unknown }).id === 'string'
                 ? (raw as { id: string }).id
                 : WIRE_ENTRY.id;

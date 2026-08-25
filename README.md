@@ -239,10 +239,11 @@ const { AuthError, CloudError, MerossError } = require('node-meross-sdk');
 npm install
 npm test
 npm run lint
+npm run typecheck
 npm run build
 ```
 
-Tests use Node's built-in `node:test` runner. CI runs lint and tests on Node 22 and 24.
+Tests use Node's built-in `node:test` runner. CI lints, typechecks, and runs tests on Node 22 and 24.
 
 ## Contributing
 
