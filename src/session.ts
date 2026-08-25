@@ -309,7 +309,6 @@ export class Session extends EventEmitter<SessionEvents> {
                 continue;
             }
             const physical = this.graph.getPhysical(uuid)!;
-            const lan = this.lanBind(physical);
             const request = this.deviceRequest(physical);
             let poller!: DevicePoller;
             const availability = new DeviceAvailability({
@@ -321,7 +320,10 @@ export class Session extends EventEmitter<SessionEvents> {
                     method,
                     payload: payload ?? {}
                 }),
-                onOnlineChange: (online) => poller.setOnline(online)
+                onOnlineChange: (online) => poller.setOnline(online),
+                onInnerIp: (innerIp) => {
+                    physical.innerIp = innerIp;
+                }
             });
             poller = new DevicePoller({
                 uuid,
@@ -332,7 +334,7 @@ export class Session extends EventEmitter<SessionEvents> {
                     uuid,
                     gets,
                     maxCmdNum,
-                    ...lan
+                    ...this.lanBind(physical)
                 }),
                 onAck: (message) => this.handlePush(message),
                 jobs: buildPollJobs(physical.ability, physical.endpoints)
@@ -648,11 +650,10 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     private deviceRequest(physical: PhysicalDevice) {
-        const lan = this.lanBind(physical);
         return (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) =>
             this.router!.request({
                 uuid: physical.uuid,
-                ...lan,
+                ...this.lanBind(physical),
                 ...options
             });
     }

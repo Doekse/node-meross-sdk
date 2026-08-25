@@ -124,6 +124,7 @@ describe('DeviceAvailability', () => {
     it('applies System.All GETACK online.status to all endpoints', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: false });
         const seen: boolean[] = [];
+        const ips: Array<string | undefined> = [];
         endpoint.on('availability', (online) => seen.push(online));
 
         const monitor = new DeviceAvailability({
@@ -137,7 +138,8 @@ describe('DeviceAvailability', () => {
                 from: `/appliance/${UUID}/publish`,
                 uuid: UUID,
                 payload: {}
-            })
+            }),
+            onInnerIp: (innerIp) => ips.push(innerIp)
         });
         monitor.start();
         seen.length = 0;
@@ -145,6 +147,7 @@ describe('DeviceAvailability', () => {
         monitor.handleMessage(loadFixture('system-all-getack.json'));
 
         assert.deepEqual(seen, [true]);
+        assert.deepEqual(ips, ['192.168.201.190']);
         monitor.stop();
     });
 

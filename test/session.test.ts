@@ -516,6 +516,62 @@ describe('Session.connect', () => {
         await session.disconnect();
     });
 
+    it('retargets LAN after System.All reports a new innerIp', async () => {
+        const lanUrls: string[] = [];
+        const lanFetch: typeof fetch = async (url, init) => {
+            lanUrls.push(String(url));
+            const sent = decodeMessage(String(init?.body), KEY);
+            const ack = enrollmentAck(sent, { innerIp: true });
+            return {
+                status: 200,
+                statusText: 'OK',
+                ok: true,
+                async text() {
+                    return JSON.stringify(ack);
+                }
+            } as Response;
+        };
+
+        const { fetchImpl } = createCloudFetch();
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef),
+                lanFetch
+            }
+        );
+
+        const connectPromise = session.connect();
+        await Promise.resolve();
+        const client = clientRef.current!;
+        const acked = new Set<string>();
+        await drainPendingGets(client, acked, { innerIp: true });
+        await connectPromise;
+        await drainPendingGets(client, acked, { innerIp: true });
+
+        assert.ok(lanUrls.length >= 1);
+
+        const allPayload = structuredClone(loadFixture('system-all-getack.json')) as {
+            all: { system: { firmware: { innerIp?: string } } };
+        };
+        allPayload.all.system.firmware.innerIp = '10.0.0.42';
+        client.deliver(encodeMessage({
+            namespace: SYSTEM_ALL_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: allPayload
+        }));
+        await Promise.resolve();
+
+        await session.endpoint(`${UUID}:0`).switch!.setOn(true);
+        assert.equal(lanUrls.at(-1), 'http://10.0.0.42/config');
+        await session.disconnect();
+    });
+
     it('emits connection on connect, drop, reconnect, and disconnect', async () => {
         const { fetchImpl } = createCloudFetch();
         const clientRef: { current?: FakeMqttClient } = {};

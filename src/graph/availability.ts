@@ -18,6 +18,8 @@ export interface DeviceAvailabilityOptions {
     ) => Promise<MerossMessage>;
     /** Notifies DevicePoller so cold-start / MQTT-active reset stay in sync. */
     onOnlineChange?: (online: boolean) => void;
+    /** System.All `firmware.innerIp` can change after DHCP. */
+    onInnerIp?: (innerIp: string | undefined) => void;
     heartbeatIntervalMs?: number;
     now?: () => number;
 }
@@ -30,6 +32,7 @@ export class DeviceAvailability {
     private readonly endpoints: readonly Endpoint[];
     private readonly request: DeviceAvailabilityOptions['request'];
     private readonly onOnlineChange?: (online: boolean) => void;
+    private readonly onInnerIp?: (innerIp: string) => void;
     private readonly heartbeat: Heartbeat;
 
     private online: boolean;
@@ -39,6 +42,7 @@ export class DeviceAvailability {
         this.endpoints = options.endpoints;
         this.request = options.request;
         this.onOnlineChange = options.onOnlineChange;
+        this.onInnerIp = options.onInnerIp;
         this.online = options.initialOnline;
         this.heartbeat = new Heartbeat({
             intervalMs: options.heartbeatIntervalMs,
@@ -110,6 +114,7 @@ export class DeviceAvailability {
         try {
             const all = decodeSystemAllGetAck(message.payload);
             this.setOnline(all.online.status === 1);
+            this.onInnerIp?.(all.firmware.innerIp);
         } catch {
             // Malformed All is ignored; Heartbeat silence still marks offline.
         }
