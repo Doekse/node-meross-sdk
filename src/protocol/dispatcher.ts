@@ -9,6 +9,12 @@ export interface DispatcherHandlers {
 }
 
 /**
+ * MQTT reordering is a few seconds. A larger backward jump is NTP correcting
+ * the device clock, not a stale PUSH.
+ */
+const PUSH_STALE_WINDOW_MS = 60_000;
+
+/**
  * Match replies by `messageId`; apply unmatched PUSH in header-time order so
  * MQTT reordering cannot overwrite a newer update. One dispatcher serves the
  * whole session, so the gate key includes the appliance id.
@@ -41,7 +47,7 @@ export class ProtocolDispatcher {
         const key = id ? `${id}:${message.header.namespace}` : message.header.namespace;
         const ts = message.header.timestamp * 1000 + (message.header.timestampMs ?? 0);
         const last = this.lastTs.get(key);
-        if (last !== undefined && ts < last) {
+        if (last !== undefined && ts < last && last - ts < PUSH_STALE_WINDOW_MS) {
             return 'stale';
         }
         this.lastTs.set(key, ts);

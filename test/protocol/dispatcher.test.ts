@@ -183,6 +183,23 @@ describe('ProtocolDispatcher with fake transport', () => {
         assert.equal(applied.length, 3);
     });
 
+    it('resets the PUSH gate when the device clock jumps backward past the stale window', () => {
+        const applied: number[] = [];
+        const dispatcher = new ProtocolDispatcher((message) => {
+            applied.push(message.header.timestamp);
+        });
+        const transport = new FakeTransport(dispatcher);
+        const from = '/appliance/abc/publish';
+        const future = 2_000_000_000;
+        const corrected = 1_700_000_000;
+
+        assert.equal(transport.deliver(pushMessage(future, from)), 'push');
+        assert.equal(transport.deliver(pushMessage(corrected, from)), 'push');
+        assert.equal(transport.deliver(pushMessage(corrected - 1, from)), 'stale');
+        assert.equal(transport.deliver(pushMessage(corrected + 1, from)), 'push');
+        assert.deepEqual(applied, [future, corrected, corrected + 1]);
+    });
+
     it('does not let one appliance PUSH starve another on the same namespace', () => {
         const applied: string[] = [];
         const dispatcher = new ProtocolDispatcher((message) => {
