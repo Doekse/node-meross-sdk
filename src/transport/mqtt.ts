@@ -5,6 +5,7 @@ import mqtt from 'mqtt';
 import { TransportError } from '../errors';
 import { ProtocolDispatcher, decodeMessage, encodeMessage } from '../protocol';
 import type { MerossMessage, MerossPayload } from '../protocol';
+import { PublishRateLimiter } from './rate-limit';
 
 /** Cloud brokers listen on 443; older firmware used 2001. */
 const MQTT_PORT = 443;
@@ -60,11 +61,17 @@ export interface MqttTransportOptions {
     appId?: string;
     dispatcher?: ProtocolDispatcher;
     connect?: MqttConnectFn;
+    rateLimiter?: PublishRateLimiter;
     /**
      * Session re-emits this as `connection` so hosts can react to broker
      * drop without a public transport.
      */
     onConnectionChange?: (connected: boolean) => void;
+    /**
+     * Session re-emits this as `ratelimit` so hosts see drops that
+     * DevicePoller's bare catch would otherwise swallow.
+     */
+    onRateLimit?: (uuid: string, dropped: number) => void;
 }
 
 export interface MqttRequestOptions {
@@ -97,7 +104,9 @@ export class MqttTransport {
     private readonly key: string;
     private readonly mqttDomain: string;
     private readonly connectFn: MqttConnectFn;
+    private readonly rateLimiter: PublishRateLimiter;
     private readonly onConnectionChange?: (connected: boolean) => void;
+    private readonly onRateLimit?: (uuid: string, dropped: number) => void;
     private client: MqttBrokerClient | undefined;
     private connectPromise: Promise<void> | null = null;
     private connected = false;
@@ -110,7 +119,9 @@ export class MqttTransport {
         this.key = options.key;
         this.mqttDomain = options.mqttDomain;
         this.connectFn = options.connect ?? defaultConnect;
+        this.rateLimiter = options.rateLimiter ?? new PublishRateLimiter();
         this.onConnectionChange = options.onConnectionChange;
+        this.onRateLimit = options.onRateLimit;
         this.appId = options.appId
             ?? createHash('md5').update(`API${randomUUID()}`).digest('hex');
         this.clientResponseTopic = `/app/${this.userId}-${this.appId}/subscribe`;
@@ -160,6 +171,14 @@ export class MqttTransport {
         const client = this.client;
         if (!client || !this.connected) {
             throw new TransportError('MQTT transport is not connected', 'MQTT_NOT_CONNECTED');
+        }
+        // Refuse before pending.register so a dropped publish leaves no orphan id.
+        if (!this.rateLimiter.take(options.uuid)) {
+            this.onRateLimit?.(options.uuid, this.rateLimiter.droppedCount(options.uuid));
+            throw new TransportError(
+                `MQTT publish rate limited for device ${options.uuid}`,
+                'MQTT_RATE_LIMITED'
+            );
         }
         const message = encodeMessage({
             namespace: options.namespace,

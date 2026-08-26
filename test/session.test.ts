@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { ABILITY_NAMESPACE, SYSTEM_ALL_NAMESPACE } from '../src/graph';
-import { AuthError, MerossError } from '../src/errors';
+import { AuthError, MerossError, TransportError } from '../src/errors';
 import {
     decodeMessage,
     decryptPayload,
@@ -15,7 +15,7 @@ import {
     type MerossMessage
 } from '../src/protocol';
 import { Session } from '../src/session';
-import type { MqttBrokerClient } from '../src/transport';
+import { RATE_LIMIT_MAX_PUBLISHES, type MqttBrokerClient } from '../src/transport';
 
 const fixturesDir = join(process.cwd(), 'test/fixtures');
 const EMAIL = 'you@example.com';
@@ -599,6 +599,49 @@ describe('Session.connect', () => {
 
         await session.disconnect();
         assert.deepEqual(connections, [true, false, true, false]);
+    });
+
+    it('emits ratelimit when MQTT publish budget is exhausted', async () => {
+        const { fetchImpl } = createCloudFetch();
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+
+        const drops: Array<[string, number]> = [];
+        session.on('ratelimit', (uuid, dropped) => drops.push([uuid, dropped]));
+
+        await connectSession(session, clientRef);
+        const client = clientRef.current!;
+        const endpoint = session.endpoint(`${UUID}:0`);
+
+        for (let i = 0; i < RATE_LIMIT_MAX_PUBLISHES + 2; i += 1) {
+            const publishedBefore = client.published.length;
+            const pending = endpoint.switch!.setOn(i % 2 === 0);
+            await Promise.resolve();
+            if (client.published.length === publishedBefore) {
+                await assert.rejects(
+                    pending,
+                    (err: unknown) =>
+                        err instanceof TransportError && err.code === 'MQTT_RATE_LIMITED'
+                );
+                break;
+            }
+            const sent = JSON.parse(client.published.at(-1)!.payload) as MerossMessage;
+            client.deliver(ackFor(sent, 'SETACK', {
+                togglex: { channel: 0, onoff: i % 2 === 0 ? 1 : 0 }
+            }));
+            await pending;
+        }
+
+        assert.ok(drops.length >= 1);
+        assert.equal(drops[0]![0], UUID);
+        assert.ok(drops[0]![1] >= 1);
+        await session.disconnect();
     });
 
     it('tears MQTT down when connect fails on an expired token', async () => {

@@ -44,7 +44,7 @@ describe('public API', () => {
         assert.deepEqual(session.inventory.endpoints(), []);
     });
 
-    it('Session can emit connection like Endpoint emits availability', () => {
+    it('Session can emit connection and ratelimit like Endpoint emits availability', () => {
         const session = Session.restore({
             token: 't',
             key: 'k',
@@ -53,11 +53,17 @@ describe('public API', () => {
             mqttDomain: 'mqtt.example.com'
         });
         const seen: boolean[] = [];
+        const drops: Array<[string, number]> = [];
         session.on('connection', (connected) => {
             seen.push(connected);
         });
+        session.on('ratelimit', (uuid, dropped) => {
+            drops.push([uuid, dropped]);
+        });
         session.emit('connection', true);
+        session.emit('ratelimit', 'device-1', 3);
         assert.deepEqual(seen, [true]);
+        assert.deepEqual(drops, [['device-1', 3]]);
     });
 
     it('SwitchTrait.setOn drives on/off when bound to a transport', async () => {

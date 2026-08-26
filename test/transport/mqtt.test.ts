@@ -15,6 +15,8 @@ import { verifySignature } from '../../src/protocol/sign';
 import {
     MQTT_RECONNECT_PERIOD_MS,
     MqttTransport,
+    PublishRateLimiter,
+    RATE_LIMIT_MAX_PUBLISHES,
     type MqttBrokerClient,
     type MqttConnectOptions,
     type MqttTransportOptions
@@ -376,5 +378,36 @@ describe('MqttTransport', () => {
 
         await transport.disconnect();
         assert.deepEqual(connections, [true, false, true, false]);
+    });
+
+    it('notifies onRateLimit and leaves no pending entry when limited', async (t) => {
+        const limiter = new PublishRateLimiter({ now: () => 1_000_000 });
+        for (let i = 0; i < RATE_LIMIT_MAX_PUBLISHES; i += 1) {
+            limiter.take(UUID);
+        }
+        const drops: Array<[string, number]> = [];
+        const dispatcher = new ProtocolDispatcher();
+        const register = t.mock.method(dispatcher.pending, 'register');
+        const { transport, getClient } = createTransport({
+            dispatcher,
+            rateLimiter: limiter,
+            onRateLimit: (uuid, dropped) => drops.push([uuid, dropped])
+        });
+        await transport.connect();
+        const publishedBefore = getClient().published.length;
+
+        await assert.rejects(
+            transport.request({
+                uuid: UUID,
+                namespace: TOGGLEX_NAMESPACE,
+                method: 'GET'
+            }),
+            (err: unknown) => err instanceof TransportError && err.code === 'MQTT_RATE_LIMITED'
+        );
+
+        assert.deepEqual(drops, [[UUID, 1]]);
+        assert.equal(getClient().published.length, publishedBefore);
+        assert.equal(register.mock.callCount(), 0);
+        await transport.disconnect();
     });
 });

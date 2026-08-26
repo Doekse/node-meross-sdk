@@ -80,6 +80,7 @@ export interface SessionOptions {
 
 interface SessionEvents {
     connection: [connected: boolean];
+    ratelimit: [uuid: string, dropped: number];
 }
 
 /**
@@ -160,7 +161,8 @@ export class Session extends EventEmitter<SessionEvents> {
             mqttDomain: this.token.mqttDomain,
             dispatcher,
             connect: this.mqttConnect,
-            onConnectionChange: (connected) => this.emit('connection', connected)
+            onConnectionChange: (connected) => this.emit('connection', connected),
+            onRateLimit: (uuid, dropped) => this.emit('ratelimit', uuid, dropped)
         });
         const lan = new LanHttpTransport({
             key: this.token.key,
