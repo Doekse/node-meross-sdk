@@ -17,6 +17,8 @@ export const SENSOR_LATEST_NAMESPACE = 'Appliance.Control.Sensor.Latest';
 export const SENSOR_HISTORY_NAMESPACE = 'Appliance.Control.Sensor.History';
 export const SENSOR_HISTORYX_NAMESPACE = 'Appliance.Control.Sensor.HistoryX';
 export const SMOKE_CONFIG_NAMESPACE = 'Appliance.Control.Smoke.Config';
+/** External/internal temp sensor binding (GET/SET/PUSH-query list). MTS300. */
+export const CONFIG_SENSOR_ASSOCIATION_NAMESPACE = 'Appliance.Config.Sensor.Association';
 
 export interface SensorTempHumState {
     id: string;
@@ -208,6 +210,22 @@ export interface SmokeConfigSetOptions {
     subId?: string;
     dndEnabled?: boolean;
     detectEnabled?: boolean;
+}
+
+/**
+ * Config.Sensor.Association row. Board thermostats use `channel`; hub
+ * extrapolation may carry `subId`. `temp.association` 2 is the internal sensor.
+ */
+export interface SensorAssociationState {
+    channel: number;
+    subId?: string;
+    tempAssociation?: number;
+}
+
+export interface SensorAssociationSetOptions {
+    channel: number;
+    subId?: string;
+    tempAssociation: number;
 }
 
 function encodeArray(key: string, entry: Record<string, unknown>): MerossPayload {
@@ -920,6 +938,57 @@ function decodeSmokeConfig(payload: MerossPayload): SmokeConfigState[] {
         const detect = nestedNumber(item.detect, 'enable');
         if (detect !== undefined) {
             result.detectEnabled = detect === 1;
+        }
+        return result;
+    });
+}
+
+/** GET `{ config: [{ channel }] }` (optional subId for hub children). */
+export function encodeSensorAssociationGet(options: {
+    channel: number;
+    subId?: string;
+}): MerossPayload {
+    const entry: Record<string, unknown> = { channel: options.channel };
+    if (options.subId !== undefined) {
+        entry.subId = options.subId;
+    }
+    return encodeArray('config', entry);
+}
+
+/** SET `{ config: [{ channel, temp: { association } }] }`. */
+export function encodeSensorAssociationSet(options: SensorAssociationSetOptions): MerossPayload {
+    const entry: Record<string, unknown> = {
+        channel: options.channel,
+        temp: { association: options.tempAssociation }
+    };
+    if (options.subId !== undefined) {
+        entry.subId = options.subId;
+    }
+    return encodeArray('config', entry);
+}
+
+export function decodeSensorAssociationGetAck(payload: MerossPayload): SensorAssociationState[] {
+    return decodeSensorAssociation(payload);
+}
+
+export function decodeSensorAssociationPush(payload: MerossPayload): SensorAssociationState[] {
+    return decodeSensorAssociation(payload);
+}
+
+function decodeSensorAssociation(payload: MerossPayload): SensorAssociationState[] {
+    return decodeArray(payload, 'config', 'Config.Sensor.Association').map((item) => {
+        const result: SensorAssociationState = {
+            channel: typeof item.channel === 'number' ? item.channel : 0
+        };
+        if (typeof item.subId === 'string') {
+            result.subId = item.subId;
+        }
+        const temp = item.temp;
+        if (typeof temp === 'object' && temp !== null && !Array.isArray(temp)) {
+            const association = (temp as Record<string, unknown>).association;
+            if (typeof association === 'number') {
+                result.tempAssociation = association;
+            }
         }
         return result;
     });

@@ -9,9 +9,12 @@ import {
     CONSUMPTIONH_NAMESPACE,
     CONSUMPTIONX_NAMESPACE,
     CONSUMPTION_CONFIG_NAMESPACE,
+    CONTROL_ALERT_CONFIG_NAMESPACE,
+    CONTROL_ALERT_REPORT_NAMESPACE,
     CONTROL_OVERTEMP_NAMESPACE,
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_NAMESPACE,
+    encodeAlertConfigSet,
     encodeConfigOverTempSet,
     encodeConsumptionConfigGet,
     encodeConsumptionHGet,
@@ -178,6 +181,16 @@ function createEnergyHarness(options: {
             if (opts.namespace === CONFIG_OVERTEMP_NAMESPACE) {
                 return encodeMessage({
                     namespace: CONFIG_OVERTEMP_NAMESPACE,
+                    method: opts.method === 'SET' ? 'SETACK' : 'GETACK',
+                    key: KEY,
+                    from: `/appliance/${UUID}/publish`,
+                    uuid: UUID,
+                    payload: {}
+                });
+            }
+            if (opts.namespace === CONTROL_ALERT_CONFIG_NAMESPACE) {
+                return encodeMessage({
+                    namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
                     method: opts.method === 'SET' ? 'SETACK' : 'GETACK',
                     key: KEY,
                     from: `/appliance/${UUID}/publish`,
@@ -569,6 +582,100 @@ describe('EnergyTrait over-temp', () => {
         }));
 
         assert.deepEqual(changes, []);
+    });
+});
+
+describe('EnergyTrait alert config', () => {
+    const alertNamespaces = new Set([
+        CONTROL_ALERT_CONFIG_NAMESPACE,
+        CONTROL_ALERT_REPORT_NAMESPACE
+    ]);
+
+    it('SETs AlertConfig and emits change', async () => {
+        const { endpoint, trait, requests } = createEnergyHarness({
+            hasConsumptionX: false,
+            namespaces: alertNamespaces
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const value = { em06: { threshold: 10 } };
+        await trait.setAlertConfig({ type: 1, value });
+
+        assert.deepEqual(requests, [{
+            namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
+            method: 'SET',
+            payload: encodeAlertConfigSet({ channel: CHANNEL, type: 1, value })
+        }]);
+        assert.deepEqual(changes, [{
+            trait: 'energy',
+            values: { alertConfigType: 1, alertConfig: value }
+        }]);
+    });
+
+    it('no-ops setAlertConfig when AlertConfig is absent', async () => {
+        const { trait, requests } = createEnergyHarness({ hasConsumptionX: false });
+        await trait.setAlertConfig({ type: 1 });
+        assert.equal(requests.length, 0);
+    });
+
+    it('applies AlertConfig PUSH for the bound channel and dedupes', () => {
+        const { endpoint, trait } = createEnergyHarness({
+            hasConsumptionX: false,
+            namespaces: alertNamespaces
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const push = encodeMessage({
+            namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                config: [{ channel: CHANNEL, type: 3, value: { em06: { a: 1 } } }]
+            }
+        });
+        trait.handlePush(push);
+        trait.handlePush(push);
+
+        assert.deepEqual(changes, [{
+            trait: 'energy',
+            values: { alertConfigType: 3, alertConfig: { em06: { a: 1 } } }
+        }]);
+    });
+
+    it('applies AlertReport PUSH and ignores malformed payloads', () => {
+        const { endpoint, trait } = createEnergyHarness({
+            hasConsumptionX: false,
+            namespaces: alertNamespaces
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_ALERT_REPORT_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { alert: { not: 'a list' } }
+        }));
+        assert.deepEqual(changes, []);
+
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_ALERT_REPORT_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { alert: [{ channel: CHANNEL, code: 4 }] }
+        }));
+        assert.deepEqual(changes, [{
+            trait: 'energy',
+            values: { alertReport: { code: 4 } }
+        }]);
     });
 });
 

@@ -62,8 +62,12 @@ import {
     CONFIG_OVERTEMP_NAMESPACE,
     CONTROL_OVERTEMP_NAMESPACE
 } from '../protocol/codecs/overtemp';
+import {
+    CONTROL_ALERT_CONFIG_NAMESPACE
+} from '../protocol/codecs/alertconfig';
 import { PRESENCE_CONFIG_NAMESPACE } from '../protocol/codecs/presence';
 import {
+    CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
     HUB_BATTERY_NAMESPACE,
     HUB_SENSOR_ADJUST_NAMESPACE,
     HUB_SENSOR_ALERT_NAMESPACE,
@@ -256,9 +260,13 @@ const POLL: Record<string, PollSpec> = {
         ...SMART_CONFIG,
         payload: channelList('overTemp', 'energy')
     },
-    'Appliance.Config.Sensor.Association': {
+    [CONFIG_SENSOR_ASSOCIATION_NAMESPACE]: {
         ...SMART_CONFIG,
-        payload: { list: 'config' }
+        payload: channelList('config')
+    },
+    [CONTROL_ALERT_CONFIG_NAMESPACE]: {
+        ...SMART_CONFIG,
+        payload: channelList('config')
     },
 
     // Digest / board state

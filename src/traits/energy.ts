@@ -3,9 +3,13 @@ import {
     CONSUMPTIONH_NAMESPACE,
     CONSUMPTIONX_NAMESPACE,
     CONSUMPTION_CONFIG_NAMESPACE,
+    CONTROL_ALERT_CONFIG_NAMESPACE,
+    CONTROL_ALERT_REPORT_NAMESPACE,
     CONTROL_OVERTEMP_NAMESPACE,
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_NAMESPACE,
+    decodeAlertConfigPush,
+    decodeAlertReportPush,
     decodeConfigOverTempPush,
     decodeConsumptionConfigGetAck,
     decodeConsumptionHGetAck,
@@ -13,6 +17,7 @@ import {
     decodeControlOverTempPush,
     decodeElectricityGetAck,
     decodeElectricityXGetAck,
+    encodeAlertConfigSet,
     encodeConfigOverTempSet,
     encodeConsumptionConfigGet,
     encodeConsumptionHGet,
@@ -20,6 +25,8 @@ import {
     encodeConsumptionXGet,
     encodeElectricityGet,
     encodeElectricityXGet,
+    type AlertConfigEntry,
+    type AlertReportEntry,
     type ConfigOverTempState,
     type ConsumptionHHour,
     type ConsumptionXDay,
@@ -42,6 +49,9 @@ export interface EnergyValues {
     overTempType?: number;
     overTempActive?: boolean;
     overTempTimestamp?: number;
+    alertConfigType?: number;
+    alertConfig?: Record<string, unknown>;
+    alertReport?: Record<string, unknown>;
 }
 
 /**
@@ -136,6 +146,31 @@ export class EnergyTrait {
     }
 
     /**
+     * SET Control.AlertConfig for this channel. No-op when absent (EM06 / similar).
+     */
+    async setAlertConfig(options: {
+        type?: number;
+        value?: Record<string, unknown>;
+    }): Promise<void> {
+        if (!this.has(CONTROL_ALERT_CONFIG_NAMESPACE)) {
+            return;
+        }
+        await this.bind.request({
+            namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
+            method: 'SET',
+            payload: encodeAlertConfigSet({
+                channel: this.bind.channel,
+                ...options
+            })
+        });
+        this.applyAlertConfig({
+            channel: this.bind.channel,
+            ...(options.type !== undefined ? { type: options.type } : {}),
+            ...(options.value !== undefined ? { value: options.value } : {})
+        });
+    }
+
+    /**
      * DELETE is all-or-nothing and does not PUSH, so the local list updates here.
      * No-op when ConsumptionX is not advertised.
      */
@@ -193,6 +228,22 @@ export class EnergyTrait {
                 .find((row) => row.channel === this.bind.channel);
             if (entry) {
                 this.applyControlOverTemp(entry);
+            }
+            return;
+        }
+        if (message.header.namespace === CONTROL_ALERT_CONFIG_NAMESPACE && this.has(CONTROL_ALERT_CONFIG_NAMESPACE)) {
+            const entry = decodeAlertConfigPush(message.payload)
+                .find((row) => row.channel === this.bind.channel);
+            if (entry) {
+                this.applyAlertConfig(entry);
+            }
+            return;
+        }
+        if (message.header.namespace === CONTROL_ALERT_REPORT_NAMESPACE && this.has(CONTROL_ALERT_REPORT_NAMESPACE)) {
+            const entry = decodeAlertReportPush(message.payload)
+                .find((row) => row.channel === this.bind.channel);
+            if (entry) {
+                this.applyAlertReport(entry);
             }
         }
     }
@@ -321,6 +372,33 @@ export class EnergyTrait {
             this.last.overTempActive === values.overTempActive
             && this.last.overTempTimestamp === values.overTempTimestamp
         ) {
+            return;
+        }
+        this.last = { ...this.last, ...values };
+        this.bind.emitChange(values);
+    }
+
+    private applyAlertConfig(entry: AlertConfigEntry): void {
+        const values: EnergyValues = {};
+        if (entry.type !== undefined) {
+            values.alertConfigType = entry.type;
+        }
+        if (entry.value !== undefined) {
+            values.alertConfig = entry.value;
+        }
+        if (
+            this.last.alertConfigType === values.alertConfigType
+            && JSON.stringify(this.last.alertConfig) === JSON.stringify(values.alertConfig)
+        ) {
+            return;
+        }
+        this.last = { ...this.last, ...values };
+        this.bind.emitChange(values);
+    }
+
+    private applyAlertReport(entry: AlertReportEntry): void {
+        const values: EnergyValues = { alertReport: entry.fields };
+        if (JSON.stringify(this.last.alertReport) === JSON.stringify(values.alertReport)) {
             return;
         }
         this.last = { ...this.last, ...values };

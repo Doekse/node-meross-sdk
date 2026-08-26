@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
 import {
+    CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
     HUB_BATTERY_NAMESPACE,
     HUB_EXCEPTION_NAMESPACE,
     HUB_SENSOR_ADJUST_NAMESPACE,
@@ -39,7 +40,8 @@ const HUB_SENSOR_NAMESPACES = new Set([
     HUB_EXCEPTION_NAMESPACE,
     HUB_SUBDEVICE_VERSION_NAMESPACE,
     SENSOR_LATESTX_NAMESPACE,
-    SMOKE_CONFIG_NAMESPACE
+    SMOKE_CONFIG_NAMESPACE,
+    CONFIG_SENSOR_ASSOCIATION_NAMESPACE
 ]);
 
 function createHarness(
@@ -648,5 +650,40 @@ describe('SensorTrait — extras', () => {
             payload: { tempHum: [{ id: SUB_DEVICE_ID, latestTemperature: 230, latestHumidity: 450 }] }
         }));
         assert.equal(changes.length, 0);
+    });
+
+    it('applies Config.Sensor.Association PUSH for matching subId and dedupes', () => {
+        const { trait, changes } = createHarness('tempHum');
+        const message = encodeMessage({
+            namespace: CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                config: [{
+                    channel: 0,
+                    subId: SUB_DEVICE_ID,
+                    temp: { association: 2 }
+                }]
+            }
+        });
+        trait.handlePush(message);
+        trait.handlePush(message);
+        assert.deepEqual(changes, [{ tempAssociation: 2 }]);
+    });
+
+    it('SETs temp association when Association is advertised', async () => {
+        const { trait, requests, changes } = createHarness('tempHum');
+        await trait.setTempAssociation(2);
+        assert.equal(requests[0]?.header.namespace, CONFIG_SENSOR_ASSOCIATION_NAMESPACE);
+        assert.deepEqual(requests[0]?.payload, {
+            config: [{
+                channel: 0,
+                subId: SUB_DEVICE_ID,
+                temp: { association: 2 }
+            }]
+        });
+        assert.deepEqual(changes, [{ tempAssociation: 2 }]);
     });
 });

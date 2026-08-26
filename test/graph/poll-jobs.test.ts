@@ -516,13 +516,14 @@ describe('buildPollJobs', () => {
         assert.deepEqual(jobs, []);
     });
 
-    it('registers Runtime, OverTemp, and Sensor.Association as smart config', () => {
+    it('registers Runtime, OverTemp, Sensor.Association, and AlertConfig as smart config', () => {
         const jobs = buildPollJobs(
             ability(
                 'Appliance.System.Runtime',
                 'Appliance.Config.OverTemp',
                 'Appliance.Control.OverTemp',
-                'Appliance.Config.Sensor.Association'
+                'Appliance.Config.Sensor.Association',
+                'Appliance.Control.AlertConfig'
             ),
             [{ channel: CHANNEL, traits: ['energy'] }]
         );
@@ -554,7 +555,17 @@ describe('buildPollJobs', () => {
                 strategy: 'smart',
                 periodMs: SENSOR_SLOW_PERIOD_MS,
                 periodCloudMs: CLOUDMQTT_PERIOD_MS,
-                payload: { config: [] }
+                payload: { config: [{ channel: CHANNEL }] }
+            }
+        );
+        assert.deepEqual(
+            jobs.find((entry) => entry.namespace === 'Appliance.Control.AlertConfig'),
+            {
+                namespace: 'Appliance.Control.AlertConfig',
+                strategy: 'smart',
+                periodMs: SENSOR_SLOW_PERIOD_MS,
+                periodCloudMs: CLOUDMQTT_PERIOD_MS,
+                payload: { config: [{ channel: CHANNEL }] }
             }
         );
     });

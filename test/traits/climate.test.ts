@@ -21,6 +21,9 @@ import {
     SENSOR_LATEST_NAMESPACE,
     SENSOR_HISTORY_NAMESPACE,
     SENSOR_HISTORYX_NAMESPACE,
+    CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
+    CONTROL_ALERT_CONFIG_NAMESPACE,
+    CONTROL_ALERT_REPORT_NAMESPACE,
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
@@ -800,5 +803,108 @@ describe('ClimateTrait board sensor readings', () => {
         assert.equal(history?.temperature?.length, 2);
         assert.equal(history?.temperature?.[0]?.temperature, 16.6);
         assert.equal(history?.humidity?.[0]?.humidity, 60.7);
+    });
+});
+
+describe('ClimateTrait alert config and sensor association', () => {
+    const namespaces = [
+        CONTROL_ALERT_CONFIG_NAMESPACE,
+        CONTROL_ALERT_REPORT_NAMESPACE,
+        CONFIG_SENSOR_ASSOCIATION_NAMESPACE
+    ];
+
+    it('SETs AlertConfig and emits change', async () => {
+        const { endpoint, trait, requests } = createBoardHarness('modeC', namespaces);
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const value = { mts300: { hcMal: 1, auxLO: 1, auxLOT: 240 } };
+        await trait.setAlertConfig({ type: 5, value });
+
+        assert.equal(requests[0]?.header.namespace, CONTROL_ALERT_CONFIG_NAMESPACE);
+        assert.deepEqual(requests[0]?.payload, {
+            config: [{ channel: CHANNEL, type: 5, value }]
+        });
+        assert.deepEqual(changes, [{
+            trait: 'climate',
+            values: { alertConfigType: 5, alertConfig: value }
+        }]);
+    });
+
+    it('applies AlertConfig PUSH and dedupes repeats', () => {
+        const { endpoint, trait } = createBoardHarness('modeC', namespaces);
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const message = push(CONTROL_ALERT_CONFIG_NAMESPACE, {
+            config: [{
+                channel: CHANNEL,
+                type: 5,
+                value: { mts300: { hcMal: 1 } }
+            }]
+        });
+        trait.handlePush(message);
+        trait.handlePush(message);
+
+        assert.deepEqual(changes, [{
+            trait: 'climate',
+            values: { alertConfigType: 5, alertConfig: { mts300: { hcMal: 1 } } }
+        }]);
+    });
+
+    it('applies AlertReport PUSH without throwing on empty alert', () => {
+        const { endpoint, trait } = createBoardHarness('modeC', namespaces);
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        trait.handlePush(push(CONTROL_ALERT_REPORT_NAMESPACE, {}));
+        assert.deepEqual(changes, []);
+
+        trait.handlePush(push(CONTROL_ALERT_REPORT_NAMESPACE, {
+            alert: [{ channel: CHANNEL, code: 9 }]
+        }));
+        assert.deepEqual(changes, [{
+            trait: 'climate',
+            values: { alertReport: { code: 9 } }
+        }]);
+    });
+
+    it('SETs temp association and applies Association PUSH', async () => {
+        const { endpoint, trait, requests } = createBoardHarness('modeC', namespaces);
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        await trait.setTempAssociation(2);
+        assert.deepEqual(requests[0]?.payload, {
+            config: [{ channel: CHANNEL, temp: { association: 2 } }]
+        });
+
+        const message = push(CONFIG_SENSOR_ASSOCIATION_NAMESPACE, {
+            config: [{ channel: CHANNEL, temp: { association: 2 } }]
+        });
+        trait.handlePush(message);
+        trait.handlePush(message);
+
+        assert.deepEqual(changes, [
+            { trait: 'climate', values: { tempAssociation: 2 } }
+        ]);
+    });
+
+    it('ignores AlertConfig PUSH when uuid does not match', () => {
+        const { endpoint, trait } = createBoardHarness('modeC', namespaces);
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: '/appliance/other/publish',
+            uuid: 'other',
+            payload: {
+                config: [{ channel: CHANNEL, type: 5, value: { mts300: {} } }]
+            }
+        }));
+        assert.deepEqual(changes, []);
     });
 });

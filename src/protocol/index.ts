@@ -142,6 +142,22 @@ export type {
     ControlOverTempState
 } from './codecs/overtemp';
 export {
+    CONTROL_ALERT_CONFIG_NAMESPACE,
+    CONTROL_ALERT_REPORT_NAMESPACE,
+    decodeAlertConfigGetAck,
+    decodeAlertConfigPush,
+    decodeAlertReportGetAck,
+    decodeAlertReportPush,
+    encodeAlertConfigGet,
+    encodeAlertConfigSet,
+    encodeAlertReportGet
+} from './codecs/alertconfig';
+export type {
+    AlertConfigEntry,
+    AlertConfigSetOptions,
+    AlertReportEntry
+} from './codecs/alertconfig';
+export {
     GARAGE_STATE_NAMESPACE,
     GARAGE_CONFIG_NAMESPACE,
     GARAGE_MULTIPLE_CONFIG_NAMESPACE,
@@ -376,6 +392,7 @@ export {
     SENSOR_HISTORY_NAMESPACE,
     SENSOR_HISTORYX_NAMESPACE,
     SMOKE_CONFIG_NAMESPACE,
+    CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
     encodeSensorTempHumGet,
     decodeSensorTempHumGetAck,
     decodeSensorTempHumPush,
@@ -425,7 +442,11 @@ export {
     encodeSmokeConfigGet,
     encodeSmokeConfigSet,
     decodeSmokeConfigGetAck,
-    decodeSmokeConfigPush
+    decodeSmokeConfigPush,
+    encodeSensorAssociationGet,
+    encodeSensorAssociationSet,
+    decodeSensorAssociationGetAck,
+    decodeSensorAssociationPush
 } from './codecs/sensor';
 export type {
     SensorTempHumState,
@@ -453,7 +474,9 @@ export type {
     SensorHistoryXState,
     SmokeConfigState,
     SmokeConfigGetOptions,
-    SmokeConfigSetOptions
+    SmokeConfigSetOptions,
+    SensorAssociationState,
+    SensorAssociationSetOptions
 } from './codecs/sensor';
 export {
     CONTROL_WATER_NAMESPACE,

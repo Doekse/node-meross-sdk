@@ -1,4 +1,5 @@
 import {
+    CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
     HUB_BATTERY_NAMESPACE,
     HUB_EXCEPTION_NAMESPACE,
     HUB_SENSOR_ADJUST_NAMESPACE,
@@ -20,6 +21,7 @@ import {
     decodeSensorAdjustPush,
     decodeSensorAlertPush,
     decodeSensorAllPush,
+    decodeSensorAssociationPush,
     decodeSensorDoorWindowPush,
     decodeSensorMotionPush,
     decodeSensorSmokePush,
@@ -27,6 +29,7 @@ import {
     decodeSensorWaterLeakPush,
     encodeSensorAdjustSet,
     encodeSensorAlertSet,
+    encodeSensorAssociationSet,
     encodeSensorSmokeSet,
     encodeSmokeConfigSet,
     type MerossMessage,
@@ -90,6 +93,8 @@ export interface SensorValues {
     humidityCalibration?: number;
     temperatureAlerts?: SensorAlertBand[];
     humidityAlerts?: SensorAlertBand[];
+    /** Config.Sensor.Association `temp.association` when present on hub children. */
+    tempAssociation?: number;
 }
 
 /**
@@ -189,6 +194,27 @@ export class SensorTrait {
             namespace: HUB_SENSOR_ALERT_NAMESPACE,
             method: 'SET',
             payload: encodeSensorAlertSet({ id: this.bind.subDeviceId, ...options })
+        });
+        this.applyChange(patch);
+        return patch;
+    }
+
+    /**
+     * SET Config.Sensor.Association for this hub child. No-op when absent.
+     */
+    async setTempAssociation(tempAssociation: number): Promise<SensorValues> {
+        const patch: SensorValues = { tempAssociation };
+        if (!this.has(CONFIG_SENSOR_ASSOCIATION_NAMESPACE)) {
+            return patch;
+        }
+        await this.bind.request({
+            namespace: CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
+            method: 'SET',
+            payload: encodeSensorAssociationSet({
+                channel: 0,
+                subId: this.bind.subDeviceId,
+                tempAssociation
+            })
         });
         this.applyChange(patch);
         return patch;
@@ -342,6 +368,15 @@ export class SensorTrait {
                 if (entry.subId === id) {
                     this.applyChange(latestXPatch(entry));
                 }
+            }
+            return;
+        }
+        if (ns === CONFIG_SENSOR_ASSOCIATION_NAMESPACE && this.has(ns)) {
+            for (const entry of decodeSensorAssociationPush(payload)) {
+                if (entry.subId !== id || entry.tempAssociation === undefined) {
+                    continue;
+                }
+                this.applyChange({ tempAssociation: entry.tempAssociation });
             }
         }
     }
