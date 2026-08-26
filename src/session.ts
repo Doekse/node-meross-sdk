@@ -24,6 +24,7 @@ import {
     ProtocolDispatcher,
     TOGGLEX_NAMESPACE,
     deriveEncryptionKey,
+    macAddressFromUuid,
     supportsLanEncryption,
     type MerossMessage
 } from './protocol';
@@ -645,8 +646,12 @@ export class Session extends EventEmitter<SessionEvents> {
     private lanBind(physical: PhysicalDevice) {
         return {
             ip: physical.innerIp,
-            encryptionKey: supportsLanEncryption(physical.ability) && physical.macAddress
-                ? deriveEncryptionKey(physical.uuid, this.token.key, physical.macAddress)
+            encryptionKey: supportsLanEncryption(physical.ability)
+                ? deriveEncryptionKey(
+                    physical.uuid,
+                    this.token.key,
+                    physical.macAddress ?? macAddressFromUuid(physical.uuid)
+                )
                 : undefined
         };
     }

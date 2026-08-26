@@ -23,10 +23,23 @@ export interface EncryptEcdhe {
 }
 
 /**
- * Suite `se: mrskey` after configuration: UUID slice + cloud key slices + MAC,
- * then MD5 hex as a 32-byte UTF-8 AES-256 key. `ka: ecdhe256` names the
- * handshake; this mix is still the LAN cipher key once the device has an
- * account key.
+ * Meross embeds the device MAC in the trailing 12 hex digits of the uuid, so
+ * LAN encryption can be derived before System.All publishes `macAddress`.
+ */
+export function macAddressFromUuid(uuid: string): string {
+    const hex = uuid.replace(/[^0-9a-fA-F]/g, '').slice(-12).toLowerCase();
+    if (hex.length !== 12) {
+        throw new ProtocolError(`Cannot infer MAC from uuid ${uuid}`);
+    }
+    return hex.match(/.{2}/g)!.join(':');
+}
+
+/**
+ * Suite `se: mrskey` after the device has an account key: UUID slice + key
+ * slices + MAC, then MD5 hex as a 32-byte UTF-8 AES-256 key. Suite
+ * `ka: ecdhe256` is the unpaired handshake in {@link EcdheHandshake}, not this
+ * mix — Session LAN uses this derivation whenever Ability advertises
+ * Encrypt.ECDHE.
  */
 export function deriveEncryptionKey(uuid: string, mrskey: string, mac: string): Buffer {
     const mix = uuid.substring(3, 22) + mrskey.substring(1, 9) + mac + mrskey.substring(10, 28);
@@ -95,8 +108,9 @@ export function decodeEncryptEcdheSetAck(payload: MerossPayload): EncryptEcdhe {
 }
 
 /**
- * Holds the client's P-256 secret so SET / SETACK can finish without a
- * transport knowing ECDH.
+ * Unpaired P-256 key agreement (Suite `ka: ecdhe256`) before the device has an
+ * account key. Configured boards use {@link deriveEncryptionKey} instead;
+ * pairing flows SET Encrypt.ECDHE with {@link encodeEncryptEcdheSet}.
  */
 export class EcdheHandshake {
     private readonly ecdh = createECDH('prime256v1');

@@ -293,6 +293,7 @@ export {
     deriveEncryptionKey,
     encodeEncryptEcdheSet,
     encryptPayload,
+    macAddressFromUuid,
     supportsLanEncryption
 } from './encryption';
 export type { EncryptEcdhe, EncryptSuite } from './encryption';

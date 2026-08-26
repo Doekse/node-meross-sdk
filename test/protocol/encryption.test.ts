@@ -14,6 +14,7 @@ import {
     deriveEncryptionKey,
     encodeEncryptEcdheSet,
     encryptPayload,
+    macAddressFromUuid,
     supportsLanEncryption
 } from '../../src/protocol/encryption';
 import { decodeMessage, encodeMessage } from '../../src/protocol/message';
@@ -34,6 +35,13 @@ function loadFixture(name: string) {
 describe('mrskey AES-256-CBC', () => {
     it('derives a 32-byte key from the uuid/mrskey/mac mix', () => {
         assert.equal(key.toString('utf8'), 'c197d53870ee031ee86446050a7ae2c2');
+    });
+
+    it('infers MAC from the trailing 12 hex digits of the uuid', () => {
+        assert.equal(
+            macAddressFromUuid('2206138957096651080248e1e99705a4'),
+            '48:e1:e9:97:05:a4'
+        );
     });
 
     it('encrypts with a frozen ciphertext so padding and IV stay pinned', () => {
