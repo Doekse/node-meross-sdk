@@ -586,17 +586,25 @@ export {
 export type { DndState } from './codecs/dnd';
 export {
     CONTROL_ALARM_NAMESPACE,
+    CONTROL_BEEP_NAMESPACE,
     decodeAlarmGetAck,
     decodeAlarmPush,
+    decodeBeepGetAck,
+    decodeBeepPush,
     encodeAlarmGet,
     encodeAlarmLinkedSet,
-    encodeAlarmSet
+    encodeAlarmSet,
+    encodeBeepGet,
+    encodeBeepSet
 } from './codecs/alarm';
 export type {
     AlarmChannelState,
     AlarmGetOptions,
     AlarmLinkedSetOptions,
-    AlarmSetOptions
+    AlarmSetOptions,
+    BeepChannelState,
+    BeepGetOptions,
+    BeepSetOptions
 } from './codecs/alarm';
 export {
     DIGEST_TIMERX_NAMESPACE,

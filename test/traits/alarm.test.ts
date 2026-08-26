@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { Endpoint } from '../../src/endpoint';
 import {
     CONTROL_ALARM_NAMESPACE,
+    CONTROL_BEEP_NAMESPACE,
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
@@ -14,32 +15,37 @@ const KEY = 'stub-key';
 const UUID = '1906017373338625184434298f1ed9bd';
 const CHANNEL = 0;
 
-function createHarness(event: Record<string, unknown> = {
-    interConn: { value: 2, timestamp: 0 },
-    security: { value: 1, timestamp: 0 }
-}): {
+function createHarness(options: {
+    event?: Record<string, unknown>;
+    namespaces?: ReadonlySet<string>;
+} = {}): {
     trait: AlarmTrait;
     requests: MerossMessage[];
     changes: Record<string, unknown>[];
 } {
+    const event = options.event ?? {
+        interConn: { value: 2, timestamp: 0 },
+        security: { value: 1, timestamp: 0 }
+    };
     const requests: MerossMessage[] = [];
     const changes: Record<string, unknown>[] = [];
     const endpoint = new Endpoint({ id: UUID, traits: ['alarm'] });
     const bind: AlarmTraitBind = {
         uuid: UUID,
         channel: CHANNEL,
-        request: async (options) => {
+        namespaces: options.namespaces ?? new Set([CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE]),
+        request: async (requestOptions) => {
             const message = encodeMessage({
-                namespace: options.namespace,
-                method: options.method,
+                namespace: requestOptions.namespace,
+                method: requestOptions.method,
                 key: KEY,
                 from: '/app/test/subscribe',
-                payload: options.payload,
+                payload: requestOptions.payload,
                 uuid: UUID
             });
             requests.push(message);
             return encodeMessage({
-                namespace: options.namespace,
+                namespace: requestOptions.namespace,
                 method: 'GETACK',
                 key: KEY,
                 from: `/appliance/${UUID}/publish`,
@@ -61,9 +67,9 @@ function createHarness(event: Record<string, unknown> = {
     return { trait: new AlarmTrait(bind), requests, changes };
 }
 
-function pushMessage(payload: Record<string, unknown>): MerossMessage {
+function pushMessage(namespace: string, payload: Record<string, unknown>): MerossMessage {
     return encodeMessage({
-        namespace: CONTROL_ALARM_NAMESPACE,
+        namespace,
         method: 'PUSH',
         key: KEY,
         from: `/appliance/${UUID}/publish`,
@@ -72,9 +78,9 @@ function pushMessage(payload: Record<string, unknown>): MerossMessage {
     });
 }
 
-function getAck(payload: Record<string, unknown>): MerossMessage {
+function getAck(namespace: string, payload: Record<string, unknown>): MerossMessage {
     return encodeMessage({
-        namespace: CONTROL_ALARM_NAMESPACE,
+        namespace,
         method: 'GETACK',
         key: KEY,
         from: `/appliance/${UUID}/publish`,
@@ -109,9 +115,42 @@ describe('AlarmTrait', () => {
         assert.deepEqual(changes[0], { linked: false });
     });
 
+    it('setBeep SETs Control.Beep onoff under the alarm key', async () => {
+        const { trait, requests, changes } = createHarness();
+        await trait.setBeep(true);
+        assert.equal(requests[0]?.header.namespace, CONTROL_BEEP_NAMESPACE);
+        assert.deepEqual(requests[0]?.payload, {
+            alarm: [{ channel: CHANNEL, onoff: 1 }]
+        });
+        assert.equal(trait.isBeepOn(), true);
+        assert.deepEqual(changes[0], { beep: true });
+    });
+
+    it('no-ops setBeep when Control.Beep is absent', async () => {
+        const { trait, requests, changes } = createHarness({
+            namespaces: new Set([CONTROL_ALARM_NAMESPACE])
+        });
+        const result = await trait.setBeep(true);
+        assert.equal(result, undefined);
+        assert.equal(requests.length, 0);
+        assert.equal(changes.length, 0);
+        assert.equal(trait.isBeepOn(), undefined);
+    });
+
+    it('no-ops setOn and setLinked when Control.Alarm is absent', async () => {
+        const { trait, requests, changes } = createHarness({
+            namespaces: new Set([CONTROL_BEEP_NAMESPACE])
+        });
+        assert.equal(await trait.setOn(true), undefined);
+        assert.equal(await trait.setLinked(true), undefined);
+        assert.equal(requests.length, 0);
+        assert.equal(changes.length, 0);
+        assert.equal(trait.isOn(), undefined);
+    });
+
     it('handlePush applies this channel only', () => {
         const { trait, changes } = createHarness();
-        trait.handlePush(pushMessage({
+        trait.handlePush(pushMessage(CONTROL_ALARM_NAMESPACE, {
             alarm: [
                 { channel: CHANNEL, event: { security: { value: 1, timestamp: 10 } } },
                 { channel: 1, event: { security: { value: 2, timestamp: 10 } } }
@@ -121,9 +160,43 @@ describe('AlarmTrait', () => {
         assert.deepEqual(changes, [{ on: true }]);
     });
 
+    it('handlePush applies Beep for this channel and dedupes', () => {
+        const { trait, changes } = createHarness();
+        const payload = {
+            alarm: [
+                { channel: CHANNEL, onoff: 1 },
+                { channel: 1, onoff: 0 }
+            ]
+        };
+        trait.handlePush(pushMessage(CONTROL_BEEP_NAMESPACE, payload));
+        trait.handlePush(pushMessage(CONTROL_BEEP_NAMESPACE, payload));
+        assert.equal(trait.isBeepOn(), true);
+        assert.deepEqual(changes, [{ beep: true }]);
+    });
+
+    it('ignores PUSH for namespaces the bind does not advertise', () => {
+        const { trait, changes } = createHarness({
+            namespaces: new Set([CONTROL_ALARM_NAMESPACE])
+        });
+        trait.handlePush(pushMessage(CONTROL_BEEP_NAMESPACE, {
+            alarm: [{ channel: CHANNEL, onoff: 1 }]
+        }));
+        assert.equal(changes.length, 0);
+        assert.equal(trait.isBeepOn(), undefined);
+
+        const beepOnly = createHarness({
+            namespaces: new Set([CONTROL_BEEP_NAMESPACE])
+        });
+        beepOnly.trait.handlePush(pushMessage(CONTROL_ALARM_NAMESPACE, {
+            alarm: [{ channel: CHANNEL, event: { security: { value: 1, timestamp: 10 } } }]
+        }));
+        assert.equal(beepOnly.changes.length, 0);
+        assert.equal(beepOnly.trait.isOn(), undefined);
+    });
+
     it('ignores subdevice rows and PUSH when uuid does not match the bind', () => {
         const { trait, changes } = createHarness();
-        trait.handlePush(pushMessage({
+        trait.handlePush(pushMessage(CONTROL_ALARM_NAMESPACE, {
             alarm: [{
                 channel: CHANNEL,
                 subId: '123456',
@@ -150,7 +223,7 @@ describe('AlarmTrait', () => {
 
     it('applies maSecurity PUSH as the hub-wide siren', () => {
         const { trait, changes } = createHarness();
-        trait.handlePush(pushMessage({
+        trait.handlePush(pushMessage(CONTROL_ALARM_NAMESPACE, {
             alarm: [{
                 channel: CHANNEL,
                 event: { maSecurity: { value: 1, timestamp: 10 } }
@@ -162,9 +235,9 @@ describe('AlarmTrait', () => {
 
     it('setOn uses maSecurity after a maSecurity GETACK', async () => {
         const { trait, requests } = createHarness({
-            maSecurity: { value: 2, timestamp: 0 }
+            event: { maSecurity: { value: 2, timestamp: 0 } }
         });
-        trait.handlePush(getAck({
+        trait.handlePush(getAck(CONTROL_ALARM_NAMESPACE, {
             alarm: [{
                 channel: CHANNEL,
                 event: { maSecurity: { value: 2, timestamp: 0 } }

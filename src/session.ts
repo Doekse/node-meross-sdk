@@ -591,6 +591,7 @@ export class Session extends EventEmitter<SessionEvents> {
             alarmTrait = new AlarmTrait({
                 uuid: physical.uuid,
                 channel,
+                namespaces,
                 request,
                 emitChange: (values) => endpoint.emit('change', {
                     trait: 'alarm',

@@ -216,7 +216,7 @@ Traits are present only when the board advertised the matching ability. Use opti
 | `diffuser`  | Diffusers                          | Light + spray mode, brightness, RGB                                                   |
 | `sprinkler` | Hub sprinkler valves               | `setOn`, `setDuration`, `getSchedule`                                                 |
 | `media`     | Speakers                           | `setMuted`, `setVolume`, `setSong`                                                    |
-| `alarm`     | Hub sirens                         | `setOn(on, durationSeconds?)`, `setLinked`                                            |
+| `alarm`     | Hub sirens, board chimes           | `setOn(on, durationSeconds?)`, `setLinked`, `setBeep`                                 |
 | `dnd`       | LED mute on the board              | `isOn()`, `setOn(boolean)`                                                            |
 | `system`    | Board firmware, time, diagnostics  | `getFirmware` / `getHardware` / `getTime`, `setTimezone`, `getDebug`, `getPosition` / `setPosition`, `clockSkewSeconds` |
 | `timer`     | ToggleX clock schedules            | `list()`, `set()`, `setEnabled()`, `remove()`                                         |

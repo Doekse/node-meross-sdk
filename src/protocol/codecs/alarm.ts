@@ -2,6 +2,11 @@ import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
 export const CONTROL_ALARM_NAMESPACE = 'Appliance.Control.Alarm';
+/**
+ * Chime / buzzer. Shares the `alarm` payload key with Control.Alarm but the
+ * entry shape is `{ channel, onoff }` — keep decoders separate.
+ */
+export const CONTROL_BEEP_NAMESPACE = 'Appliance.Control.Beep';
 
 /** Wire `value`: 1 = execute (siren on), 2 = normal (off). */
 const EXECUTE = 1;
@@ -153,4 +158,67 @@ function decodeActionValue(field: unknown): boolean | undefined {
         return undefined;
     }
     return value === EXECUTE;
+}
+
+export interface BeepGetOptions {
+    channel: number;
+}
+
+export interface BeepSetOptions {
+    channel: number;
+    on: boolean;
+}
+
+export interface BeepChannelState {
+    channel: number;
+    on: boolean;
+}
+
+/** GET `{ alarm: [{ channel }] }` — same key as Control.Alarm, different namespace. */
+export function encodeBeepGet(options: BeepGetOptions): MerossPayload {
+    return encodeArray('alarm', { channel: options.channel });
+}
+
+/** SET `{ alarm: [{ channel, onoff }] }` with onoff 0/1. */
+export function encodeBeepSet(options: BeepSetOptions): MerossPayload {
+    return encodeArray('alarm', {
+        channel: options.channel,
+        onoff: options.on ? 1 : 0
+    });
+}
+
+export function decodeBeepGetAck(payload: MerossPayload): BeepChannelState[] {
+    return decodeControlBeep(payload);
+}
+
+export function decodeBeepPush(payload: MerossPayload): BeepChannelState[] {
+    return decodeControlBeep(payload);
+}
+
+/**
+ * GETACK and PUSH may be a single object or an array.
+ */
+function decodeControlBeep(payload: MerossPayload): BeepChannelState[] {
+    const raw = payload.alarm;
+    if (Array.isArray(raw)) {
+        return raw.map(decodeBeepEntry);
+    }
+    if (typeof raw === 'object' && raw !== null) {
+        return [decodeBeepEntry(raw)];
+    }
+    throw new ProtocolError('Control.Beep payload must contain an alarm object or array');
+}
+
+function decodeBeepEntry(item: unknown): BeepChannelState {
+    if (typeof item !== 'object' || item === null) {
+        throw new ProtocolError('Control.Beep entry must be an object');
+    }
+    const record = item as Record<string, unknown>;
+    if (typeof record.channel !== 'number') {
+        throw new ProtocolError('Control.Beep entry requires channel');
+    }
+    if (typeof record.onoff !== 'number' || (record.onoff !== 0 && record.onoff !== 1)) {
+        throw new ProtocolError('Control.Beep onoff must be 0 or 1');
+    }
+    return { channel: record.channel, on: record.onoff === 1 };
 }

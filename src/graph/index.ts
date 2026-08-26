@@ -1,6 +1,7 @@
 import type { CloudDevice, CloudSubDevice } from '../cloud';
 import type { TraitName } from '../endpoint';
 import type { ClassHint, InventoryRow } from '../inventory';
+import { CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE } from '../protocol/codecs/alarm';
 import { CONSUMPTIONH_NAMESPACE } from '../protocol/codecs/consumptionh';
 import { CONSUMPTIONX_NAMESPACE } from '../protocol/codecs/consumptionx';
 import { ELECTRICITY_NAMESPACE, ELECTRICITYX_NAMESPACE } from '../protocol/codecs/electricity';
@@ -127,7 +128,7 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
     const boardEnergy = ELECTRICITY_NAMESPACE in ability || CONSUMPTIONX_NAMESPACE in ability;
     const channelEnergy = ELECTRICITYX_NAMESPACE in ability || CONSUMPTIONH_NAMESPACE in ability;
     const hasDnd = 'Appliance.System.DNDMode' in ability;
-    const hasAlarm = 'Appliance.Control.Alarm' in ability;
+    const hasAlarm = CONTROL_ALARM_NAMESPACE in ability || CONTROL_BEEP_NAMESPACE in ability;
     const hasTimerX = TIMERX_NAMESPACE in ability;
     const hasTriggerX = TRIGGERX_NAMESPACE in ability;
     const isHub = 'Appliance.Hub.SubdeviceList' in ability || all.digest.hub !== undefined;
@@ -149,7 +150,7 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
         endpoints: isHub
             ? enrollHub(uuid, name, model, online, hasDnd, hasAlarm, all, input.subDevices ?? [])
             : enrollBoard(
-                uuid, name, model, online, boardEnergy, channelEnergy, hasDnd, hasTimerX, hasTriggerX,
+                uuid, name, model, online, boardEnergy, channelEnergy, hasDnd, hasAlarm, hasTimerX, hasTriggerX,
                 ability, all, input.cloud
             )
     };
@@ -254,6 +255,7 @@ function enrollBoard(
     boardEnergy: boolean,
     channelEnergy: boolean,
     hasDnd: boolean,
+    hasAlarm: boolean,
     hasTimerX: boolean,
     hasTriggerX: boolean,
     ability: AbilityMap,
@@ -293,6 +295,9 @@ function enrollBoard(
         }
         if (hasDnd && channel === 0 && !traits.includes('dnd')) {
             extra.push('dnd');
+        }
+        if (hasAlarm && channel === 0 && !traits.includes('alarm')) {
+            extra.push('alarm');
         }
         // ToggleX-shaped TimerX extend only; cover/climate/humidifier/speaker use other extend objects.
         if (
@@ -417,6 +422,10 @@ function enrollBoard(
 
     if (hasDnd && !taken.has(0)) {
         add(0, 'socket', ['dnd']);
+    }
+
+    if (hasAlarm && !taken.has(0)) {
+        add(0, 'socket', ['alarm']);
     }
 
     return endpoints;

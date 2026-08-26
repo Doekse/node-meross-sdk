@@ -1,5 +1,5 @@
 import type { TraitName } from '../endpoint';
-import { CONTROL_ALARM_NAMESPACE } from '../protocol/codecs/alarm';
+import { CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE } from '../protocol/codecs/alarm';
 import {
     ALARM_CONFIG_NAMESPACE,
     ALARM_NAMESPACE,
@@ -308,6 +308,10 @@ const POLL: Record<string, PollSpec> = {
     },
     [CONTROL_ALARM_NAMESPACE]: {
         ...DEFAULT,
+        payload: channelList('alarm', 'alarm')
+    },
+    [CONTROL_BEEP_NAMESPACE]: {
+        ...SMART_CONFIG,
         payload: channelList('alarm', 'alarm')
     },
     [HUB_TOGGLEX_NAMESPACE]: {

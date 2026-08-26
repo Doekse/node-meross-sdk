@@ -964,6 +964,57 @@ describe('enrollPhysicalDevice', () => {
         );
     });
 
+    it('pairs the hub parent with alarm when Control.Beep is advertised', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Hub.SubdeviceList': {},
+                    'Appliance.Control.Beep': {}
+                }
+            },
+            allPayload: {
+                all: {
+                    system: {
+                        hardware: { type: 'msh300', uuid: HUB_UUID },
+                        firmware: {},
+                        online: { status: 1 }
+                    },
+                    digest: {
+                        hub: { subdevice: [] }
+                    }
+                }
+            }
+        });
+        assert.deepEqual(device.endpoints[0]?.traits, ['system', 'alarm']);
+    });
+
+    it('attaches alarm on channel 0 when Control.Beep is advertised on a board', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Fan': {},
+                    'Appliance.Control.Beep': {}
+                }
+            },
+            allPayload: {
+                all: {
+                    system: {
+                        hardware: { type: 'map100', uuid: UUID },
+                        firmware: {},
+                        online: { status: 1 }
+                    },
+                    digest: {
+                        fan: [{ channel: 0 }]
+                    }
+                }
+            }
+        });
+        const board = device.endpoints.find((endpoint) => endpoint.channel === 0);
+        assert.ok(board?.traits.includes('fan'));
+        assert.ok(board?.traits.includes('alarm'));
+        assert.ok(board?.traits.includes('system'));
+    });
+
     it('enrolls MST100 sprinklers with sprinkler trait and MS120 motion sensors', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: {

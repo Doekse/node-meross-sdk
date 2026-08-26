@@ -16,7 +16,7 @@ import {
 } from '../../src/graph/poller';
 import { SYSTEM_ALL_NAMESPACE } from '../../src/graph/system-all';
 import type { AbilityMap } from '../../src/graph/ability';
-import { CONTROL_ALARM_NAMESPACE } from '../../src/protocol/codecs/alarm';
+import { CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE } from '../../src/protocol/codecs/alarm';
 import { CONSUMPTION_CONFIG_NAMESPACE } from '../../src/protocol/codecs/consumptionconfig';
 import { CONSUMPTIONH_NAMESPACE } from '../../src/protocol/codecs/consumptionh';
 import { CONSUMPTIONX_NAMESPACE } from '../../src/protocol/codecs/consumptionx';
@@ -185,6 +185,20 @@ describe('buildPollJobs', () => {
             namespace: CONTROL_ALARM_NAMESPACE,
             strategy: 'default',
             periodMs: 0,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
+            payload: { alarm: [{ channel: CHANNEL }] }
+        });
+    });
+
+    it('registers Control.Beep as SMART_CONFIG with alarm-keyed channel list', () => {
+        const jobs = buildPollJobs(
+            ability(CONTROL_BEEP_NAMESPACE),
+            [{ channel: CHANNEL, traits: ['alarm'] }]
+        );
+        assert.deepEqual(job(jobs, CONTROL_BEEP_NAMESPACE), {
+            namespace: CONTROL_BEEP_NAMESPACE,
+            strategy: 'smart',
+            periodMs: SENSOR_SLOW_PERIOD_MS,
             periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { alarm: [{ channel: CHANNEL }] }
         });
