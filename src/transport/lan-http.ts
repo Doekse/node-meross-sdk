@@ -9,7 +9,13 @@ import {
 } from '../protocol';
 import type { MerossMessage, MerossPayload } from '../protocol';
 
-/** LAN is on-link; keep this well under the MQTT pending timeout. */
+/**
+ * First-attempt LAN HTTP budget. Device HTTP times out with no apparent cause,
+ * so attempts escalate from here (1s → 2s → 4s) the way meross_lan escalates
+ * its connect timeout, rather than burning the router's error budget on one abort.
+ * Raising this shortens the escalation, since the total must still fit inside
+ * {@link DEFAULT_COMMAND_TIMEOUT_MS}.
+ */
 export const DEFAULT_LAN_TIMEOUT_MS = 1_000;
 
 export interface LanHttpRequestOptions {
@@ -26,6 +32,7 @@ export interface LanHttpTransportOptions {
     from: string;
     dispatcher?: ProtocolDispatcher;
     fetch?: typeof globalThis.fetch;
+    /** First-attempt abort budget; each retry doubles it while the total still fits. */
     timeoutMs?: number;
 }
 
@@ -33,6 +40,9 @@ export interface LanHttpTransportOptions {
  * POST signed envelopes to `http://{ip}/config`. The HTTP body is the ACK, so
  * this still registers with {@link ProtocolDispatcher} to share pending ids
  * with MQTT (a cloud PUSH can arrive while a LAN GET is in flight).
+ *
+ * POSTs to the same uuid are serialized: Meross devices mishandle concurrent
+ * HTTP ([meross_lan #206](https://github.com/krahabb/meross_lan/issues/206)).
  */
 export class LanHttpTransport {
     readonly dispatcher: ProtocolDispatcher;
@@ -41,6 +51,8 @@ export class LanHttpTransport {
     private readonly from: string;
     private readonly fetchFn: typeof globalThis.fetch;
     private readonly timeoutMs: number;
+    /** Tail of each uuid's POST chain, not a backlog: one entry per device. */
+    private readonly queues = new Map<string, Promise<void>>();
 
     constructor(options: LanHttpTransportOptions) {
         this.key = options.key;
@@ -51,6 +63,28 @@ export class LanHttpTransport {
     }
 
     async request(options: LanHttpRequestOptions): Promise<MerossMessage> {
+        const previous = this.queues.get(options.uuid);
+        let release!: () => void;
+        this.queues.set(options.uuid, new Promise<void>((resolve) => {
+            release = resolve;
+        }));
+
+        await previous;
+        try {
+            return await this.post(options);
+        } finally {
+            release();
+        }
+    }
+
+    /**
+     * Escalates the abort budget across attempts, stopping while the total
+     * still fits inside {@link DEFAULT_COMMAND_TIMEOUT_MS}: letting the pending
+     * timer fire first would raise CommandError, which TransportRouter treats
+     * as a delivered command and does not fail over to MQTT. Every exit settles
+     * the pending id, so the returned promise never outlives the POST.
+     */
+    private async post(options: LanHttpRequestOptions): Promise<MerossMessage> {
         const message = encodeMessage({
             namespace: options.namespace,
             method: options.method,
@@ -59,23 +93,70 @@ export class LanHttpTransport {
             payload: options.payload,
             uuid: options.uuid
         });
-        const reply = this.dispatcher.pending.register(
-            message.header.messageId,
-            DEFAULT_COMMAND_TIMEOUT_MS
-        );
+        const messageId = message.header.messageId;
+        const reply = this.dispatcher.pending.register(messageId, DEFAULT_COMMAND_TIMEOUT_MS);
 
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-        try {
-            let body = JSON.stringify(message);
-            if (options.encryptionKey) {
-                body = encryptPayload(body, options.encryptionKey);
+        // Encode once so retries reuse the same messageId (pending rejects duplicates).
+        let body = JSON.stringify(message);
+        if (options.encryptionKey) {
+            body = encryptPayload(body, options.encryptionKey);
+        }
+
+        let attemptTimeoutMs = this.timeoutMs;
+        let elapsedMs = 0;
+        for (;;) {
+            try {
+                await this.attempt(options, body, attemptTimeoutMs);
+                break;
+            } catch (error) {
+                if (error instanceof Error && error.name === 'AbortError') {
+                    elapsedMs += attemptTimeoutMs;
+                    const nextTimeoutMs = attemptTimeoutMs * 2;
+                    if (elapsedMs + nextTimeoutMs < DEFAULT_COMMAND_TIMEOUT_MS) {
+                        attemptTimeoutMs = nextTimeoutMs;
+                        continue;
+                    }
+                    this.dispatcher.pending.reject(messageId, new TransportError(
+                        `LAN HTTP timed out after ${elapsedMs}ms`,
+                        'LAN_TIMEOUT'
+                    ));
+                    break;
+                }
+
+                this.dispatcher.pending.reject(
+                    messageId,
+                    error instanceof ProtocolError || error instanceof TransportError
+                        ? error
+                        : new TransportError(
+                            error instanceof Error ? error.message : String(error),
+                            'LAN_UNREACHABLE'
+                        )
+                );
+                break;
             }
+        }
 
+        return reply;
+    }
+
+    /**
+     * Lets the abort surface as AbortError rather than normalising it here, so
+     * {@link post} can tell a transient blip from a hard failure.
+     */
+    private async attempt(
+        options: LanHttpRequestOptions,
+        body: string,
+        timeoutMs: number
+    ): Promise<void> {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
             const response = await this.fetchFn(`http://${options.ip}/config`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': options.encryptionKey ? 'application/octet-stream' : 'application/json'
+                    'Content-Type': options.encryptionKey
+                        ? 'application/octet-stream'
+                        : 'application/json'
                 },
                 body,
                 signal: controller.signal
@@ -93,30 +174,11 @@ export class LanHttpTransport {
                 text = decryptPayload(text, options.encryptionKey);
             }
 
-            const decoded = decodeMessage(text, this.key);
-            if (this.dispatcher.handle(decoded) !== 'reply') {
+            if (this.dispatcher.handle(decodeMessage(text, this.key)) !== 'reply') {
                 throw new ProtocolError('LAN HTTP response did not match a pending request');
             }
-        } catch (error) {
-            let normalized: Error;
-            if (error instanceof ProtocolError || error instanceof TransportError) {
-                normalized = error;
-            } else if (error instanceof Error && error.name === 'AbortError') {
-                normalized = new TransportError(
-                    `LAN HTTP timed out after ${this.timeoutMs}ms`,
-                    'LAN_TIMEOUT'
-                );
-            } else {
-                normalized = new TransportError(
-                    error instanceof Error ? error.message : String(error),
-                    'LAN_UNREACHABLE'
-                );
-            }
-            this.dispatcher.pending.reject(message.header.messageId, normalized);
         } finally {
             clearTimeout(timer);
         }
-
-        return reply;
     }
 }

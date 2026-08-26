@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import { CommandError, ProtocolError, TransportError } from '../../src/errors';
 import {
+    DEFAULT_COMMAND_TIMEOUT_MS,
     ProtocolDispatcher,
     TOGGLEX_NAMESPACE,
     decodeMessage,
@@ -75,6 +76,17 @@ function createTransport(
         ...overrides
     });
     return { transport, calls };
+}
+
+/** Drain nested microtasks so a retry can arm its next abort timer under fake time. */
+function flushMicrotasks(): Promise<void> {
+    return Promise.resolve().then(() => Promise.resolve());
+}
+
+function abortError(): Error {
+    const error = new Error('aborted');
+    error.name = 'AbortError';
+    return error;
 }
 
 describe('LanHttpTransport', () => {
@@ -199,13 +211,11 @@ describe('LanHttpTransport', () => {
         );
     });
 
-    it('times out when the device never answers', async (t) => {
+    it('times out after escalating 1s/2s/4s when the device never answers', async (t) => {
         t.mock.timers.enable({ apis: ['setTimeout'] });
-        const { transport } = createTransport((_url, init) => new Promise((_resolve, reject) => {
+        const { transport, calls } = createTransport((_url, init) => new Promise((_resolve, reject) => {
             init.signal?.addEventListener('abort', () => {
-                const error = new Error('aborted');
-                error.name = 'AbortError';
-                reject(error);
+                reject(abortError());
             });
         }));
 
@@ -215,11 +225,66 @@ describe('LanHttpTransport', () => {
             namespace: TOGGLEX_NAMESPACE,
             method: 'GET'
         });
+        // Per-uuid queue awaits the prior slot before arming the abort timer.
+        await flushMicrotasks();
+        // 1s → 2s → 4s; a fourth attempt (8s) would outrun the pending timer.
         t.mock.timers.tick(DEFAULT_LAN_TIMEOUT_MS);
+        await flushMicrotasks();
+        t.mock.timers.tick(DEFAULT_LAN_TIMEOUT_MS * 2);
+        await flushMicrotasks();
+        t.mock.timers.tick(DEFAULT_LAN_TIMEOUT_MS * 4);
+        await flushMicrotasks();
         await assert.rejects(
             pending,
-            (err: unknown) => err instanceof TransportError && err.code === 'LAN_TIMEOUT'
+            (err: unknown) =>
+                err instanceof TransportError
+                && err.code === 'LAN_TIMEOUT'
+                && err.message === `LAN HTTP timed out after ${DEFAULT_LAN_TIMEOUT_MS * 7}ms`
         );
+        assert.equal(calls.length, 3);
+        assert.ok(DEFAULT_LAN_TIMEOUT_MS * 7 < DEFAULT_COMMAND_TIMEOUT_MS);
+        const bodies = calls.map((call) => String(call.init.body));
+        assert.equal(new Set(bodies).size, 1);
+        const messageIds = bodies.map((body) => decodeMessage(body, KEY).header.messageId);
+        assert.equal(new Set(messageIds).size, 1);
+    });
+
+    it('retries on AbortError and reuses the same messageId', async (t) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let attempts = 0;
+        const { transport, calls } = createTransport((_url, init) => {
+            attempts++;
+            if (attempts < 3) {
+                return new Promise((_resolve, reject) => {
+                    init.signal?.addEventListener('abort', () => {
+                        reject(abortError());
+                    });
+                });
+            }
+            const sent = decodeMessage(String(init.body), KEY);
+            return Promise.resolve(jsonResponse(ackFor(sent, 'GETACK')));
+        });
+
+        const pending = transport.request({
+            uuid: UUID,
+            ip: IP,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        await flushMicrotasks();
+        t.mock.timers.tick(DEFAULT_LAN_TIMEOUT_MS);
+        await flushMicrotasks();
+        t.mock.timers.tick(DEFAULT_LAN_TIMEOUT_MS * 2);
+        await flushMicrotasks();
+        const reply = await pending;
+
+        assert.equal(reply.header.method, 'GETACK');
+        assert.equal(calls.length, 3);
+        const messageIds = calls.map(
+            (call) => decodeMessage(String(call.init.body), KEY).header.messageId
+        );
+        assert.equal(new Set(messageIds).size, 1);
+        assert.equal(messageIds[0], reply.header.messageId);
     });
 
     it('maps a fetch failure to LAN_UNREACHABLE', async () => {
@@ -230,5 +295,121 @@ describe('LanHttpTransport', () => {
             transport.request({ uuid: UUID, ip: IP, namespace: TOGGLEX_NAMESPACE, method: 'GET' }),
             (err: unknown) => err instanceof TransportError && err.code === 'LAN_UNREACHABLE'
         );
+    });
+
+    it('serializes concurrent requests to one uuid in order', async () => {
+        const events: string[] = [];
+        let fetchCount = 0;
+        let unblockFirst!: () => void;
+        const firstBlocked = new Promise<void>((resolve) => {
+            unblockFirst = resolve;
+        });
+
+        const { transport } = createTransport(async (_url, init) => {
+            const n = ++fetchCount;
+            events.push(`fetch-${n}-start`);
+            const sent = decodeMessage(String(init.body), KEY);
+            if (n === 1) {
+                await firstBlocked;
+            }
+            events.push(`fetch-${n}-end`);
+            return jsonResponse(ackFor(sent, 'GETACK'));
+        });
+
+        const first = transport.request({
+            uuid: UUID,
+            ip: IP,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        while (fetchCount < 1) {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+
+        const second = transport.request({
+            uuid: UUID,
+            ip: IP,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(fetchCount, 1);
+        assert.deepEqual(events, ['fetch-1-start']);
+
+        unblockFirst();
+        const [firstReply, secondReply] = await Promise.all([first, second]);
+        assert.equal(firstReply.header.method, 'GETACK');
+        assert.equal(secondReply.header.method, 'GETACK');
+        assert.deepEqual(events, [
+            'fetch-1-start',
+            'fetch-1-end',
+            'fetch-2-start',
+            'fetch-2-end'
+        ]);
+    });
+
+    it('does not serialize requests across different uuids', async () => {
+        let inFlight = 0;
+        let peakInFlight = 0;
+        const gates: Array<() => void> = [];
+
+        const { transport } = createTransport(async (_url, init) => {
+            inFlight++;
+            peakInFlight = Math.max(peakInFlight, inFlight);
+            const sent = decodeMessage(String(init.body), KEY);
+            await new Promise<void>((resolve) => {
+                gates.push(resolve);
+            });
+            inFlight--;
+            return jsonResponse(ackFor(sent, 'GETACK'));
+        });
+
+        const first = transport.request({
+            uuid: UUID,
+            ip: IP,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        const second = transport.request({
+            uuid: '00000000-0000-4000-8000-000000000002',
+            ip: '192.168.1.51',
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+
+        while (gates.length < 2) {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+        assert.equal(peakInFlight, 2);
+        for (const release of gates) {
+            release();
+        }
+        await Promise.all([first, second]);
+    });
+
+    it('releases the per-uuid queue after a failed attempt', async () => {
+        let calls = 0;
+        const { transport } = createTransport(async (_url, init) => {
+            calls++;
+            if (calls === 1) {
+                throw new Error('ECONNREFUSED');
+            }
+            const sent = decodeMessage(String(init.body), KEY);
+            return jsonResponse(ackFor(sent, 'GETACK'));
+        });
+
+        await assert.rejects(
+            transport.request({ uuid: UUID, ip: IP, namespace: TOGGLEX_NAMESPACE, method: 'GET' }),
+            (err: unknown) => err instanceof TransportError && err.code === 'LAN_UNREACHABLE'
+        );
+
+        const reply = await transport.request({
+            uuid: UUID,
+            ip: IP,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        assert.equal(calls, 2);
+        assert.equal(reply.header.method, 'GETACK');
     });
 });
