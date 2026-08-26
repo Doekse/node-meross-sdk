@@ -4,6 +4,11 @@ import type { ClassHint, InventoryRow } from '../inventory';
 import { CONSUMPTIONH_NAMESPACE } from '../protocol/codecs/consumptionh';
 import { CONSUMPTIONX_NAMESPACE } from '../protocol/codecs/consumptionx';
 import { ELECTRICITY_NAMESPACE, ELECTRICITYX_NAMESPACE } from '../protocol/codecs/electricity';
+import type {
+    SystemFirmwareState,
+    SystemHardwareState,
+    SystemTimeState
+} from '../protocol/codecs/system';
 import { TIMERX_NAMESPACE } from '../protocol/codecs/timerx';
 import { TRIGGERX_NAMESPACE } from '../protocol/codecs/triggerx';
 import { TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
@@ -95,6 +100,15 @@ export interface PhysicalDevice {
     macAddress?: string;
     /** Digest/cloud snapshot so DeviceAvailability can start before the first Online PUSH. */
     online: boolean;
+    /**
+     * System.All board snapshot so SystemTrait can start before the first poll.
+     * Standalone Firmware/Hardware GETs stay a fallback when All omitted fields.
+     */
+    system: {
+        firmware: SystemFirmwareState;
+        hardware: SystemHardwareState;
+        time?: SystemTimeState;
+    };
     endpoints: readonly GraphEndpoint[];
 }
 
@@ -126,6 +140,11 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
         innerIp: all.firmware.innerIp,
         macAddress: all.hardware.macAddress,
         online,
+        system: {
+            firmware: all.firmware,
+            hardware: all.hardware,
+            ...(all.time ? { time: all.time } : {})
+        },
         endpoints: isHub
             ? enrollHub(uuid, name, model, online, hasDnd, hasAlarm, all, input.subDevices ?? [])
             : enrollBoard(
@@ -173,8 +192,8 @@ export class DeviceGraph {
     }
 
     /**
-     * Drops trait-less rows so a hub board with no alarm/dnd does not appear
-     * in inventory. Online is omitted so the catalog cannot go stale after PUSH.
+     * Drops trait-less rows (unclassified hub children). The hub parent stays
+     * visible when it carries system / alarm / dnd.
      */
     inventoryRows(): InventoryRow[] {
         return [...this.physical.values()].flatMap((device) =>
@@ -258,6 +277,10 @@ function enrollBoard(
             ? (entry as { devName?: unknown }).devName
             : undefined;
         const extra: TraitName[] = [];
+        // Board diagnostics live on channel 0 / hub root only.
+        if (channel === 0 && !traits.includes('system')) {
+            extra.push('system');
+        }
         if (
             (channelEnergy && classHint === 'socket')
             || (boardEnergy && classHint !== 'cover' && parentId === undefined)
@@ -412,7 +435,7 @@ function enrollHub(
     all: SystemAll,
     cloudSubs: CloudSubDevice[]
 ): GraphEndpoint[] {
-    const hubTraits: TraitName[] = [];
+    const hubTraits: TraitName[] = ['system'];
     if (hasAlarm) {
         hubTraits.push('alarm');
     }

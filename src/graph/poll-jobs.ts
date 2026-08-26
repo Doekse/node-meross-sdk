@@ -73,6 +73,13 @@ import {
     SMOKE_CONFIG_NAMESPACE
 } from '../protocol/codecs/sensor';
 import { SPRAY_NAMESPACE } from '../protocol/codecs/spray';
+import {
+    SYSTEM_DEBUG_NAMESPACE,
+    SYSTEM_FIRMWARE_NAMESPACE,
+    SYSTEM_HARDWARE_NAMESPACE,
+    SYSTEM_POSITION_NAMESPACE,
+    SYSTEM_TIME_NAMESPACE
+} from '../protocol/codecs/system';
 import { DIGEST_TIMERX_NAMESPACE } from '../protocol/codecs/timerx';
 import { TOGGLEX_ALL_CHANNELS, TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
 import { DIGEST_TRIGGERX_NAMESPACE } from '../protocol/codecs/triggerx';
@@ -223,6 +230,21 @@ const POLL: Record<string, PollSpec> = {
         periodCloudMs: CLOUDMQTT_PERIOD_MS
     },
     'Appliance.System.Runtime': SMART_CONFIG,
+    // Firmware / Hardware / Time ride System.All; standalone GET is the fallback.
+    [SYSTEM_FIRMWARE_NAMESPACE]: {
+        ...ONCE,
+        skipIf: SYSTEM_ALL_NAMESPACE
+    },
+    [SYSTEM_HARDWARE_NAMESPACE]: {
+        ...ONCE,
+        skipIf: SYSTEM_ALL_NAMESPACE
+    },
+    [SYSTEM_TIME_NAMESPACE]: {
+        ...SMART_CONFIG,
+        skipIf: SYSTEM_ALL_NAMESPACE
+    },
+    [SYSTEM_POSITION_NAMESPACE]: ONCE,
+    [SYSTEM_DEBUG_NAMESPACE]: ONCE,
     'Appliance.Config.OverTemp': SMART_CONFIG,
     'Appliance.Config.Sensor.Association': {
         ...SMART_CONFIG,

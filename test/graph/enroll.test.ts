@@ -137,7 +137,7 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(endpoint?.name, 'Kitchen plug');
         assert.equal(endpoint?.model, 'mss110');
         assert.equal(endpoint?.classHint, 'socket');
-        assert.deepEqual(endpoint?.traits, ['switch', 'energy']);
+        assert.deepEqual(endpoint?.traits, ['switch', 'system', 'energy']);
         assert.equal(endpoint?.online, true);
         assert.equal(endpoint?.on, true);
         assert.equal(endpoint?.parentId, undefined);
@@ -151,7 +151,7 @@ describe('enrollPhysicalDevice', () => {
             allPayload: payload('system-all-getack.json')
         });
 
-        assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'energy']);
+        assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'system', 'energy']);
     });
 
     it('adds the dnd trait on channel 0 when System.DNDMode is advertised', () => {
@@ -171,7 +171,19 @@ describe('enrollPhysicalDevice', () => {
             }
         });
 
-        assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'energy', 'dnd']);
+        assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'system', 'energy', 'dnd']);
+    });
+
+    it('seeds system board snapshot from System.All on channel 0', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility(),
+            allPayload: payload('system-all-getack.json')
+        });
+
+        assert.ok(device.endpoints[0]?.traits.includes('system'));
+        assert.equal(device.system.firmware.version, '7.3.13');
+        assert.equal(device.system.hardware.type, 'mss110');
+        assert.equal(device.system.time?.timezone, 'Asia/Shanghai');
     });
 
     it('keeps dnd on the strip master when System.DNDMode is advertised', () => {
@@ -185,7 +197,7 @@ describe('enrollPhysicalDevice', () => {
 
         const master = device.endpoints.find((endpoint) => endpoint.channel === 0);
         assert.ok(master);
-        assert.deepEqual(master?.traits, ['switch', 'dnd']);
+        assert.deepEqual(master?.traits, ['switch', 'system', 'dnd']);
         assert.equal(master?.classHint, 'socket');
         assert.equal(master?.parentId, undefined);
         assert.equal(
@@ -233,7 +245,7 @@ describe('enrollPhysicalDevice', () => {
                     parentId: undefined,
                     name: 'Strip',
                     classHint: 'socket',
-                    traits: ['switch', 'energy']
+                    traits: ['switch', 'system', 'energy']
                 },
                 ...[1, 2, 3, 4].map((channel) => ({
                     id: `${UUID}:${channel}`,
@@ -263,7 +275,7 @@ describe('enrollPhysicalDevice', () => {
                 traits: [...endpoint.traits]
             })),
             [
-                { channel: 0, parentId: undefined, traits: ['switch', 'energy'] },
+                { channel: 0, parentId: undefined, traits: ['switch', 'system', 'energy'] },
                 ...[1, 2, 3, 4].map((channel) => ({
                     channel,
                     parentId: `${UUID}:0`,
@@ -288,7 +300,7 @@ describe('enrollPhysicalDevice', () => {
                 traits: [...endpoint.traits]
             })),
             [
-                { channel: 0, traits: ['switch', 'timer'] },
+                { channel: 0, traits: ['switch', 'system', 'timer'] },
                 ...[1, 2, 3, 4].map((channel) => ({
                     channel,
                     traits: ['switch', 'timer']
@@ -341,7 +353,7 @@ describe('enrollPhysicalDevice', () => {
             })
         });
 
-        assert.deepEqual(device.endpoints[0]?.traits, ['light', 'timer']);
+        assert.deepEqual(device.endpoints[0]?.traits, ['light', 'system', 'timer']);
     });
 
     it('does not append timer when Control.Mp3 already takes the light endpoint', () => {
@@ -360,7 +372,7 @@ describe('enrollPhysicalDevice', () => {
             })
         });
 
-        assert.deepEqual(device.endpoints[0]?.traits, ['light', 'media']);
+        assert.deepEqual(device.endpoints[0]?.traits, ['light', 'system', 'media']);
     });
 
     it('appends timer to leftover spray sockets, not the humidifier', () => {
@@ -380,7 +392,7 @@ describe('enrollPhysicalDevice', () => {
 
         const humidifier = device.endpoints.find((endpoint) => endpoint.classHint === 'humidifier');
         const socket = device.endpoints.find((endpoint) => endpoint.classHint === 'socket');
-        assert.deepEqual(humidifier?.traits, ['spray']);
+        assert.deepEqual(humidifier?.traits, ['spray', 'system']);
         assert.deepEqual(socket?.traits, ['switch', 'timer']);
     });
 
@@ -448,7 +460,7 @@ describe('enrollPhysicalDevice', () => {
                 traits: [...endpoint.traits]
             })),
             [
-                { channel: 0, traits: ['switch', 'trigger'] },
+                { channel: 0, traits: ['switch', 'system', 'trigger'] },
                 ...[1, 2, 3, 4].map((channel) => ({
                     channel,
                     traits: ['switch', 'trigger']
@@ -468,7 +480,7 @@ describe('enrollPhysicalDevice', () => {
             })
         });
 
-        assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'timer', 'trigger']);
+        assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'system', 'timer', 'trigger']);
     });
 
     it('does not append trigger to cover channels when Control.TriggerX is advertised', () => {
@@ -512,7 +524,7 @@ describe('enrollPhysicalDevice', () => {
             })
         });
 
-        assert.deepEqual(device.endpoints[0]?.traits, ['light', 'media']);
+        assert.deepEqual(device.endpoints[0]?.traits, ['light', 'system', 'media']);
     });
 
     it('does not append trigger to hub parents or children when Control.TriggerX is advertised', () => {
@@ -602,7 +614,7 @@ describe('enrollPhysicalDevice', () => {
 
         assert.equal(device.endpoints.length, 2);
         assert.equal(device.endpoints[0]?.classHint, 'cover');
-        assert.deepEqual(device.endpoints[0]?.traits, ['cover']);
+        assert.deepEqual(device.endpoints[0]?.traits, ['cover', 'system']);
         assert.equal(device.endpoints[0]?.channel, 0);
         assert.equal(device.endpoints[1]?.channel, 1);
     });
@@ -630,12 +642,14 @@ describe('enrollPhysicalDevice', () => {
                 classHint: endpoint.classHint,
                 traits: [...endpoint.traits]
             })),
-            [1, 2, 3].map((channel) => ({
-                id: `${UUID}:${channel}`,
-                channel,
-                classHint: 'cover',
-                traits: ['cover']
-            }))
+            [
+                ...[1, 2, 3].map((channel) => ({
+                    id: `${UUID}:${channel}`,
+                    channel,
+                    classHint: 'cover',
+                    traits: ['cover']
+                }))
+            ]
         );
     });
 
@@ -655,7 +669,7 @@ describe('enrollPhysicalDevice', () => {
 
         assert.equal(device.endpoints.length, 1);
         assert.equal(device.endpoints[0]?.classHint, 'light');
-        assert.deepEqual(device.endpoints[0]?.traits, ['light']);
+        assert.deepEqual(device.endpoints[0]?.traits, ['light', 'system']);
         assert.equal(device.endpoints[0]?.id, `${UUID}:0`);
     });
 
@@ -680,7 +694,7 @@ describe('enrollPhysicalDevice', () => {
 
         assert.equal(device.endpoints.length, 1);
         assert.equal(device.endpoints[0]?.classHint, 'humidifier');
-        assert.deepEqual(device.endpoints[0]?.traits, ['diffuser']);
+        assert.deepEqual(device.endpoints[0]?.traits, ['diffuser', 'system']);
     });
 
     it('enrolls Fan ability without digest.fan as a fan (MAP100)', () => {
@@ -705,7 +719,7 @@ describe('enrollPhysicalDevice', () => {
 
         assert.equal(device.endpoints.length, 1);
         assert.equal(device.endpoints[0]?.classHint, 'fan');
-        assert.deepEqual(device.endpoints[0]?.traits, ['fan']);
+        assert.deepEqual(device.endpoints[0]?.traits, ['fan', 'system']);
         assert.equal(device.endpoints[0]?.name, 'Air purifier');
     });
 
@@ -726,7 +740,7 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(device.endpoints.length, 2);
         assert.equal(device.endpoints[0]?.channel, 0);
         assert.equal(device.endpoints[0]?.classHint, 'humidifier');
-        assert.deepEqual(device.endpoints[0]?.traits, ['spray']);
+        assert.deepEqual(device.endpoints[0]?.traits, ['spray', 'system']);
         assert.equal(device.endpoints[1]?.channel, 1);
         assert.equal(device.endpoints[1]?.classHint, 'socket');
     });
@@ -748,7 +762,7 @@ describe('enrollPhysicalDevice', () => {
 
         assert.equal(device.endpoints.length, 1);
         assert.equal(device.endpoints[0]?.classHint, 'light');
-        assert.deepEqual(device.endpoints[0]?.traits, ['light', 'media']);
+        assert.deepEqual(device.endpoints[0]?.traits, ['light', 'system', 'media']);
     });
 
     it('enrolls Control.Mp3 without light as a speaker', () => {
@@ -763,7 +777,7 @@ describe('enrollPhysicalDevice', () => {
 
         assert.equal(device.endpoints.length, 1);
         assert.equal(device.endpoints[0]?.classHint, 'speaker');
-        assert.deepEqual(device.endpoints[0]?.traits, ['media']);
+        assert.deepEqual(device.endpoints[0]?.traits, ['media', 'system']);
     });
 
     it('enrolls a presence board as classHint sensor with the presence trait', () => {
@@ -779,7 +793,7 @@ describe('enrollPhysicalDevice', () => {
         });
         assert.equal(device.endpoints.length, 1);
         assert.equal(device.endpoints[0]?.classHint, 'sensor');
-        assert.deepEqual(device.endpoints[0]?.traits, ['presence']);
+        assert.deepEqual(device.endpoints[0]?.traits, ['presence', 'system']);
     });
 
     it('enrolls hub children as uuid#subdevice with parentId metadata', () => {
@@ -848,7 +862,7 @@ describe('enrollPhysicalDevice', () => {
         const hub = device.endpoints[0];
         assert.equal(hub?.id, HUB_UUID);
         assert.equal(hub?.classHint, 'hub');
-        assert.deepEqual(hub?.traits, []);
+        assert.deepEqual(hub?.traits, ['system']);
         assert.equal(hub?.name, 'Hall hub');
 
         const valve = device.endpoints.find((endpoint) => endpoint.subDeviceId === '01008C11');
@@ -868,8 +882,9 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(sensor?.online, false);
 
         const rows = graph.inventoryRows();
-        assert.equal(rows.length, 2);
+        assert.equal(rows.length, 3);
         assert.deepEqual(rows.map((row) => row.id).sort(), [
+            HUB_UUID,
             `${HUB_UUID}#01008C11`,
             `${HUB_UUID}#120027D21C19`
         ]);
@@ -905,7 +920,7 @@ describe('enrollPhysicalDevice', () => {
 
         const hub = device.endpoints[0];
         assert.equal(hub?.classHint, 'hub');
-        assert.deepEqual(hub?.traits, ['dnd']);
+        assert.deepEqual(hub?.traits, ['system', 'dnd']);
         assert.ok(graph.inventoryRows().some((row) => row.id === HUB_UUID && row.traits.includes('dnd')));
     });
 
@@ -939,7 +954,7 @@ describe('enrollPhysicalDevice', () => {
 
         const hub = device.endpoints[0];
         assert.equal(hub?.classHint, 'hub');
-        assert.deepEqual(hub?.traits, ['alarm', 'dnd']);
+        assert.deepEqual(hub?.traits, ['system', 'alarm', 'dnd']);
         assert.ok(graph.inventoryRows().some(
             (row) => row.id === HUB_UUID && row.traits.includes('alarm')
         ));
@@ -1028,8 +1043,9 @@ describe('enrollPhysicalDevice', () => {
             subDevices: [{ subDeviceId: 'aabbcc', subDeviceType: 'mst100', subDeviceName: 'Garden' }]
         });
         const rows = graph.inventoryRows();
-        assert.equal(rows.length, 3);
+        assert.equal(rows.length, 4);
         assert.deepEqual(rows.map((row) => row.id).sort(), [
+            HUB_UUID,
             `${HUB_UUID}#aabbcc`,
             `${HUB_UUID}#mystery1`,
             `${HUB_UUID}#sprinkler1`
@@ -1063,7 +1079,7 @@ describe('DeviceGraph and Inventory', () => {
         assert.equal(rows.length, 1);
         assert.equal(rows[0]?.id, id);
         assert.equal(rows[0]?.name, 'Kitchen plug');
-        assert.deepEqual(rows[0]?.traits, ['switch', 'energy']);
+        assert.deepEqual(rows[0]?.traits, ['switch', 'system', 'energy']);
         assert.equal('online' in (rows[0] ?? {}), false);
 
         const inventory = new Inventory(rows);
@@ -1072,7 +1088,7 @@ describe('DeviceGraph and Inventory', () => {
         (copy[0] as { name: string }).name = 'mutated';
         (copy[0]!.traits as string[]).push('light');
         assert.equal(inventory.endpoints()[0]?.name, 'Kitchen plug');
-        assert.deepEqual(inventory.endpoints()[0]?.traits, ['switch', 'energy']);
+        assert.deepEqual(inventory.endpoints()[0]?.traits, ['switch', 'system', 'energy']);
     });
 
     it('starts empty so Session can exist before connect', () => {

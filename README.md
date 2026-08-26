@@ -218,6 +218,7 @@ Traits are present only when the board advertised the matching ability. Use opti
 | `media`     | Speakers                           | `setMuted`, `setVolume`, `setSong`                                                    |
 | `alarm`     | Hub sirens                         | `setOn(on, durationSeconds?)`, `setLinked`                                            |
 | `dnd`       | LED mute on the board              | `isOn()`, `setOn(boolean)`                                                            |
+| `system`    | Board firmware, time, diagnostics  | `getFirmware` / `getHardware` / `getTime`, `setTimezone`, `getDebug`, `getPosition` / `setPosition`, `clockSkewSeconds` |
 | `timer`     | ToggleX clock schedules            | `list()`, `set()`, `setEnabled()`, `remove()`                                         |
 | `trigger`   | ToggleX rules                      | `list()`, `set()`, `setEnabled()`, `remove()`                                         |
 

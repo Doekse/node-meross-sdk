@@ -50,6 +50,7 @@ import { SENSOR_FAMILY_MAP, SensorTrait } from './traits/sensor';
 import { SprayTrait } from './traits/spray';
 import { SprinklerTrait } from './traits/sprinkler';
 import { SwitchTrait } from './traits/switch';
+import { SystemTrait } from './traits/system';
 import { TimerTrait } from './traits/timer';
 import { TriggerTrait } from './traits/trigger';
 
@@ -253,6 +254,7 @@ export class Session extends EventEmitter<SessionEvents> {
             endpoint.media?.handlePush(message);
             endpoint.alarm?.handlePush(message);
             endpoint.dnd?.handlePush(message);
+            endpoint.system?.handlePush(message);
             endpoint.timer?.handlePush(message);
             endpoint.trigger?.handlePush(message);
         }
@@ -370,6 +372,7 @@ export class Session extends EventEmitter<SessionEvents> {
         let mediaTrait: MediaTrait | undefined;
         let alarmTrait: AlarmTrait | undefined;
         let dndTrait: DndTrait | undefined;
+        let systemTrait: SystemTrait | undefined;
         let timerTrait: TimerTrait | undefined;
         let triggerTrait: TriggerTrait | undefined;
         if (graphEndpoint.traits.includes('switch')) {
@@ -595,6 +598,19 @@ export class Session extends EventEmitter<SessionEvents> {
                 emitChange: (on) => endpoint.emit('change', { trait: 'dnd', values: { on } })
             });
         }
+        if (graphEndpoint.traits.includes('system')) {
+            systemTrait = new SystemTrait({
+                uuid: physical.uuid,
+                initialFirmware: physical.system.firmware,
+                initialHardware: physical.system.hardware,
+                initialTime: physical.system.time,
+                request,
+                emitChange: (values) => endpoint.emit('change', {
+                    trait: 'system',
+                    values: { ...values }
+                })
+            });
+        }
         if (graphEndpoint.traits.includes('timer')) {
             timerTrait = new TimerTrait({
                 uuid: physical.uuid,
@@ -636,6 +652,7 @@ export class Session extends EventEmitter<SessionEvents> {
             media: mediaTrait,
             alarm: alarmTrait,
             dnd: dndTrait,
+            system: systemTrait,
             timer: timerTrait,
             trigger: triggerTrait,
             initialOnline: graphEndpoint.online

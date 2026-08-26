@@ -21,6 +21,8 @@ export type { MediaValues } from './media';
 export { AlarmTrait } from './alarm';
 export type { AlarmValues } from './alarm';
 export { DndTrait } from './dnd';
+export { SystemTrait } from './system';
+export type { SystemValues, SystemDebugState, SystemFirmwareState, SystemHardwareState, SystemPositionState, SystemTimeState } from './system';
 export { TimerTrait } from './timer';
 export type { TimerEntry, TimerSetInput, TimerValues } from './timer';
 export { TriggerTrait } from './trigger';

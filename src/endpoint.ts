@@ -14,13 +14,14 @@ import type { SensorTrait } from './traits/sensor';
 import type { SprayTrait } from './traits/spray';
 import type { SprinklerTrait } from './traits/sprinkler';
 import type { SwitchTrait } from './traits/switch';
+import type { SystemTrait } from './traits/system';
 import type { TimerTrait } from './traits/timer';
 import type { TriggerTrait } from './traits/trigger';
 
 export type TraitName =
     | 'switch' | 'energy' | 'light' | 'climate' | 'cover'
     | 'sensor' | 'presence' | 'sprinkler' | 'spray' | 'fan' | 'diffuser' | 'media' | 'alarm' | 'dnd'
-    | 'timer' | 'trigger';
+    | 'system' | 'timer' | 'trigger';
 
 export interface EndpointChange {
     trait: TraitName;
@@ -44,6 +45,7 @@ export interface EndpointOptions {
     media?: MediaTrait;
     alarm?: AlarmTrait;
     dnd?: DndTrait;
+    system?: SystemTrait;
     timer?: TimerTrait;
     trigger?: TriggerTrait;
     initialOnline?: boolean;
@@ -75,6 +77,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     readonly media?: MediaTrait;
     readonly alarm?: AlarmTrait;
     readonly dnd?: DndTrait;
+    readonly system?: SystemTrait;
     readonly timer?: TimerTrait;
     readonly trigger?: TriggerTrait;
 
@@ -98,6 +101,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         this.media = options.media;
         this.alarm = options.alarm;
         this.dnd = options.dnd;
+        this.system = options.system;
         this.timer = options.timer;
         this.trigger = options.trigger;
         this.online = options.initialOnline ?? true;

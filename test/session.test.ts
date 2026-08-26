@@ -321,7 +321,7 @@ describe('Session.connect', () => {
         assert.equal(rows[0]?.id, `${UUID}:0`);
         assert.equal(rows[0]?.name, 'Kitchen plug');
         assert.equal(rows[0]?.classHint, 'socket');
-        assert.deepEqual(rows[0]?.traits, ['switch', 'energy']);
+        assert.deepEqual(rows[0]?.traits, ['switch', 'system', 'energy']);
         assert.equal('online' in (rows[0] ?? {}), false);
         await session.disconnect();
     });
@@ -343,7 +343,9 @@ describe('Session.connect', () => {
         assert.equal(endpoint.id, `${UUID}:0`);
         assert.ok(endpoint.switch);
         assert.ok(endpoint.energy);
+        assert.ok(endpoint.system);
         assert.equal(endpoint.switch.isOn(), true);
+        assert.equal(endpoint.system.getFirmware()?.version, '7.3.13');
         assert.throws(
             () => session.endpoint('missing'),
             (err: unknown) => err instanceof MerossError && err.code === 'ENDPOINT_NOT_FOUND'

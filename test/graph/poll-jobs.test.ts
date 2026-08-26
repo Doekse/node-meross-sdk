@@ -53,6 +53,13 @@ import {
     SMOKE_CONFIG_NAMESPACE
 } from '../../src/protocol/codecs/sensor';
 import { SPRAY_NAMESPACE } from '../../src/protocol/codecs/spray';
+import {
+    SYSTEM_DEBUG_NAMESPACE,
+    SYSTEM_FIRMWARE_NAMESPACE,
+    SYSTEM_HARDWARE_NAMESPACE,
+    SYSTEM_POSITION_NAMESPACE,
+    SYSTEM_TIME_NAMESPACE
+} from '../../src/protocol/codecs/system';
 import { DIGEST_TIMERX_NAMESPACE } from '../../src/protocol/codecs/timerx';
 import { TOGGLEX_NAMESPACE } from '../../src/protocol/codecs/togglex';
 import { DIGEST_TRIGGERX_NAMESPACE } from '../../src/protocol/codecs/triggerx';
@@ -507,5 +514,71 @@ describe('buildPollJobs', () => {
                 payload: { config: [] }
             }
         );
+    });
+
+    it('skips System.Time when System.All is advertised and registers Position/Debug as once', () => {
+        const jobs = buildPollJobs(
+            ability(
+                SYSTEM_TIME_NAMESPACE,
+                SYSTEM_POSITION_NAMESPACE,
+                SYSTEM_DEBUG_NAMESPACE,
+                SYSTEM_FIRMWARE_NAMESPACE,
+                SYSTEM_HARDWARE_NAMESPACE,
+                SYSTEM_ALL_NAMESPACE
+            ),
+            [{ channel: CHANNEL, traits: ['system'] }]
+        );
+        assert.equal(job(jobs, SYSTEM_TIME_NAMESPACE), undefined);
+        assert.deepEqual(job(jobs, SYSTEM_POSITION_NAMESPACE), {
+            namespace: SYSTEM_POSITION_NAMESPACE,
+            strategy: 'once',
+            periodMs: 0,
+            periodCloudMs: 0,
+            payload: {}
+        });
+        assert.deepEqual(job(jobs, SYSTEM_DEBUG_NAMESPACE), {
+            namespace: SYSTEM_DEBUG_NAMESPACE,
+            strategy: 'once',
+            periodMs: 0,
+            periodCloudMs: 0,
+            payload: {}
+        });
+        assert.equal(job(jobs, SYSTEM_FIRMWARE_NAMESPACE), undefined);
+        assert.equal(job(jobs, SYSTEM_HARDWARE_NAMESPACE), undefined);
+    });
+
+    it('registers System.Time as smart config when System.All is absent', () => {
+        const jobs = buildPollJobs(
+            ability(SYSTEM_TIME_NAMESPACE),
+            [{ channel: CHANNEL, traits: ['system'] }]
+        );
+        assert.deepEqual(job(jobs, SYSTEM_TIME_NAMESPACE), {
+            namespace: SYSTEM_TIME_NAMESPACE,
+            strategy: 'smart',
+            periodMs: SENSOR_SLOW_PERIOD_MS,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
+            payload: {}
+        });
+    });
+
+    it('registers System.Firmware and Hardware once when System.All is absent', () => {
+        const jobs = buildPollJobs(
+            ability(SYSTEM_FIRMWARE_NAMESPACE, SYSTEM_HARDWARE_NAMESPACE),
+            [{ channel: CHANNEL, traits: ['system'] }]
+        );
+        assert.deepEqual(job(jobs, SYSTEM_FIRMWARE_NAMESPACE), {
+            namespace: SYSTEM_FIRMWARE_NAMESPACE,
+            strategy: 'once',
+            periodMs: 0,
+            periodCloudMs: 0,
+            payload: {}
+        });
+        assert.deepEqual(job(jobs, SYSTEM_HARDWARE_NAMESPACE), {
+            namespace: SYSTEM_HARDWARE_NAMESPACE,
+            strategy: 'once',
+            periodMs: 0,
+            periodCloudMs: 0,
+            payload: {}
+        });
     });
 });
