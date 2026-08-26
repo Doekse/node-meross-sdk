@@ -148,21 +148,21 @@ describe('buildPollJobs', () => {
             namespace: TOGGLEX_NAMESPACE,
             strategy: 'default',
             periodMs: 0,
-            periodCloudMs: 0,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { togglex: { channel: 0xffff } }
         });
         assert.deepEqual(job(jobs, SPRAY_NAMESPACE), {
             namespace: SPRAY_NAMESPACE,
             strategy: 'default',
             periodMs: 0,
-            periodCloudMs: 0,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { spray: {} }
         });
         assert.deepEqual(job(jobs, MP3_NAMESPACE), {
             namespace: MP3_NAMESPACE,
             strategy: 'default',
             periodMs: 0,
-            periodCloudMs: 0,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { mp3: {} }
         });
         assert.deepEqual(job(jobs, DND_MODE_NAMESPACE), {
@@ -176,7 +176,7 @@ describe('buildPollJobs', () => {
             namespace: CONTROL_ALARM_NAMESPACE,
             strategy: 'default',
             periodMs: 0,
-            periodCloudMs: 0,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { alarm: [{ channel: CHANNEL }] }
         });
     });
@@ -222,7 +222,7 @@ describe('buildPollJobs', () => {
             namespace: FAN_NAMESPACE,
             strategy: 'default',
             periodMs: 0,
-            periodCloudMs: 0,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { fan: [{ channel: CHANNEL }] }
         });
         assert.ok(namespaces(jobs).includes(TOGGLEX_NAMESPACE));
@@ -286,7 +286,7 @@ describe('buildPollJobs', () => {
             namespace: HUB_SENSOR_TEMPHUM_NAMESPACE,
             strategy: 'default',
             periodMs: 0,
-            periodCloudMs: 0,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { tempHum: [{ id: SUB_ID }] }
         });
         assert.deepEqual(job(jobs, HUB_BATTERY_NAMESPACE), {
@@ -308,7 +308,7 @@ describe('buildPollJobs', () => {
             namespace: HUB_SENSOR_SMOKE_NAMESPACE,
             strategy: 'default',
             periodMs: 0,
-            periodCloudMs: 0,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { smokeAlarm: [{ id: SUB_ID }] }
         });
         assert.deepEqual(job(jobs, SMOKE_CONFIG_NAMESPACE), {
@@ -388,7 +388,7 @@ describe('buildPollJobs', () => {
             namespace: CONTROL_WATER_NAMESPACE,
             strategy: 'default',
             periodMs: 0,
-            periodCloudMs: 0,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { control: [{ subId: SUB_ID, channel: 0 }] }
         });
         assert.deepEqual(job(jobs, DEVICE_CFG_NAMESPACE), {
@@ -407,7 +407,7 @@ describe('buildPollJobs', () => {
             namespace: SYSTEM_ALL_NAMESPACE,
             strategy: 'all',
             periodMs: SYSTEM_ALL_PERIOD_MS,
-            periodCloudMs: 0,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: {}
         });
     });

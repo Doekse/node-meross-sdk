@@ -133,7 +133,7 @@ interface PollSpec extends PollCadence {
 const DEFAULT: PollCadence = {
     strategy: 'default',
     periodMs: 0,
-    periodCloudMs: 0
+    periodCloudMs: CLOUDMQTT_PERIOD_MS
 };
 
 const ONCE: PollCadence = {
@@ -220,7 +220,7 @@ const POLL: Record<string, PollSpec> = {
     [SYSTEM_ALL_NAMESPACE]: {
         strategy: 'all',
         periodMs: SYSTEM_ALL_PERIOD_MS,
-        periodCloudMs: 0
+        periodCloudMs: CLOUDMQTT_PERIOD_MS
     },
     'Appliance.System.Runtime': SMART_CONFIG,
     'Appliance.Config.OverTemp': SMART_CONFIG,

@@ -60,7 +60,8 @@ export interface DevicePollerOptions {
     isOnline: () => boolean;
     /**
      * True when the next batch will go over cloud MQTT (no LAN IP or the
-     * router error budget is spent). Caps smart/once to one job per cycle.
+     * router error budget is spent). Caps due jobs to one per cycle within
+     * each job's periodCloudMs.
      */
     isCloudPath: () => boolean;
     maxCmdNum: () => number;
@@ -253,7 +254,11 @@ export class DevicePoller {
         const pending: JobState[] = [];
         const lazy: JobState[] = [];
 
-        const trySmart = (job: JobState): void => {
+        /**
+         * Cloud publishes count against the device's hourly Meross budget, so a
+         * job that can still wait yields the one slot this cycle.
+         */
+        const enqueue = (job: JobState): void => {
             if (
                 cloudPath
                 && cloudQueued >= 1
@@ -275,7 +280,7 @@ export class DevicePoller {
             }
             pollAll = job.nextMs === null || (!mqttActive && epoch >= job.nextMs);
             if (pollAll) {
-                pending.push(job);
+                enqueue(job);
             }
             break;
         }
@@ -291,18 +296,18 @@ export class DevicePoller {
                     if (pollAll && !mqttActive) {
                         break;
                     }
-                    pending.push(job);
+                    enqueue(job);
                     break;
                 case 'smart':
                     if (job.nextMs === null || epoch >= job.nextMs) {
-                        trySmart(job);
+                        enqueue(job);
                     } else {
                         lazy.push(job);
                     }
                     break;
                 case 'once':
                     if (job.nextMs === null) {
-                        trySmart(job);
+                        enqueue(job);
                     }
                     break;
             }
@@ -314,12 +319,19 @@ export class DevicePoller {
                 if (pending.length % maxCmdNum === 0) {
                     break;
                 }
-                trySmart(job);
+                enqueue(job);
             }
         }
 
         if (pending.length === 0) {
             return;
+        }
+
+        // Advance before awaiting so a failed or rate-limited batch still waits
+        // for its next period instead of spinning on every tick.
+        for (const job of pending) {
+            job.lastRequestMs = epoch;
+            job.nextMs = epoch + job.periodMs;
         }
 
         let replies: MerossMessage[];
@@ -333,13 +345,16 @@ export class DevicePoller {
                 maxCmdNum
             );
         } catch {
+            // A `once` job has no period to fall back on, so leave it cold
+            // rather than let one failed batch retire it for good.
+            for (const job of pending) {
+                if (job.strategy === 'once') {
+                    job.nextMs = null;
+                }
+            }
             return;
         }
 
-        for (const job of pending) {
-            job.lastRequestMs = epoch;
-            job.nextMs = epoch + job.periodMs;
-        }
         for (const reply of replies) {
             this.onAck(reply);
         }
