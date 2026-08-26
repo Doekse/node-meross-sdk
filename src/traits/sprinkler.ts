@@ -3,9 +3,13 @@ import {
     CONTROL_WATER_NAMESPACE,
     DEVICE_CFG_NAMESPACE,
     HUB_BATTERY_NAMESPACE,
+    HUB_EXCEPTION_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE,
     WATER_PLAN_NAMESPACE,
     decodeBatteryPush,
     decodeDeviceCfgPush,
+    decodeHubExceptionPush,
+    decodeHubSubDeviceVersionPush,
     decodeWaterPlanGetAck,
     decodeWaterPush,
     encodeDeviceCfgSet,
@@ -23,6 +27,9 @@ export interface SprinklerValues {
     /** Watering duration in seconds. */
     duration?: number;
     battery?: number;
+    fault?: number;
+    firmwareVersion?: string;
+    hardwareVersion?: string;
 }
 
 export type SprinklerScheduleEntry = WaterPlanEntry;
@@ -170,6 +177,29 @@ export class SprinklerTrait {
             for (const entry of decodeBatteryPush(payload)) {
                 if (entry.id === subId && entry.battery !== undefined) {
                     this.applyChange({ battery: entry.battery });
+                }
+            }
+            return;
+        }
+        if (ns === HUB_EXCEPTION_NAMESPACE && this.has(ns)) {
+            for (const entry of decodeHubExceptionPush(payload)) {
+                if (entry.id === subId) {
+                    this.applyChange({ fault: entry.code });
+                }
+            }
+            return;
+        }
+        if (ns === HUB_SUBDEVICE_VERSION_NAMESPACE && this.has(ns)) {
+            for (const entry of decodeHubSubDeviceVersionPush(payload)) {
+                if (entry.id === subId) {
+                    const patch: SprinklerValues = {};
+                    if (entry.firmware !== undefined) {
+                        patch.firmwareVersion = entry.firmware;
+                    }
+                    if (entry.hardware !== undefined) {
+                        patch.hardwareVersion = entry.hardware;
+                    }
+                    this.applyChange(patch);
                 }
             }
         }

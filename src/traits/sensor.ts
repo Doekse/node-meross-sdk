@@ -1,5 +1,6 @@
 import {
     HUB_BATTERY_NAMESPACE,
+    HUB_EXCEPTION_NAMESPACE,
     HUB_SENSOR_ADJUST_NAMESPACE,
     HUB_SENSOR_ALERT_NAMESPACE,
     HUB_SENSOR_ALL_NAMESPACE,
@@ -7,10 +8,13 @@ import {
     HUB_SENSOR_SMOKE_NAMESPACE,
     HUB_SENSOR_TEMPHUM_NAMESPACE,
     HUB_SENSOR_WATERLEAK_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE,
     SENSOR_LATESTX_NAMESPACE,
     SMOKE_CONFIG_NAMESPACE,
     decodeSmokeConfigPush,
     decodeBatteryPush,
+    decodeHubExceptionPush,
+    decodeHubSubDeviceVersionPush,
     decodeLatestXPush,
     decodeSensorAdjustPush,
     decodeSensorAlertPush,
@@ -75,6 +79,9 @@ export interface SensorValues {
     smokeDnd?: boolean;
     smokeDetect?: boolean;
     battery?: number;
+    fault?: number;
+    firmwareVersion?: string;
+    hardwareVersion?: string;
     calibration?: number;
     humidityCalibration?: number;
     temperatureAlerts?: SensorAlertBand[];
@@ -278,6 +285,22 @@ export class SensorTrait {
             }
             return;
         }
+        if (ns === HUB_EXCEPTION_NAMESPACE && this.has(ns)) {
+            for (const entry of decodeHubExceptionPush(payload)) {
+                if (entry.id === id) {
+                    this.applyChange({ fault: entry.code });
+                }
+            }
+            return;
+        }
+        if (ns === HUB_SUBDEVICE_VERSION_NAMESPACE && this.has(ns)) {
+            for (const entry of decodeHubSubDeviceVersionPush(payload)) {
+                if (entry.id === id) {
+                    this.applyChange(versionPatch(entry));
+                }
+            }
+            return;
+        }
         if (ns === HUB_SENSOR_ADJUST_NAMESPACE && family === 'tempHum' && this.has(ns)) {
             for (const entry of decodeSensorAdjustPush(payload)) {
                 if (entry.id === id) {
@@ -393,6 +416,17 @@ function tempHumPatch(entry: { temperature?: number; humidity?: number }): Senso
     }
     if (entry.humidity !== undefined) {
         patch.humidity = entry.humidity;
+    }
+    return patch;
+}
+
+function versionPatch(entry: { firmware?: string; hardware?: string }): SensorValues {
+    const patch: SensorValues = {};
+    if (entry.firmware !== undefined) {
+        patch.firmwareVersion = entry.firmware;
+    }
+    if (entry.hardware !== undefined) {
+        patch.hardwareVersion = entry.hardware;
     }
     return patch;
 }

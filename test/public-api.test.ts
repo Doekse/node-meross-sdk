@@ -81,7 +81,7 @@ describe('public API', () => {
                 uuid: 'uuid-1',
                 payload: {}
             }),
-            emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
+            emitChange: (values) => endpoint.emit('change', { trait: 'switch', values: { ...values } })
         });
         assert.deepEqual(await trait.setOn(true), { on: true });
     });

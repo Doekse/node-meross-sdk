@@ -9,6 +9,8 @@ export const HUB_SENSOR_ADJUST_NAMESPACE = 'Appliance.Hub.Sensor.Adjust';
 export const HUB_SENSOR_ALERT_NAMESPACE = 'Appliance.Hub.Sensor.Alert';
 export const HUB_SENSOR_ALL_NAMESPACE = 'Appliance.Hub.Sensor.All';
 export const HUB_BATTERY_NAMESPACE = 'Appliance.Hub.Battery';
+export const HUB_EXCEPTION_NAMESPACE = 'Appliance.Hub.Exception';
+export const HUB_SUBDEVICE_VERSION_NAMESPACE = 'Appliance.Hub.SubDevice.Version';
 export const SENSOR_LATESTX_NAMESPACE = 'Appliance.Control.Sensor.LatestX';
 export const SENSOR_LATEST_NAMESPACE = 'Appliance.Control.Sensor.Latest';
 export const SENSOR_HISTORY_NAMESPACE = 'Appliance.Control.Sensor.History';
@@ -40,6 +42,17 @@ export interface SensorSmokeState {
 export interface SensorBatteryState {
     id: string;
     battery?: number;
+}
+
+export interface HubExceptionState {
+    id: string;
+    code: number;
+}
+
+export interface HubSubDeviceVersionState {
+    id: string;
+    firmware?: string;
+    hardware?: string;
 }
 
 export interface SensorAdjustState {
@@ -347,6 +360,56 @@ function decodeBattery(payload: MerossPayload): SensorBatteryState[] {
         }
         return result;
     });
+}
+
+/**
+ * Hub.Exception is PUSH-only. Rows without a numeric `code` are omitted the
+ * same way Hub.Online omits unknown-id rows that lack `status`.
+ */
+export function decodeHubExceptionPush(payload: MerossPayload): HubExceptionState[] {
+    const entries: HubExceptionState[] = [];
+    for (const item of decodeArray(payload, 'exception', 'Hub.Exception')) {
+        const id = requireId(item.id, 'Hub.Exception');
+        if (typeof item.code === 'number') {
+            entries.push({ id, code: item.code });
+        }
+    }
+    return entries;
+}
+
+export function encodeHubSubDeviceVersionGet(id: string): MerossPayload {
+    return encodeIdGet('version', id);
+}
+
+export function decodeHubSubDeviceVersionGetAck(payload: MerossPayload): HubSubDeviceVersionState[] {
+    return decodeHubSubDeviceVersion(payload);
+}
+
+export function decodeHubSubDeviceVersionPush(payload: MerossPayload): HubSubDeviceVersionState[] {
+    return decodeHubSubDeviceVersion(payload);
+}
+
+/**
+ * GETACK can include a row with `exception.code` 5062 and no firmware when the
+ * id is unknown to the hub. Those rows are omitted so they are not treated as
+ * empty versions, matching Hub.Online.
+ */
+function decodeHubSubDeviceVersion(payload: MerossPayload): HubSubDeviceVersionState[] {
+    const entries: HubSubDeviceVersionState[] = [];
+    for (const item of decodeArray(payload, 'version', 'Hub.SubDevice.Version')) {
+        const id = requireId(item.id, 'Hub.SubDevice.Version');
+        const result: HubSubDeviceVersionState = { id };
+        if (typeof item.firmware === 'string') {
+            result.firmware = item.firmware;
+        }
+        if (typeof item.hardware === 'string') {
+            result.hardware = item.hardware;
+        }
+        if (result.firmware !== undefined || result.hardware !== undefined) {
+            entries.push(result);
+        }
+    }
+    return entries;
 }
 
 export function encodeSensorAdjustGet(id: string): MerossPayload {

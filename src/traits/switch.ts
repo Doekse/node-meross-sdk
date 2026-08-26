@@ -1,6 +1,10 @@
 import {
+    HUB_EXCEPTION_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE,
     HUB_TOGGLEX_NAMESPACE,
     TOGGLEX_NAMESPACE,
+    decodeHubExceptionPush,
+    decodeHubSubDeviceVersionPush,
     decodeHubToggleXPush,
     decodeToggleXPush,
     encodeHubToggleXSet,
@@ -8,6 +12,13 @@ import {
     type MerossMessage
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
+
+export interface SwitchValues {
+    on?: boolean;
+    fault?: number;
+    firmwareVersion?: string;
+    hardwareVersion?: string;
+}
 
 /**
  * Board bind: one Toggle/ToggleX channel on the physical device.
@@ -18,7 +29,7 @@ export interface SwitchTraitBoardBind {
     channel: number;
     namespace: typeof TOGGLEX_NAMESPACE | 'Appliance.Control.Toggle';
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
-    emitChange: (on: boolean) => void;
+    emitChange: (values: SwitchValues) => void;
     /** System.All digest `onoff` so hosts can read on/off before the first PUSH. */
     initialOn?: boolean;
 }
@@ -30,8 +41,10 @@ export interface SwitchTraitHubBind {
     kind: 'hub';
     uuid: string;
     subDeviceId: string;
+    /** Ability keys; Exception / Version no-op when the namespace is absent. */
+    namespaces?: ReadonlySet<string>;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
-    emitChange: (on: boolean) => void;
+    emitChange: (values: SwitchValues) => void;
     /** Hub digest `onoff` so hosts can read on/off before the first PUSH. */
     initialOn?: boolean;
 }
@@ -44,16 +57,18 @@ export type SwitchTraitBind = SwitchTraitBoardBind | SwitchTraitHubBind;
  */
 export class SwitchTrait {
     private readonly bind: SwitchTraitBind;
-    private on: boolean | undefined;
+    private last: SwitchValues = {};
 
     constructor(bind: SwitchTraitBind) {
         this.bind = bind;
-        this.on = bind.initialOn;
+        if (bind.initialOn !== undefined) {
+            this.last.on = bind.initialOn;
+        }
     }
 
     /** Undefined until digest, SET, or PUSH fills it. */
     isOn(): boolean | undefined {
-        return this.on;
+        return this.last.on;
     }
 
     async setOn(on: boolean): Promise<{ on: boolean }> {
@@ -70,7 +85,7 @@ export class SwitchTrait {
             method: 'SET',
             payload
         });
-        this.applyState(on);
+        this.applyChange({ on });
         return { on };
     }
 
@@ -81,12 +96,36 @@ export class SwitchTrait {
             return;
         }
         if (this.bind.kind === 'hub') {
-            if (message.header.namespace !== HUB_TOGGLEX_NAMESPACE) {
+            const ns = message.header.namespace;
+            if (ns === HUB_EXCEPTION_NAMESPACE && this.has(ns)) {
+                for (const entry of decodeHubExceptionPush(message.payload)) {
+                    if (entry.id === this.bind.subDeviceId) {
+                        this.applyChange({ fault: entry.code });
+                    }
+                }
+                return;
+            }
+            if (ns === HUB_SUBDEVICE_VERSION_NAMESPACE && this.has(ns)) {
+                for (const entry of decodeHubSubDeviceVersionPush(message.payload)) {
+                    if (entry.id === this.bind.subDeviceId) {
+                        const patch: SwitchValues = {};
+                        if (entry.firmware !== undefined) {
+                            patch.firmwareVersion = entry.firmware;
+                        }
+                        if (entry.hardware !== undefined) {
+                            patch.hardwareVersion = entry.hardware;
+                        }
+                        this.applyChange(patch);
+                    }
+                }
+                return;
+            }
+            if (ns !== HUB_TOGGLEX_NAMESPACE) {
                 return;
             }
             for (const entry of decodeHubToggleXPush(message.payload)) {
                 if (entry.id === this.bind.subDeviceId) {
-                    this.applyState(entry.on);
+                    this.applyChange({ on: entry.on });
                 }
             }
             return;
@@ -97,21 +136,32 @@ export class SwitchTrait {
         if (this.bind.namespace === TOGGLEX_NAMESPACE) {
             for (const entry of decodeToggleXPush(message.payload)) {
                 if (entry.channel === this.bind.channel) {
-                    this.applyState(entry.on);
+                    this.applyChange({ on: entry.on });
                 }
             }
             return;
         }
         if (this.bind.channel === 0) {
-            this.applyState((message.payload.toggle as { onoff: number }).onoff === 1);
+            this.applyChange({ on: (message.payload.toggle as { onoff: number }).onoff === 1 });
         }
     }
 
-    private applyState(on: boolean): void {
-        if (this.on === on) {
-            return;
+    private applyChange(patch: SwitchValues): void {
+        const next: SwitchValues = {};
+        for (const key of Object.keys(patch) as Array<keyof SwitchValues>) {
+            const value = patch[key];
+            if (value === undefined || this.last[key] === value) {
+                continue;
+            }
+            (this.last as Record<string, unknown>)[key] = value;
+            (next as Record<string, unknown>)[key] = value;
         }
-        this.on = on;
-        this.bind.emitChange(on);
+        if (Object.keys(next).length > 0) {
+            this.bind.emitChange(next);
+        }
+    }
+
+    private has(namespace: string): boolean {
+        return this.bind.kind === 'hub' && (this.bind.namespaces?.has(namespace) ?? false);
     }
 }

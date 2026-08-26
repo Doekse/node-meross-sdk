@@ -6,6 +6,8 @@ import { describe, it } from 'node:test';
 import { Endpoint } from '../../src/endpoint';
 import { CommandError } from '../../src/errors';
 import {
+    HUB_EXCEPTION_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE,
     HUB_TOGGLEX_NAMESPACE,
     TOGGLEX_NAMESPACE,
     decodeMessage,
@@ -61,7 +63,7 @@ function createSwitchHarness(channel = CHANNEL): {
                 payload: {}
             });
         },
-        emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
+        emitChange: (values) => endpoint.emit('change', { trait: 'switch', values: { ...values } })
     });
     return { endpoint, trait, requests };
 }
@@ -77,6 +79,7 @@ function createHubSwitchHarness(): {
         kind: 'hub',
         uuid: UUID,
         subDeviceId: SUB_DEVICE_ID,
+        namespaces: new Set([HUB_EXCEPTION_NAMESPACE, HUB_SUBDEVICE_VERSION_NAMESPACE]),
         request: async (options) => {
             const message = encodeMessage({
                 namespace: options.namespace,
@@ -97,7 +100,7 @@ function createHubSwitchHarness(): {
                 payload: {}
             });
         },
-        emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
+        emitChange: (values) => endpoint.emit('change', { trait: 'switch', values: { ...values } })
     });
     return { endpoint, trait, requests };
 }
@@ -157,7 +160,7 @@ describe('SwitchTrait.setOn', () => {
             request: async () => {
                 throw new CommandError('Device returned error: {}', 'COMMAND_FAILED');
             },
-            emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
+            emitChange: (values) => endpoint.emit('change', { trait: 'switch', values: { ...values } })
         });
 
         await assert.rejects(
@@ -227,7 +230,7 @@ describe('SwitchTrait initial state', () => {
                 uuid: UUID,
                 payload: {}
             }),
-            emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
+            emitChange: (values) => endpoint.emit('change', { trait: 'switch', values: { ...values } })
         });
         const changes: unknown[] = [];
         endpoint.on('change', (change) => changes.push(change));
@@ -270,5 +273,32 @@ describe('SwitchTrait hub bind', () => {
         trait.handlePush(hubPush({ togglex: [{ id: 'other-device', onoff: 1 }] }));
 
         assert.deepEqual(changes, []);
+    });
+
+    it('applies fault and firmware/hardware versions from hub diagnostics PUSH', () => {
+        const { endpoint, trait } = createHubSwitchHarness();
+        const changes: Array<{ values: Record<string, unknown> }> = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        trait.handlePush(encodeMessage({
+            namespace: HUB_EXCEPTION_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { exception: [{ id: SUB_DEVICE_ID, code: 5061 }] }
+        }));
+        trait.handlePush(encodeMessage({
+            namespace: HUB_SUBDEVICE_VERSION_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { version: [{ id: SUB_DEVICE_ID, hardware: '1.1.5', firmware: '5.1.8' }] }
+        }));
+
+        assert.equal(changes[0].values.fault, 5061);
+        assert.equal(changes[1].values.firmwareVersion, '5.1.8');
+        assert.equal(changes[1].values.hardwareVersion, '1.1.5');
     });
 });

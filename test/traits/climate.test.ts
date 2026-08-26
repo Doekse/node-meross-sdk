@@ -11,6 +11,8 @@ import {
     HUB_MTS100_MODE_NAMESPACE,
     HUB_MTS100_TEMPERATURE_NAMESPACE,
     HUB_TOGGLEX_NAMESPACE,
+    HUB_EXCEPTION_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE,
     HOLD_ACTION_NAMESPACE,
     WINDOW_OPENED_NAMESPACE,
     TEMP_UNIT_NAMESPACE,
@@ -375,6 +377,26 @@ describe('ClimateTrait hub valve', () => {
 
         const change = changes[0] as { values: Record<string, unknown> };
         assert.equal(change.values.on, true);
+    });
+
+    it('handlePush applies Hub.Exception and Hub.SubDevice.Version for matching id', () => {
+        const { endpoint, trait } = createHubHarness([
+            HUB_EXCEPTION_NAMESPACE,
+            HUB_SUBDEVICE_VERSION_NAMESPACE
+        ]);
+        const changes: Array<{ values: Record<string, unknown> }> = [];
+        endpoint.on('change', (c) => changes.push(c));
+
+        trait.handlePush(push(HUB_EXCEPTION_NAMESPACE, {
+            exception: [{ id: SUB_DEVICE_ID, code: 5061 }]
+        }));
+        trait.handlePush(push(HUB_SUBDEVICE_VERSION_NAMESPACE, {
+            version: [{ id: SUB_DEVICE_ID, hardware: '1.1.5', firmware: '5.1.8' }]
+        }));
+
+        assert.equal(changes[0].values.fault, 5061);
+        assert.equal(changes[1].values.firmwareVersion, '5.1.8');
+        assert.equal(changes[1].values.hardwareVersion, '1.1.5');
     });
 
     it('handlePush applies Hub.Mts100.Temperature PUSH', () => {

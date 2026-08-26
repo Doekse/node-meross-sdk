@@ -17,6 +17,8 @@ import {
     HUB_MTS100_TEMPERATURE_NAMESPACE,
     HUB_MTS100_TIMESYNC_NAMESPACE,
     HUB_TOGGLEX_NAMESPACE,
+    HUB_EXCEPTION_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE,
     OVERHEAT_NAMESPACE,
     SCHEDULEB_NAMESPACE,
     SCHEDULE_NAMESPACE,
@@ -48,6 +50,8 @@ import {
     decodeHubSuperCtl,
     decodeHubTimeSync,
     decodeHubToggleXPush,
+    decodeHubExceptionPush,
+    decodeHubSubDeviceVersionPush,
     decodeOverheat,
     decodeSchedule,
     decodeSensorMode,
@@ -177,6 +181,9 @@ export interface ClimateValues {
     compTemp?: number;
     compTempEnable?: boolean;
     wire?: ClimateSystemWire;
+    fault?: number;
+    firmwareVersion?: string;
+    hardwareVersion?: string;
 }
 
 type ClimatePatch = ClimateValues & { channel?: number; id?: string };
@@ -1031,6 +1038,21 @@ export class ClimateTrait {
             this.applyMatching(decodeHubToggleXPush(payload).map((entry) => ({
                 id: entry.id,
                 on: entry.on
+            })));
+            return;
+        }
+        if (ns === HUB_EXCEPTION_NAMESPACE && this.has(ns)) {
+            this.applyMatching(decodeHubExceptionPush(payload).map((entry) => ({
+                id: entry.id,
+                fault: entry.code
+            })));
+            return;
+        }
+        if (ns === HUB_SUBDEVICE_VERSION_NAMESPACE && this.has(ns)) {
+            this.applyMatching(decodeHubSubDeviceVersionPush(payload).map((entry) => ({
+                id: entry.id,
+                ...(entry.firmware !== undefined ? { firmwareVersion: entry.firmware } : {}),
+                ...(entry.hardware !== undefined ? { hardwareVersion: entry.hardware } : {})
             })));
             return;
         }

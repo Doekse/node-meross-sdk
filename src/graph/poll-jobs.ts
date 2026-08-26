@@ -68,6 +68,7 @@ import {
     HUB_SENSOR_SMOKE_NAMESPACE,
     HUB_SENSOR_TEMPHUM_NAMESPACE,
     HUB_SENSOR_WATERLEAK_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE,
     SENSOR_LATEST_NAMESPACE,
     SENSOR_LATESTX_NAMESPACE,
     SMOKE_CONFIG_NAMESPACE
@@ -503,6 +504,10 @@ const POLL: Record<string, PollSpec> = {
     [HUB_BATTERY_NAMESPACE]: {
         ...SMART_BATTERY,
         payload: idList('battery')
+    },
+    [HUB_SUBDEVICE_VERSION_NAMESPACE]: {
+        ...ONCE,
+        payload: idList('version')
     },
     [HUB_SENSOR_ADJUST_NAMESPACE]: {
         ...SMART_CLOUDMQTT,

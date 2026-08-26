@@ -6,6 +6,8 @@ import { Endpoint } from '../../src/endpoint';
 import {
     CONTROL_WATER_NAMESPACE,
     DEVICE_CFG_NAMESPACE,
+    HUB_EXCEPTION_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE,
     HUB_TOGGLEX_NAMESPACE,
     WATER_PLAN_NAMESPACE,
     encodeMessage,
@@ -212,5 +214,22 @@ describe('SprinklerTrait', () => {
         const without = createHarness({}, new Set([CONTROL_WATER_NAMESPACE]));
         assert.equal(await without.trait.setSchedule(entries), undefined);
         assert.equal(without.requests.length, 0);
+    });
+
+    it('applies fault and firmware/hardware versions from hub diagnostics PUSH', () => {
+        const { trait, changes } = createHarness({}, new Set([
+            ...SPRINKLER_NAMESPACES,
+            HUB_EXCEPTION_NAMESPACE,
+            HUB_SUBDEVICE_VERSION_NAMESPACE
+        ]));
+        trait.handlePush(pushMessage(HUB_EXCEPTION_NAMESPACE, {
+            exception: [{ id: SUB_DEVICE_ID, code: 5061 }]
+        }));
+        trait.handlePush(pushMessage(HUB_SUBDEVICE_VERSION_NAMESPACE, {
+            version: [{ id: SUB_DEVICE_ID, hardware: '1.1.5', firmware: '5.1.8' }]
+        }));
+        assert.equal(changes[0].fault, 5061);
+        assert.equal(changes[1].firmwareVersion, '5.1.8');
+        assert.equal(changes[1].hardwareVersion, '1.1.5');
     });
 });

@@ -47,6 +47,7 @@ import {
     HUB_SENSOR_ALL_NAMESPACE,
     HUB_SENSOR_SMOKE_NAMESPACE,
     HUB_SENSOR_TEMPHUM_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE,
     SENSOR_HISTORYX_NAMESPACE,
     SENSOR_LATEST_NAMESPACE,
     SENSOR_LATESTX_NAMESPACE,
@@ -302,6 +303,21 @@ describe('buildPollJobs', () => {
             periodMs: HUB_BATTERY_PERIOD_MS,
             periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { battery: [{ id: SUB_ID }] }
+        });
+    });
+
+    it('registers Hub.SubDevice.Version as once with idList', () => {
+        const endpoints: PollEndpoint[] = [{ subDeviceId: SUB_ID, traits: ['sensor'] }];
+        const jobs = buildPollJobs(
+            ability(HUB_SUBDEVICE_VERSION_NAMESPACE),
+            endpoints
+        );
+        assert.deepEqual(job(jobs, HUB_SUBDEVICE_VERSION_NAMESPACE), {
+            namespace: HUB_SUBDEVICE_VERSION_NAMESPACE,
+            strategy: 'once',
+            periodMs: 0,
+            periodCloudMs: 0,
+            payload: { version: [{ id: SUB_ID }] }
         });
     });
 

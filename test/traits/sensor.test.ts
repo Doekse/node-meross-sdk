@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { Endpoint } from '../../src/endpoint';
 import {
     HUB_BATTERY_NAMESPACE,
+    HUB_EXCEPTION_NAMESPACE,
     HUB_SENSOR_ADJUST_NAMESPACE,
     HUB_SENSOR_ALERT_NAMESPACE,
     HUB_SENSOR_ALL_NAMESPACE,
@@ -11,6 +12,7 @@ import {
     HUB_SENSOR_SMOKE_NAMESPACE,
     HUB_SENSOR_TEMPHUM_NAMESPACE,
     HUB_SENSOR_WATERLEAK_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE,
     SMOKE_CONFIG_NAMESPACE,
     SENSOR_LATESTX_NAMESPACE,
     encodeMessage,
@@ -32,6 +34,8 @@ const HUB_SENSOR_NAMESPACES = new Set([
     HUB_SENSOR_ALERT_NAMESPACE,
     HUB_SENSOR_ALL_NAMESPACE,
     HUB_BATTERY_NAMESPACE,
+    HUB_EXCEPTION_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE,
     SENSOR_LATESTX_NAMESPACE,
     SMOKE_CONFIG_NAMESPACE
 ]);
@@ -297,6 +301,106 @@ describe('SensorTrait — battery PUSH', () => {
         const { trait, changes } = createHarness('tempHum');
         trait.handlePush(pushMessage(HUB_BATTERY_NAMESPACE, {
             battery: [{ id: 'other-id', value: 60 }]
+        }));
+        assert.equal(changes.length, 0);
+    });
+});
+
+describe('SensorTrait — exception and version', () => {
+    it('applies fault from Hub.Exception PUSH for matching id', () => {
+        const { trait, changes } = createHarness('tempHum');
+        trait.handlePush(pushMessage(HUB_EXCEPTION_NAMESPACE, {
+            exception: [{ id: SUB_DEVICE_ID, code: 5061 }]
+        }));
+        assert.equal(changes.length, 1);
+        assert.equal(changes[0].fault, 5061);
+    });
+
+    it('dedupes identical Hub.Exception fault codes', () => {
+        const { trait, changes } = createHarness('tempHum');
+        const message = pushMessage(HUB_EXCEPTION_NAMESPACE, {
+            exception: [{ id: SUB_DEVICE_ID, code: 5061 }]
+        });
+        trait.handlePush(message);
+        trait.handlePush(message);
+        assert.equal(changes.length, 1);
+    });
+
+    it('ignores Hub.Exception PUSH for a different sub-device id', () => {
+        const { trait, changes } = createHarness('tempHum');
+        trait.handlePush(pushMessage(HUB_EXCEPTION_NAMESPACE, {
+            exception: [{ id: 'other-id', code: 5061 }]
+        }));
+        assert.equal(changes.length, 0);
+    });
+
+    it('ignores Hub.Exception PUSH when uuid does not match the bind', () => {
+        const { trait, changes } = createHarness('tempHum');
+        trait.handlePush(encodeMessage({
+            namespace: HUB_EXCEPTION_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: '/appliance/other/publish',
+            uuid: 'other',
+            payload: { exception: [{ id: SUB_DEVICE_ID, code: 5061 }] }
+        }));
+        assert.equal(changes.length, 0);
+    });
+
+    it('applies firmwareVersion from Hub.SubDevice.Version PUSH', () => {
+        const { trait, changes } = createHarness('tempHum');
+        trait.handlePush(pushMessage(HUB_SUBDEVICE_VERSION_NAMESPACE, {
+            version: [{ id: SUB_DEVICE_ID, hardware: '1.1.5', firmware: '5.1.8' }]
+        }));
+        assert.equal(changes.length, 1);
+        assert.equal(changes[0].firmwareVersion, '5.1.8');
+        assert.equal(changes[0].hardwareVersion, '1.1.5');
+    });
+
+    it('ignores Version PUSH for a different sub-device id', () => {
+        const { trait, changes } = createHarness('tempHum');
+        trait.handlePush(pushMessage(HUB_SUBDEVICE_VERSION_NAMESPACE, {
+            version: [{ id: 'other-id', firmware: '5.1.8' }]
+        }));
+        assert.equal(changes.length, 0);
+    });
+
+    it('applies firmwareVersion from Version GETACK via handlePush', () => {
+        const { trait, changes } = createHarness('tempHum');
+        trait.handlePush(encodeMessage({
+            namespace: HUB_SUBDEVICE_VERSION_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                version: [{ id: SUB_DEVICE_ID, hardware: '1.2.3', firmware: '6.1.9' }]
+            }
+        }));
+        assert.equal(changes[0].firmwareVersion, '6.1.9');
+    });
+
+    it('dedupes identical firmwareVersion values', () => {
+        const { trait, changes } = createHarness('tempHum');
+        const message = pushMessage(HUB_SUBDEVICE_VERSION_NAMESPACE, {
+            version: [{ id: SUB_DEVICE_ID, firmware: '5.1.8' }]
+        });
+        trait.handlePush(message);
+        trait.handlePush(message);
+        assert.equal(changes.length, 1);
+    });
+
+    it('ignores Version PUSH when uuid does not match the bind', () => {
+        const { trait, changes } = createHarness('tempHum');
+        trait.handlePush(encodeMessage({
+            namespace: HUB_SUBDEVICE_VERSION_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: '/appliance/other/publish',
+            uuid: 'other',
+            payload: {
+                version: [{ id: SUB_DEVICE_ID, firmware: '5.1.8' }]
+            }
         }));
         assert.equal(changes.length, 0);
     });

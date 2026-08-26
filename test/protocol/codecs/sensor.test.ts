@@ -16,7 +16,11 @@ import {
     decodeSmokeConfigGetAck,
     decodeSmokeConfigPush,
     encodeSmokeConfigGet,
-    encodeSmokeConfigSet
+    encodeSmokeConfigSet,
+    decodeHubExceptionPush,
+    encodeHubSubDeviceVersionGet,
+    decodeHubSubDeviceVersionGetAck,
+    decodeHubSubDeviceVersionPush
 } from '../../../src/protocol/codecs/sensor';
 
 describe('Control.Sensor.Latest codec', () => {
@@ -263,5 +267,77 @@ describe('Control.Smoke.Config codec', () => {
 
     it('rejects an entry missing channel', () => {
         assert.throws(() => decodeSmokeConfigGetAck({ config: [{ subId: '123456' }] }), ProtocolError);
+    });
+});
+
+describe('Hub.Exception codec', () => {
+    it('decodes PUSH rows with id and code', () => {
+        assert.deepEqual(decodeHubExceptionPush({
+            exception: [
+                { id: '120027D21C19', code: 5061 },
+                { id: '00000102', code: 5062 }
+            ]
+        }), [
+            { id: '120027D21C19', code: 5061 },
+            { id: '00000102', code: 5062 }
+        ]);
+    });
+
+    it('omits rows without a numeric code', () => {
+        assert.deepEqual(decodeHubExceptionPush({
+            exception: [{ id: '120027D21C19' }]
+        }), []);
+    });
+
+    it('rejects a non-array exception payload', () => {
+        assert.throws(() => decodeHubExceptionPush({ exception: {} }), ProtocolError);
+    });
+});
+
+describe('Hub.SubDevice.Version codec', () => {
+    it('encodes GET with id in a version array', () => {
+        assert.deepEqual(encodeHubSubDeviceVersionGet('130012345678'), {
+            version: [{ id: '130012345678' }]
+        });
+    });
+
+    it('decodes GETACK firmware and hardware from the firmware fixture', () => {
+        const [entry] = decodeHubSubDeviceVersionGetAck({
+            version: [{
+                id: '130012345678',
+                hardware: '1.2.3',
+                firmware: '1.2.3'
+            }]
+        });
+        assert.deepEqual(entry, {
+            id: '130012345678',
+            firmware: '1.2.3',
+            hardware: '1.2.3'
+        });
+    });
+
+    it('skips exception-only rows that have no firmware or hardware', () => {
+        assert.deepEqual(decodeHubSubDeviceVersionGetAck({
+            version: [
+                { id: 'ghost', exception: { code: 5062 } },
+                { id: '130012345678', hardware: '1.2.3', firmware: '1.2.3' }
+            ]
+        }), [
+            { id: '130012345678', firmware: '1.2.3', hardware: '1.2.3' }
+        ]);
+    });
+
+    it('uses PUSH decoder interchangeably with GETACK', () => {
+        const payload = {
+            version: [{ id: '0300DAB1', hardware: '1.1.5', firmware: '5.1.8' }]
+        };
+        assert.deepEqual(
+            decodeHubSubDeviceVersionPush(payload),
+            decodeHubSubDeviceVersionGetAck(payload)
+        );
+    });
+
+    it('rejects a non-array version payload', () => {
+        assert.throws(() => decodeHubSubDeviceVersionGetAck({ version: {} }), ProtocolError);
     });
 });

@@ -382,8 +382,12 @@ export class Session extends EventEmitter<SessionEvents> {
                     uuid: physical.uuid,
                     subDeviceId: graphEndpoint.subDeviceId,
                     initialOn: graphEndpoint.on,
+                    namespaces,
                     request,
-                    emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
+                    emitChange: (values) => endpoint.emit('change', {
+                        trait: 'switch',
+                        values: { ...values }
+                    })
                 });
             } else {
                 switchTrait = new SwitchTrait({
@@ -395,7 +399,10 @@ export class Session extends EventEmitter<SessionEvents> {
                         : TOGGLEX_NAMESPACE,
                     initialOn: graphEndpoint.on,
                     request,
-                    emitChange: (on) => endpoint.emit('change', { trait: 'switch', values: { on } })
+                    emitChange: (values) => endpoint.emit('change', {
+                        trait: 'switch',
+                        values: { ...values }
+                    })
                 });
             }
         }
