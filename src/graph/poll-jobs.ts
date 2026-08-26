@@ -65,6 +65,7 @@ import {
     HUB_SENSOR_ALERT_NAMESPACE,
     HUB_SENSOR_ALL_NAMESPACE,
     HUB_SENSOR_DOORWINDOW_NAMESPACE,
+    HUB_SENSOR_MOTION_NAMESPACE,
     HUB_SENSOR_SMOKE_NAMESPACE,
     HUB_SENSOR_TEMPHUM_NAMESPACE,
     HUB_SENSOR_WATERLEAK_NAMESPACE,
@@ -495,6 +496,11 @@ const POLL: Record<string, PollSpec> = {
         ...DEFAULT,
         skipIf: HUB_SENSOR_ALL_NAMESPACE,
         payload: idList('waterLeak', 'sensor')
+    },
+    [HUB_SENSOR_MOTION_NAMESPACE]: {
+        ...DEFAULT,
+        skipIf: HUB_SENSOR_ALL_NAMESPACE,
+        payload: idList('motion', 'sensor')
     },
     [HUB_SENSOR_SMOKE_NAMESPACE]: {
         ...DEFAULT,

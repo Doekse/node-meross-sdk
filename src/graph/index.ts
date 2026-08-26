@@ -41,7 +41,7 @@ export type { SystemAll } from './system-all';
 
 const CLIMATE_SUBDEVICES = new Set(['mts100', 'mts100v3', 'mts150', 'mts150p']);
 const SENSOR_SUBDEVICES = new Set([
-    'ms100', 'ms100f', 'ms130', 'ms200', 'ms400', 'ms405', 'ma151', 'gs559'
+    'ms100', 'ms100f', 'ms120', 'ms130', 'ms200', 'ms400', 'ms405', 'ma151', 'gs559'
 ]);
 const SPRINKLER_SUBDEVICES = new Set(['mst100']);
 
@@ -52,7 +52,8 @@ const HUB_MODEL_ALIASES: Record<string, string> = {
     temphumi: 'ms130',
     doorwindow: 'ms200',
     waterleak: 'ms400',
-    smokealarm: 'gs559'
+    smokealarm: 'gs559',
+    motion: 'ms120'
 };
 
 export interface EnrollInput {

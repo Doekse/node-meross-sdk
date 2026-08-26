@@ -20,7 +20,10 @@ import {
     decodeHubExceptionPush,
     encodeHubSubDeviceVersionGet,
     decodeHubSubDeviceVersionGetAck,
-    decodeHubSubDeviceVersionPush
+    decodeHubSubDeviceVersionPush,
+    encodeSensorMotionGet,
+    decodeSensorMotionGetAck,
+    decodeSensorMotionPush
 } from '../../../src/protocol/codecs/sensor';
 
 describe('Control.Sensor.Latest codec', () => {
@@ -339,5 +342,48 @@ describe('Hub.SubDevice.Version codec', () => {
 
     it('rejects a non-array version payload', () => {
         assert.throws(() => decodeHubSubDeviceVersionGetAck({ version: {} }), ProtocolError);
+    });
+});
+
+describe('Hub.Sensor.Motion codec', () => {
+    it('encodes GET with id in a motion array', () => {
+        assert.deepEqual(encodeSensorMotionGet('120012345678'), {
+            motion: [{ id: '120012345678' }]
+        });
+    });
+
+    it('decodes status=1 as motion detected', () => {
+        const [entry] = decodeSensorMotionGetAck({
+            motion: [{ id: '120012345678', status: 1, lmTime: 1615876120996 }]
+        });
+        assert.deepEqual(entry, { id: '120012345678', motion: true });
+    });
+
+    it('decodes status=0 as no motion', () => {
+        const [entry] = decodeSensorMotionGetAck({
+            motion: [{ id: '120012345678', status: 0, lmTime: 1615876120996 }]
+        });
+        assert.deepEqual(entry, { id: '120012345678', motion: false });
+    });
+
+    it('uses PUSH decoder interchangeably with GETACK', () => {
+        const payload = {
+            motion: [{ id: '120012345678', status: 1, lmTime: 1615876120996 }]
+        };
+        assert.deepEqual(
+            decodeSensorMotionPush(payload),
+            decodeSensorMotionGetAck(payload)
+        );
+    });
+
+    it('rejects a non-array motion payload', () => {
+        assert.throws(() => decodeSensorMotionGetAck({ motion: {} }), ProtocolError);
+    });
+
+    it('rejects an entry without status', () => {
+        assert.throws(
+            () => decodeSensorMotionGetAck({ motion: [{ id: '120012345678' }] }),
+            ProtocolError
+        );
     });
 });

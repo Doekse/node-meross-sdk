@@ -964,7 +964,7 @@ describe('enrollPhysicalDevice', () => {
         );
     });
 
-    it('enrolls MST100 sprinklers with sprinkler trait and omits unknown hub children without onoff', () => {
+    it('enrolls MST100 sprinklers with sprinkler trait and MS120 motion sensors', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: {
                 ability: { 'Appliance.Hub.SubdeviceList': {} }
@@ -982,6 +982,7 @@ describe('enrollPhysicalDevice', () => {
                                 { id: 'aabbcc', status: 1, type: 'mst100' },
                                 { id: 'sprinkler1', status: 1, mst: { onoff: 1 } },
                                 { id: 'deadbeef', status: 1, ms120: {} },
+                                { id: 'motion1', status: 1, motion: {} },
                                 { id: 'mystery1', status: 1, onoff: 1, mystery: {} }
                             ]
                         }
@@ -990,7 +991,7 @@ describe('enrollPhysicalDevice', () => {
             },
             subDevices: [{ subDeviceId: 'aabbcc', subDeviceType: 'mst100', subDeviceName: 'Garden' }]
         });
-        assert.equal(device.endpoints.length, 4);
+        assert.equal(device.endpoints.length, 6);
         assert.equal(device.endpoints[0]?.classHint, 'hub');
 
         const sprinkler = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'aabbcc');
@@ -1006,17 +1007,25 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(aliasSprinkler?.classHint, 'sprinkler');
         assert.deepEqual(aliasSprinkler?.traits, ['sprinkler']);
 
+        const motion = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'deadbeef');
+        assert.ok(motion);
+        assert.equal(motion?.parentId, HUB_UUID);
+        assert.equal(motion?.classHint, 'sensor');
+        assert.deepEqual(motion?.traits, ['sensor']);
+        assert.equal(motion?.model, 'ms120');
+
+        const motionAlias = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'motion1');
+        assert.ok(motionAlias);
+        assert.equal(motionAlias?.classHint, 'sensor');
+        assert.deepEqual(motionAlias?.traits, ['sensor']);
+        assert.equal(motionAlias?.model, 'ms120');
+
         const hubSwitch = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'mystery1');
         assert.ok(hubSwitch);
         assert.equal(hubSwitch?.parentId, HUB_UUID);
         assert.equal(hubSwitch?.classHint, 'socket');
         assert.deepEqual(hubSwitch?.traits, ['switch']);
         assert.equal(hubSwitch?.on, true);
-
-        assert.equal(
-            device.endpoints.some((endpoint) => endpoint.subDeviceId === 'deadbeef'),
-            false
-        );
 
         const graph = new DeviceGraph();
         graph.enroll({
@@ -1043,10 +1052,11 @@ describe('enrollPhysicalDevice', () => {
             subDevices: [{ subDeviceId: 'aabbcc', subDeviceType: 'mst100', subDeviceName: 'Garden' }]
         });
         const rows = graph.inventoryRows();
-        assert.equal(rows.length, 4);
+        assert.equal(rows.length, 5);
         assert.deepEqual(rows.map((row) => row.id).sort(), [
             HUB_UUID,
             `${HUB_UUID}#aabbcc`,
+            `${HUB_UUID}#deadbeef`,
             `${HUB_UUID}#mystery1`,
             `${HUB_UUID}#sprinkler1`
         ]);

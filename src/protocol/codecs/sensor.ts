@@ -4,6 +4,7 @@ import type { MerossPayload } from '../message';
 export const HUB_SENSOR_TEMPHUM_NAMESPACE = 'Appliance.Hub.Sensor.TempHum';
 export const HUB_SENSOR_DOORWINDOW_NAMESPACE = 'Appliance.Hub.Sensor.DoorWindow';
 export const HUB_SENSOR_WATERLEAK_NAMESPACE = 'Appliance.Hub.Sensor.WaterLeak';
+export const HUB_SENSOR_MOTION_NAMESPACE = 'Appliance.Hub.Sensor.Motion';
 export const HUB_SENSOR_SMOKE_NAMESPACE = 'Appliance.Hub.Sensor.Smoke';
 export const HUB_SENSOR_ADJUST_NAMESPACE = 'Appliance.Hub.Sensor.Adjust';
 export const HUB_SENSOR_ALERT_NAMESPACE = 'Appliance.Hub.Sensor.Alert';
@@ -31,6 +32,11 @@ export interface SensorDoorWindowState {
 export interface SensorWaterLeakState {
     id: string;
     leak: boolean;
+}
+
+export interface SensorMotionState {
+    id: string;
+    motion: boolean;
 }
 
 export interface SensorSmokeState {
@@ -80,6 +86,7 @@ export interface SensorAllState {
     humidity?: number;
     leak?: boolean;
     open?: boolean;
+    motion?: boolean;
     smoke?: SensorSmokeState;
 }
 
@@ -305,6 +312,28 @@ function decodeWaterLeak(payload: MerossPayload): SensorWaterLeakState[] {
             throw new ProtocolError('Hub.Sensor.WaterLeak latestWaterLeak is required');
         }
         return { id, leak: item.latestWaterLeak !== 0 };
+    });
+}
+
+export function encodeSensorMotionGet(id: string): MerossPayload {
+    return encodeIdGet('motion', id);
+}
+
+export function decodeSensorMotionGetAck(payload: MerossPayload): SensorMotionState[] {
+    return decodeMotion(payload);
+}
+
+export function decodeSensorMotionPush(payload: MerossPayload): SensorMotionState[] {
+    return decodeMotion(payload);
+}
+
+function decodeMotion(payload: MerossPayload): SensorMotionState[] {
+    return decodeArray(payload, 'motion', 'Hub.Sensor.Motion').map((item) => {
+        const id = requireId(item.id, 'Hub.Sensor.Motion');
+        if (typeof item.status !== 'number') {
+            throw new ProtocolError('Hub.Sensor.Motion status is required');
+        }
+        return { id, motion: item.status === 1 };
     });
 }
 
@@ -537,6 +566,10 @@ function decodeSensorAll(payload: MerossPayload): SensorAllState[] {
         const door = nestedNumber(item.doorWindow, 'status');
         if (door !== undefined) {
             result.open = door === 1;
+        }
+        const motion = nestedNumber(item.motion, 'status');
+        if (motion !== undefined) {
+            result.motion = motion === 1;
         }
         if (typeof item.smokeAlarm === 'object' && item.smokeAlarm !== null) {
             const smoke = item.smokeAlarm as Record<string, unknown>;

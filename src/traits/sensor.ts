@@ -5,6 +5,7 @@ import {
     HUB_SENSOR_ALERT_NAMESPACE,
     HUB_SENSOR_ALL_NAMESPACE,
     HUB_SENSOR_DOORWINDOW_NAMESPACE,
+    HUB_SENSOR_MOTION_NAMESPACE,
     HUB_SENSOR_SMOKE_NAMESPACE,
     HUB_SENSOR_TEMPHUM_NAMESPACE,
     HUB_SENSOR_WATERLEAK_NAMESPACE,
@@ -20,6 +21,7 @@ import {
     decodeSensorAlertPush,
     decodeSensorAllPush,
     decodeSensorDoorWindowPush,
+    decodeSensorMotionPush,
     decodeSensorSmokePush,
     decodeSensorTempHumPush,
     decodeSensorWaterLeakPush,
@@ -36,13 +38,14 @@ import {
 import type { RoutedRequestOptions } from '../transport/router';
 
 /** Hub child sensor families. Digest type strings do not match cloud subDeviceType. */
-export type SensorFamily = 'tempHum' | 'contact' | 'leak' | 'smoke';
+export type SensorFamily = 'tempHum' | 'contact' | 'leak' | 'motion' | 'smoke';
 
 /** Lowercase model / digest alias → family so enroll and the trait share one table. */
 export const SENSOR_FAMILY_MAP: ReadonlyMap<string, SensorFamily> = new Map([
     ['ms100', 'tempHum'],
     ['ms100f', 'tempHum'],
     ['ms130', 'tempHum'],
+    ['ms120', 'motion'],
     ['ms200', 'contact'],
     ['ms400', 'leak'],
     ['ms405', 'leak'],
@@ -71,6 +74,7 @@ export interface SensorValues {
     light?: number;
     open?: boolean;
     leak?: boolean;
+    motion?: boolean;
     smoke?: boolean;
     smokeStatus?: SensorSmokeStatus;
     smokeError?: boolean;
@@ -257,6 +261,14 @@ export class SensorTrait {
             for (const entry of decodeSensorWaterLeakPush(payload)) {
                 if (entry.id === id) {
                     this.applyChange({ leak: entry.leak });
+                }
+            }
+            return;
+        }
+        if (ns === HUB_SENSOR_MOTION_NAMESPACE && family === 'motion') {
+            for (const entry of decodeSensorMotionPush(payload)) {
+                if (entry.id === id) {
+                    this.applyChange({ motion: entry.motion });
                 }
             }
             return;
@@ -475,6 +487,8 @@ function allPatch(family: SensorFamily, entry: SensorAllState): SensorValues {
             return entry.open !== undefined ? { open: entry.open } : {};
         case 'leak':
             return entry.leak !== undefined ? { leak: entry.leak } : {};
+        case 'motion':
+            return entry.motion !== undefined ? { motion: entry.motion } : {};
         case 'smoke':
             return entry.smoke ? smokePatch(entry.smoke) : {};
     }

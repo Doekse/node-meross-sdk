@@ -209,7 +209,7 @@ Traits are present only when the board advertised the matching ability. Use opti
 | `energy`    | Metered plugs and strips           | `poll()` (power / current / voltage), `getHourlyConsumption()`, `deleteConsumption()` |
 | `cover`     | Garage doors, roller shutters      | `open()`, `close()`, `stop()`, `setPosition()`                                        |
 | `climate`   | Thermostats and hub valves         | `setOn`, `setMode`, `setTargetTemperature`, schedule / extras                         |
-| `sensor`    | Hub temp/hum, contact, leak, smoke | Live values on `change`; `setCalibration`, `setAlerts`, smoke `mute` / `test`         |
+| `sensor`    | Hub temp/hum, contact, leak, motion, smoke | Live values on `change`; `setCalibration`, `setAlerts`, smoke `mute` / `test`         |
 | `presence`  | Wi-Fi presence sensors             | `change` values; `getConfig()`, `setConfig()`, `startStudy()`                         |
 | `fan`       | Fans                               | `setOn`, `setSpeed`, `getButtonConfig` / `setButtonConfig`                            |
 | `spray`     | Humidifiers                        | `getMode()`, `setMode('off'                                                           |

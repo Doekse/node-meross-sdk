@@ -45,6 +45,7 @@ import { PRESENCE_CONFIG_NAMESPACE } from '../../src/protocol/codecs/presence';
 import {
     HUB_BATTERY_NAMESPACE,
     HUB_SENSOR_ALL_NAMESPACE,
+    HUB_SENSOR_MOTION_NAMESPACE,
     HUB_SENSOR_SMOKE_NAMESPACE,
     HUB_SENSOR_TEMPHUM_NAMESPACE,
     HUB_SUBDEVICE_VERSION_NAMESPACE,
@@ -341,6 +342,24 @@ describe('buildPollJobs', () => {
             periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { config: [{ channel: 0, subId: SUB_ID }] }
         });
+    });
+
+    it('registers Hub.Sensor.Motion as default and skips when All is advertised', () => {
+        const endpoints: PollEndpoint[] = [{ subDeviceId: SUB_ID, traits: ['sensor'] }];
+        const withoutAll = buildPollJobs(ability(HUB_SENSOR_MOTION_NAMESPACE), endpoints);
+        assert.deepEqual(job(withoutAll, HUB_SENSOR_MOTION_NAMESPACE), {
+            namespace: HUB_SENSOR_MOTION_NAMESPACE,
+            strategy: 'default',
+            periodMs: 0,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
+            payload: { motion: [{ id: SUB_ID }] }
+        });
+        const withAll = buildPollJobs(
+            ability(HUB_SENSOR_ALL_NAMESPACE, HUB_SENSOR_MOTION_NAMESPACE),
+            endpoints
+        );
+        assert.equal(namespaces(withAll).includes(HUB_SENSOR_MOTION_NAMESPACE), false);
+        assert.ok(namespaces(withAll).includes(HUB_SENSOR_ALL_NAMESPACE));
     });
 
     it('registers Digest.TimerX and Digest.TriggerX as once', () => {

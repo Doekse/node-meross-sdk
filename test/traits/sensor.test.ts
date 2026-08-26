@@ -9,6 +9,7 @@ import {
     HUB_SENSOR_ALERT_NAMESPACE,
     HUB_SENSOR_ALL_NAMESPACE,
     HUB_SENSOR_DOORWINDOW_NAMESPACE,
+    HUB_SENSOR_MOTION_NAMESPACE,
     HUB_SENSOR_SMOKE_NAMESPACE,
     HUB_SENSOR_TEMPHUM_NAMESPACE,
     HUB_SENSOR_WATERLEAK_NAMESPACE,
@@ -29,6 +30,7 @@ const HUB_SENSOR_NAMESPACES = new Set([
     HUB_SENSOR_TEMPHUM_NAMESPACE,
     HUB_SENSOR_DOORWINDOW_NAMESPACE,
     HUB_SENSOR_WATERLEAK_NAMESPACE,
+    HUB_SENSOR_MOTION_NAMESPACE,
     HUB_SENSOR_SMOKE_NAMESPACE,
     HUB_SENSOR_ADJUST_NAMESPACE,
     HUB_SENSOR_ALERT_NAMESPACE,
@@ -113,6 +115,10 @@ describe('SENSOR_FAMILY_MAP', () => {
         assert.equal(SENSOR_FAMILY_MAP.get('ms405'), 'leak');
     });
 
+    it('maps motion model correctly', () => {
+        assert.equal(SENSOR_FAMILY_MAP.get('ms120'), 'motion');
+    });
+
     it('maps smoke models correctly', () => {
         assert.equal(SENSOR_FAMILY_MAP.get('ma151'), 'smoke');
         assert.equal(SENSOR_FAMILY_MAP.get('gs559'), 'smoke');
@@ -188,6 +194,58 @@ describe('SensorTrait — leak PUSH', () => {
         }));
         assert.equal(changes.length, 1);
         assert.equal(changes[0].leak, false);
+    });
+});
+
+describe('SensorTrait — motion PUSH', () => {
+    it('applies motion=true from status=1', () => {
+        const { trait, changes } = createHarness('motion');
+        trait.handlePush(pushMessage(HUB_SENSOR_MOTION_NAMESPACE, {
+            motion: [{ id: SUB_DEVICE_ID, status: 1, lmTime: 1000 }]
+        }));
+        assert.equal(changes.length, 1);
+        assert.equal(changes[0].motion, true);
+    });
+
+    it('applies motion=false from status=0', () => {
+        const { trait, changes } = createHarness('motion');
+        trait.handlePush(pushMessage(HUB_SENSOR_MOTION_NAMESPACE, {
+            motion: [{ id: SUB_DEVICE_ID, status: 0, lmTime: 1000 }]
+        }));
+        assert.equal(changes.length, 1);
+        assert.equal(changes[0].motion, false);
+    });
+
+    it('ignores PUSH for a different sub-device id', () => {
+        const { trait, changes } = createHarness('motion');
+        trait.handlePush(pushMessage(HUB_SENSOR_MOTION_NAMESPACE, {
+            motion: [{ id: 'other-id', status: 1, lmTime: 1000 }]
+        }));
+        assert.equal(changes.length, 0);
+    });
+
+    it('ignores motion PUSH when family is contact', () => {
+        const { trait, changes } = createHarness('contact');
+        trait.handlePush(pushMessage(HUB_SENSOR_MOTION_NAMESPACE, {
+            motion: [{ id: SUB_DEVICE_ID, status: 1, lmTime: 1000 }]
+        }));
+        assert.equal(changes.length, 0);
+    });
+
+    it('dedupes identical motion values', () => {
+        const { trait, changes } = createHarness('motion');
+        const payload = { motion: [{ id: SUB_DEVICE_ID, status: 1, lmTime: 1000 }] };
+        trait.handlePush(pushMessage(HUB_SENSOR_MOTION_NAMESPACE, payload));
+        trait.handlePush(pushMessage(HUB_SENSOR_MOTION_NAMESPACE, payload));
+        assert.equal(changes.length, 1);
+    });
+
+    it('applies Sensor.All nested motion for motion family', () => {
+        const { trait, changes } = createHarness('motion');
+        trait.handlePush(pushMessage(HUB_SENSOR_ALL_NAMESPACE, {
+            all: [{ id: SUB_DEVICE_ID, motion: { status: 1, lmTime: 1 } }]
+        }));
+        assert.equal(changes[0].motion, true);
     });
 });
 
