@@ -521,9 +521,10 @@ describe('buildPollJobs', () => {
             ability(
                 'Appliance.System.Runtime',
                 'Appliance.Config.OverTemp',
+                'Appliance.Control.OverTemp',
                 'Appliance.Config.Sensor.Association'
             ),
-            [{ channel: CHANNEL, traits: ['climate'] }]
+            [{ channel: CHANNEL, traits: ['energy'] }]
         );
         assert.deepEqual(jobs.find((entry) => entry.namespace === 'Appliance.System.Runtime'), {
             namespace: 'Appliance.System.Runtime',
@@ -538,6 +539,13 @@ describe('buildPollJobs', () => {
             periodMs: SENSOR_SLOW_PERIOD_MS,
             periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: {}
+        });
+        assert.deepEqual(jobs.find((entry) => entry.namespace === 'Appliance.Control.OverTemp'), {
+            namespace: 'Appliance.Control.OverTemp',
+            strategy: 'smart',
+            periodMs: SENSOR_SLOW_PERIOD_MS,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
+            payload: { overTemp: [{ channel: CHANNEL }] }
         });
         assert.deepEqual(
             jobs.find((entry) => entry.namespace === 'Appliance.Config.Sensor.Association'),

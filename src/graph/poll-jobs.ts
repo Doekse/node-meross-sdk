@@ -58,6 +58,10 @@ import { FAN_CONFIG_NAMESPACE, FAN_NAMESPACE, FILTER_MAINTENANCE_NAMESPACE } fro
 import { LIGHT_EFFECT_NAMESPACE, LIGHT_NAMESPACE } from '../protocol/codecs/light';
 import { MP3_NAMESPACE } from '../protocol/codecs/mp3';
 import { HUB_TOGGLEX_NAMESPACE } from '../protocol/codecs/multiple';
+import {
+    CONFIG_OVERTEMP_NAMESPACE,
+    CONTROL_OVERTEMP_NAMESPACE
+} from '../protocol/codecs/overtemp';
 import { PRESENCE_CONFIG_NAMESPACE } from '../protocol/codecs/presence';
 import {
     HUB_BATTERY_NAMESPACE,
@@ -247,7 +251,11 @@ const POLL: Record<string, PollSpec> = {
     },
     [SYSTEM_POSITION_NAMESPACE]: ONCE,
     [SYSTEM_DEBUG_NAMESPACE]: ONCE,
-    'Appliance.Config.OverTemp': SMART_CONFIG,
+    [CONFIG_OVERTEMP_NAMESPACE]: SMART_CONFIG,
+    [CONTROL_OVERTEMP_NAMESPACE]: {
+        ...SMART_CONFIG,
+        payload: channelList('overTemp', 'energy')
+    },
     'Appliance.Config.Sensor.Association': {
         ...SMART_CONFIG,
         payload: { list: 'config' }

@@ -127,6 +127,21 @@ export {
     encodeConsumptionConfigGet
 } from './codecs/consumptionconfig';
 export {
+    CONFIG_OVERTEMP_NAMESPACE,
+    CONTROL_OVERTEMP_NAMESPACE,
+    decodeConfigOverTempGetAck,
+    decodeConfigOverTempPush,
+    decodeControlOverTempGetAck,
+    decodeControlOverTempPush,
+    encodeConfigOverTempGet,
+    encodeConfigOverTempSet,
+    encodeControlOverTempGet
+} from './codecs/overtemp';
+export type {
+    ConfigOverTempState,
+    ControlOverTempState
+} from './codecs/overtemp';
+export {
     GARAGE_STATE_NAMESPACE,
     GARAGE_CONFIG_NAMESPACE,
     GARAGE_MULTIPLE_CONFIG_NAMESPACE,

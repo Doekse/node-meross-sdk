@@ -1,22 +1,29 @@
 import {
+    CONFIG_OVERTEMP_NAMESPACE,
     CONSUMPTIONH_NAMESPACE,
     CONSUMPTIONX_NAMESPACE,
     CONSUMPTION_CONFIG_NAMESPACE,
+    CONTROL_OVERTEMP_NAMESPACE,
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_NAMESPACE,
+    decodeConfigOverTempPush,
     decodeConsumptionConfigGetAck,
     decodeConsumptionHGetAck,
     decodeConsumptionXGetAck,
+    decodeControlOverTempPush,
     decodeElectricityGetAck,
     decodeElectricityXGetAck,
+    encodeConfigOverTempSet,
     encodeConsumptionConfigGet,
     encodeConsumptionHGet,
     encodeConsumptionXDelete,
     encodeConsumptionXGet,
     encodeElectricityGet,
     encodeElectricityXGet,
+    type ConfigOverTempState,
     type ConsumptionHHour,
     type ConsumptionXDay,
+    type ControlOverTempState,
     type ElectricityConfig,
     type ElectricitySample,
     type MerossMessage
@@ -31,6 +38,10 @@ export interface EnergyValues {
     powerFactor?: number;
     consumption?: ConsumptionXDay[];
     hourly?: ConsumptionHHour[];
+    overTempEnabled?: boolean;
+    overTempType?: number;
+    overTempActive?: boolean;
+    overTempTimestamp?: number;
 }
 
 /**
@@ -110,6 +121,21 @@ export class EnergyTrait {
     }
 
     /**
+     * SET Config.OverTemp. No-op when the namespace is not advertised.
+     */
+    async setOverTemp(enabled: boolean, type?: number): Promise<void> {
+        if (!this.has(CONFIG_OVERTEMP_NAMESPACE)) {
+            return;
+        }
+        await this.bind.request({
+            namespace: CONFIG_OVERTEMP_NAMESPACE,
+            method: 'SET',
+            payload: encodeConfigOverTempSet({ enabled, type })
+        });
+        this.applyConfigOverTemp({ enabled, ...(type !== undefined ? { type } : {}) });
+    }
+
+    /**
      * DELETE is all-or-nothing and does not PUSH, so the local list updates here.
      * No-op when ConsumptionX is not advertised.
      */
@@ -155,6 +181,18 @@ export class EnergyTrait {
                 .find((entry) => entry.channel === this.bind.channel);
             if (sample) {
                 this.applyHourlyConsumption(sample.hourly);
+            }
+            return;
+        }
+        if (message.header.namespace === CONFIG_OVERTEMP_NAMESPACE && this.has(CONFIG_OVERTEMP_NAMESPACE)) {
+            this.applyConfigOverTemp(decodeConfigOverTempPush(message.payload));
+            return;
+        }
+        if (message.header.namespace === CONTROL_OVERTEMP_NAMESPACE && this.has(CONTROL_OVERTEMP_NAMESPACE)) {
+            const entry = decodeControlOverTempPush(message.payload)
+                .find((row) => row.channel === this.bind.channel);
+            if (entry) {
+                this.applyControlOverTemp(entry);
             }
         }
     }
@@ -257,5 +295,35 @@ export class EnergyTrait {
         }
         this.last = { ...this.last, hourly };
         this.bind.emitChange({ hourly });
+    }
+
+    private applyConfigOverTemp(state: ConfigOverTempState): void {
+        const values: EnergyValues = { overTempEnabled: state.enabled };
+        if (state.type !== undefined) {
+            values.overTempType = state.type;
+        }
+        if (
+            this.last.overTempEnabled === values.overTempEnabled
+            && this.last.overTempType === values.overTempType
+        ) {
+            return;
+        }
+        this.last = { ...this.last, ...values };
+        this.bind.emitChange(values);
+    }
+
+    private applyControlOverTemp(entry: ControlOverTempState): void {
+        const values: EnergyValues = { overTempActive: entry.active };
+        if (entry.timestamp !== undefined) {
+            values.overTempTimestamp = entry.timestamp;
+        }
+        if (
+            this.last.overTempActive === values.overTempActive
+            && this.last.overTempTimestamp === values.overTempTimestamp
+        ) {
+            return;
+        }
+        this.last = { ...this.last, ...values };
+        this.bind.emitChange(values);
     }
 }
