@@ -27,6 +27,39 @@ export {
 } from './codecs/online';
 export type { HubOnlineEntry } from './codecs/online';
 export {
+    SYSTEM_CLOCK_NAMESPACE,
+    SYSTEM_DEBUG_NAMESPACE,
+    SYSTEM_FIRMWARE_NAMESPACE,
+    SYSTEM_HARDWARE_NAMESPACE,
+    SYSTEM_POSITION_NAMESPACE,
+    SYSTEM_TIME_NAMESPACE,
+    decodeSystemClockPush,
+    decodeSystemDebugGetAck,
+    decodeSystemFirmwareGetAck,
+    decodeSystemFirmwarePush,
+    decodeSystemHardwareGetAck,
+    decodeSystemPositionGetAck,
+    decodeSystemTimeGetAck,
+    decodeSystemTimePush,
+    encodeSystemDebugGet,
+    encodeSystemFirmwareGet,
+    encodeSystemHardwareGet,
+    encodeSystemPositionGet,
+    encodeSystemPositionSet,
+    encodeSystemTimeGet,
+    encodeSystemTimeSet
+} from './codecs/system';
+export type {
+    SystemClockState,
+    SystemDebugState,
+    SystemFirmwareState,
+    SystemHardwareState,
+    SystemPositionState,
+    SystemTimeRule,
+    SystemTimeSetOptions,
+    SystemTimeState
+} from './codecs/system';
+export {
     TOGGLEX_ALL_CHANNELS,
     TOGGLEX_NAMESPACE,
     decodeToggleXGetAck,

@@ -69,8 +69,24 @@ describe('System.All GETACK', () => {
         const all = decodeSystemAllGetAck(payload('system-all-getack.json'));
         assert.equal(all.hardware.uuid, UUID);
         assert.equal(all.hardware.type, 'mss110');
+        assert.equal(all.hardware.subType, 'us');
+        assert.equal(all.hardware.version, '7.0.0');
+        assert.equal(all.hardware.chipType, 'rtl8710cm');
         assert.equal(all.online.status, 1);
         assert.equal(all.firmware.innerIp, '192.168.201.190');
+        assert.equal(all.firmware.version, '7.3.13');
+        assert.equal(all.firmware.compileTime, '2022/11/16-11:31:53');
+        assert.equal(all.firmware.server, 'test-mqtt-ap-cluster2.meross.com');
+        assert.equal(all.firmware.port, 443);
+        assert.equal(all.firmware.wifiMac, 'fc:83:c6:80:7f:76');
+        assert.equal(all.firmware.userId, 10500882);
+        assert.equal(all.firmware.homekitVersion, '4.1');
+        assert.equal(all.firmware.encrypt, 1);
+        assert.deepEqual(all.time, {
+            timestamp: 1676428765,
+            timezone: 'Asia/Shanghai',
+            timeRule: [[684860400, 28800, 0]]
+        });
         assert.deepEqual(all.digest.togglex, [{ channel: 0, on: true }]);
         assert.throws(
             () => decodeSystemAllGetAck({}),

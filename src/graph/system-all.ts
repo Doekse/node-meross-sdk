@@ -1,4 +1,12 @@
 import { ProtocolError } from '../errors';
+import {
+    decodeSystemFirmwareGetAck,
+    decodeSystemHardwareGetAck,
+    decodeSystemTimeGetAck,
+    type SystemFirmwareState,
+    type SystemHardwareState,
+    type SystemTimeState
+} from '../protocol/codecs/system';
 import type { MerossPayload } from '../protocol/message';
 
 export const SYSTEM_ALL_NAMESPACE = 'Appliance.System.All';
@@ -10,14 +18,9 @@ export interface DigestToggle {
 }
 
 export interface SystemAll {
-    hardware: {
-        type: string;
-        uuid: string;
-        macAddress?: string;
-    };
-    firmware: {
-        innerIp?: string;
-    };
+    hardware: SystemHardwareState;
+    firmware: SystemFirmwareState;
+    time?: SystemTimeState;
     online: {
         status: number;
     };
@@ -50,13 +53,9 @@ export function decodeSystemAllGetAck(payload: MerossPayload): SystemAll {
         throw new ProtocolError('System.All GETACK digest must be an object');
     }
 
-    const { hardware, firmware, online } = system as Record<string, unknown>;
-    if (typeof hardware !== 'object' || hardware === null) {
+    const { hardware, firmware, online, time } = system as Record<string, unknown>;
+    if (typeof hardware !== 'object' || hardware === null || Array.isArray(hardware)) {
         throw new ProtocolError('System.All hardware must be an object');
-    }
-    const { type, uuid, macAddress } = hardware as Record<string, unknown>;
-    if (typeof type !== 'string' || typeof uuid !== 'string' || !uuid) {
-        throw new ProtocolError('System.All hardware.type and hardware.uuid are required');
     }
     if (typeof online !== 'object' || online === null) {
         throw new ProtocolError('System.All online must be an object');
@@ -66,19 +65,13 @@ export function decodeSystemAllGetAck(payload: MerossPayload): SystemAll {
         throw new ProtocolError('System.All online.status is required');
     }
 
-    const innerIp = firmware && typeof firmware === 'object'
-        ? (firmware as { innerIp?: unknown }).innerIp
-        : undefined;
     const d = digest as Record<string, unknown>;
     return {
-        hardware: {
-            type,
-            uuid,
-            macAddress: typeof macAddress === 'string' ? macAddress : undefined
-        },
-        firmware: {
-            innerIp: typeof innerIp === 'string' ? innerIp : undefined
-        },
+        hardware: decodeSystemHardwareGetAck({ hardware }),
+        firmware: firmware && typeof firmware === 'object' && !Array.isArray(firmware)
+            ? decodeSystemFirmwareGetAck({ firmware })
+            : {},
+        time: time !== undefined ? decodeSystemTimeGetAck({ time }) : undefined,
         online: { status },
         digest: {
             togglex: digestTogglex(d.togglex),
