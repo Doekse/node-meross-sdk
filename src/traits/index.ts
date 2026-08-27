@@ -24,6 +24,6 @@ export { DndTrait } from './dnd';
 export { SystemTrait } from './system';
 export type { SystemValues, SystemDebugState, SystemFirmwareState, SystemHardwareState, SystemPositionState, SystemTimeState } from './system';
 export { TimerTrait } from './timer';
-export type { TimerEntry, TimerSetInput, TimerValues } from './timer';
+export type { TimerEntry, TimerGeneration, TimerSetInput, TimerValues } from './timer';
 export { TriggerTrait } from './trigger';
-export type { TriggerEntry, TriggerRule, TriggerSetInput, TriggerValues } from './trigger';
+export type { TriggerEntry, TriggerGeneration, TriggerRule, TriggerSetInput, TriggerValues } from './trigger';

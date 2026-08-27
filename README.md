@@ -219,8 +219,8 @@ Traits are present only when the board advertised the matching ability. Use opti
 | `alarm`     | Hub sirens, board chimes           | `setOn(on, durationSeconds?)`, `setLinked`, `setBeep`                                 |
 | `dnd`       | LED mute on the board              | `isOn()`, `setOn(boolean)`                                                            |
 | `system`    | Board firmware, time, diagnostics  | `getFirmware` / `getHardware` / `getTime`, `setTimezone`, `getDebug`, `getPosition` / `setPosition`, `clockSkewSeconds` |
-| `timer`     | ToggleX clock schedules            | `list()`, `set()`, `setEnabled()`, `remove()`                                         |
-| `trigger`   | ToggleX rules                      | `list()`, `set()`, `setEnabled()`, `remove()`                                         |
+| `timer`     | Toggle / ToggleX clock schedules   | `list()`, `set()`, `setEnabled()`, `remove()`                                         |
+| `trigger`   | Toggle / ToggleX countdown rules   | `list()`, `set()`, `setEnabled()`, `remove()`                                         |
 
 
 Readings such as energy and sensors update from PUSH and the internal poller. Listen on `change`; call `energy.poll()` when you need an on-demand sample.

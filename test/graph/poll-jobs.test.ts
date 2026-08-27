@@ -62,9 +62,17 @@ import {
     SYSTEM_POSITION_NAMESPACE,
     SYSTEM_TIME_NAMESPACE
 } from '../../src/protocol/codecs/system';
-import { DIGEST_TIMERX_NAMESPACE } from '../../src/protocol/codecs/timerx';
+import {
+    CONTROL_TIMER_NAMESPACE,
+    DIGEST_TIMERX_NAMESPACE,
+    TIMERX_NAMESPACE
+} from '../../src/protocol/codecs/timerx';
 import { TOGGLEX_NAMESPACE } from '../../src/protocol/codecs/togglex';
-import { DIGEST_TRIGGERX_NAMESPACE } from '../../src/protocol/codecs/triggerx';
+import {
+    CONTROL_TRIGGER_NAMESPACE,
+    DIGEST_TRIGGERX_NAMESPACE,
+    TRIGGERX_NAMESPACE
+} from '../../src/protocol/codecs/triggerx';
 import {
     CONTROL_WATER_NAMESPACE,
     DEVICE_CFG_NAMESPACE,
@@ -395,6 +403,43 @@ describe('buildPollJobs', () => {
             periodCloudMs: 0,
             payload: {}
         });
+    });
+
+    it('registers legacy Control.Timer / Control.Trigger and skips when X is advertised', () => {
+        const endpoints: PollEndpoint[] = [{ channel: CHANNEL, traits: ['timer', 'trigger'] }];
+        const legacy = buildPollJobs(
+            ability(CONTROL_TIMER_NAMESPACE, CONTROL_TRIGGER_NAMESPACE),
+            endpoints
+        );
+        assert.deepEqual(job(legacy, CONTROL_TIMER_NAMESPACE), {
+            namespace: CONTROL_TIMER_NAMESPACE,
+            strategy: 'smart',
+            periodMs: SENSOR_SLOW_PERIOD_MS,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
+            payload: { timer: [] }
+        });
+        assert.deepEqual(job(legacy, CONTROL_TRIGGER_NAMESPACE), {
+            namespace: CONTROL_TRIGGER_NAMESPACE,
+            strategy: 'smart',
+            periodMs: SENSOR_SLOW_PERIOD_MS,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
+            payload: { trigger: {} }
+        });
+        const withX = buildPollJobs(
+            ability(
+                CONTROL_TIMER_NAMESPACE,
+                CONTROL_TRIGGER_NAMESPACE,
+                TIMERX_NAMESPACE,
+                TRIGGERX_NAMESPACE,
+                DIGEST_TIMERX_NAMESPACE,
+                DIGEST_TRIGGERX_NAMESPACE
+            ),
+            endpoints
+        );
+        assert.equal(namespaces(withX).includes(CONTROL_TIMER_NAMESPACE), false);
+        assert.equal(namespaces(withX).includes(CONTROL_TRIGGER_NAMESPACE), false);
+        assert.ok(namespaces(withX).includes(DIGEST_TIMERX_NAMESPACE));
+        assert.ok(namespaces(withX).includes(DIGEST_TRIGGERX_NAMESPACE));
     });
 
     it('registers Presence LatestX and Config', () => {

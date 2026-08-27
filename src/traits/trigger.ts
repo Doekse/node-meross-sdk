@@ -1,10 +1,13 @@
 import { MerossError } from '../errors';
 import {
+    CONTROL_TRIGGER_NAMESPACE,
     DIGEST_TRIGGERX_NAMESPACE,
     TRIGGERX_NAMESPACE,
+    decodeControlTriggerPush,
     decodeDigestTriggerXGetAck,
     decodeTriggerXGetAck,
     decodeTriggerXPush,
+    encodeControlTriggerSet,
     encodeTriggerXDelete,
     encodeTriggerXGet,
     encodeTriggerXSet,
@@ -16,6 +19,9 @@ import type { RoutedRequestOptions } from '../transport/router';
 
 export type TriggerEntry = TriggerXEntry;
 export type TriggerRule = TriggerXRule;
+
+/** TriggerX when advertised; classic Control.Trigger only when TriggerX is absent. */
+export type TriggerGeneration = 'x' | 'legacy';
 
 export interface TriggerValues {
     entries?: TriggerEntry[];
@@ -31,12 +37,14 @@ export type TriggerSetInput = Partial<TriggerEntry> & {
 };
 
 /**
- * Transport + channel bind for one Control.TriggerX endpoint. Session supplies this;
- * trait tests inject a fake request/emit pair.
+ * Transport + channel bind for one TriggerX / Control.Trigger endpoint. Session
+ * supplies this; trait tests inject a fake request/emit pair.
  */
 export interface TriggerTraitBind {
     uuid: string;
     channel: number;
+    /** Chosen at enrollment from Ability: TriggerX preferred over Control.Trigger. */
+    generation: TriggerGeneration;
     /**
      * Ability keys advertised by the board. Digest.TriggerX listing no-ops when absent.
      */
@@ -46,9 +54,10 @@ export interface TriggerTraitBind {
 }
 
 /**
- * Per-channel countdowns via Appliance.Control.TriggerX.
+ * Per-channel countdowns via Appliance.Control.TriggerX (or legacy Trigger).
  * Digest.TriggerX is only an id index; poller GETACK triggers Control.TriggerX
- * GET-by-id in {@link handlePush} (ids are dynamic, not static jobs).
+ * GET-by-id in {@link handlePush} (ids are dynamic, not static jobs). Legacy
+ * Control.Trigger has no Digest — GETACK/PUSH carry the full list.
  */
 export class TriggerTrait {
     private readonly bind: TriggerTraitBind;
@@ -65,6 +74,16 @@ export class TriggerTrait {
 
     async set(input: TriggerSetInput): Promise<TriggerEntry> {
         const entry = normalizeSet(input, this.bind.channel);
+        if (this.bind.generation === 'legacy') {
+            const next = upsertLocal(this.entries, entry);
+            await this.bind.request({
+                namespace: CONTROL_TRIGGER_NAMESPACE,
+                method: 'SET',
+                payload: encodeControlTriggerSet(next)
+            });
+            this.applyEntries(next);
+            return cloneEntry(entry);
+        }
         await this.bind.request({
             namespace: TRIGGERX_NAMESPACE,
             method: 'SET',
@@ -83,9 +102,20 @@ export class TriggerTrait {
     }
 
     /**
-     * Firmware does not PUSH after DELETE, so the local list updates here.
+     * Firmware does not PUSH after DELETE (TriggerX) or after a full-list SET
+     * (legacy), so the local list updates here.
      */
     async remove(id: string): Promise<void> {
+        if (this.bind.generation === 'legacy') {
+            const next = this.entries.filter((entry) => entry.id !== id);
+            await this.bind.request({
+                namespace: CONTROL_TRIGGER_NAMESPACE,
+                method: 'SET',
+                payload: encodeControlTriggerSet(next)
+            });
+            this.applyEntries(next);
+            return;
+        }
         await this.bind.request({
             namespace: TRIGGERX_NAMESPACE,
             method: 'DELETE',
@@ -98,6 +128,17 @@ export class TriggerTrait {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
         if (!uuid || uuid !== this.bind.uuid) {
+            return;
+        }
+        if (message.header.namespace === CONTROL_TRIGGER_NAMESPACE && this.bind.generation === 'legacy') {
+            // Classic Toggle only applies on channel 0; pre-X Trigger is the same board list.
+            if (this.bind.channel !== 0) {
+                return;
+            }
+            this.applyEntries(decodeControlTriggerPush(message.payload));
+            return;
+        }
+        if (this.bind.generation === 'legacy') {
             return;
         }
         if (message.header.namespace === DIGEST_TRIGGERX_NAMESPACE) {
@@ -147,14 +188,7 @@ export class TriggerTrait {
     }
 
     private upsert(entry: TriggerEntry): void {
-        const next = this.entries.map(cloneEntry);
-        const index = next.findIndex((item) => item.id === entry.id);
-        if (index >= 0) {
-            next[index] = cloneEntry(entry);
-        } else {
-            next.push(cloneEntry(entry));
-        }
-        this.applyEntries(next);
+        this.applyEntries(upsertLocal(this.entries, entry));
     }
 
     private applyEntries(next: TriggerEntry[]): void {
@@ -164,6 +198,17 @@ export class TriggerTrait {
         this.entries = next.map(cloneEntry);
         this.bind.emitChange({ entries: this.list() });
     }
+}
+
+function upsertLocal(entries: TriggerEntry[], entry: TriggerEntry): TriggerEntry[] {
+    const next = entries.map(cloneEntry);
+    const index = next.findIndex((item) => item.id === entry.id);
+    if (index >= 0) {
+        next[index] = cloneEntry(entry);
+    } else {
+        next.push(cloneEntry(entry));
+    }
+    return next;
 }
 
 function normalizeSet(input: TriggerSetInput, channel: number): TriggerEntry {

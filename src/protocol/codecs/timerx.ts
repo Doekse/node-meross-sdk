@@ -3,10 +3,13 @@ import type { MerossPayload } from '../message';
 
 export const TIMERX_NAMESPACE = 'Appliance.Control.TimerX';
 export const DIGEST_TIMERX_NAMESPACE = 'Appliance.Digest.TimerX';
+/** Pre-X firmware; no Digest. Listing is a GET of the full `timer` list. */
+export const CONTROL_TIMER_NAMESPACE = 'Appliance.Control.Timer';
 
 /**
  * Host-facing TimerX row. `time` is minutes from midnight; `week` is the
  * firmware bitmask. Only ToggleX-shaped `extend.toggle` is decoded/encoded.
+ * Legacy Control.Timer uses the same host shape (channel 0, sunOffset 0).
  */
 export interface TimerXEntry {
     id: string;
@@ -46,25 +49,21 @@ export function encodeTimerXGet(options: TimerXGetOptions): MerossPayload {
 
 /** SET is a single object (not an array). */
 export function encodeTimerXSet(entry: TimerXSetOptions): MerossPayload {
-    const timerx: Record<string, unknown> = {
-        id: entry.id,
-        channel: entry.channel,
-        type: entry.type,
-        time: entry.time,
-        week: entry.week,
-        duration: entry.duration,
-        sunOffset: entry.sunOffset,
-        enable: entry.enabled ? 1 : 0,
-        alias: entry.alias,
-        createTime: entry.createTime,
-        extend: {
-            toggle: {
-                onoff: entry.on === false ? 0 : 1,
-                lmTime: 0
-            }
+    return {
+        timerx: {
+            id: entry.id,
+            channel: entry.channel,
+            type: entry.type,
+            time: entry.time,
+            week: entry.week,
+            duration: entry.duration,
+            sunOffset: entry.sunOffset,
+            enable: entry.enabled ? 1 : 0,
+            alias: entry.alias,
+            createTime: entry.createTime,
+            extend: encodeToggleExtend(entry.on)
         }
     };
-    return { timerx };
 }
 
 /** DELETE by id. Firmware does not PUSH after DELETE. */
@@ -99,25 +98,85 @@ export function decodeDigestTimerXGetAck(payload: MerossPayload): DigestTimerXRo
 function decodeTimerX(payload: MerossPayload): TimerXEntry[] {
     const raw = payload.timerx;
     if (Array.isArray(raw)) {
-        return raw.map(decodeEntry);
+        return raw.map((item) => decodeEntry(item, true));
     }
     if (typeof raw === 'object' && raw !== null) {
-        return [decodeEntry(raw)];
+        return [decodeEntry(raw, true)];
     }
     throw new ProtocolError('Control.TimerX payload must contain a timerx object or array');
 }
 
-function decodeEntry(item: unknown): TimerXEntry {
+function decodeDigestRow(item: unknown): DigestTimerXRow {
     if (typeof item !== 'object' || item === null) {
-        throw new ProtocolError('Control.TimerX entry must be an object');
+        throw new ProtocolError('Digest.TimerX row must be an object');
     }
     const record = item as Record<string, unknown>;
     if (typeof record.id !== 'string' || typeof record.channel !== 'number') {
+        throw new ProtocolError('Digest.TimerX row requires id and channel');
+    }
+    const row: DigestTimerXRow = { id: record.id, channel: record.channel };
+    if (typeof record.count === 'number') {
+        row.count = record.count;
+    }
+    return row;
+}
+
+/** GET `{ timer: [] }` returns every schedule on the board. */
+export function encodeControlTimerGet(): MerossPayload {
+    return { timer: [] };
+}
+
+/**
+ * SET replaces the board's full timer list (no DELETE on this namespace).
+ * Channel / sunOffset are omitted — pre-X boards are single-outlet.
+ */
+export function encodeControlTimerSet(entries: TimerXEntry[]): MerossPayload {
+    return {
+        timer: entries.map((entry) => ({
+            id: entry.id,
+            type: entry.type,
+            time: entry.time,
+            week: entry.week,
+            duration: entry.duration,
+            enable: entry.enabled ? 1 : 0,
+            alias: entry.alias,
+            createTime: entry.createTime,
+            extend: encodeToggleExtend(entry.on)
+        }))
+    };
+}
+
+export function decodeControlTimerGetAck(payload: MerossPayload): TimerXEntry[] {
+    return decodeControlTimer(payload);
+}
+
+export function decodeControlTimerPush(payload: MerossPayload): TimerXEntry[] {
+    return decodeControlTimer(payload);
+}
+
+function decodeControlTimer(payload: MerossPayload): TimerXEntry[] {
+    const raw = payload.timer;
+    if (!Array.isArray(raw)) {
+        throw new ProtocolError('Control.Timer payload must contain a timer array');
+    }
+    return raw.map((item) => decodeEntry(item, false));
+}
+
+function decodeEntry(item: unknown, requireChannel: boolean): TimerXEntry {
+    const label = requireChannel ? 'Control.TimerX' : 'Control.Timer';
+    if (typeof item !== 'object' || item === null) {
+        throw new ProtocolError(`${label} entry must be an object`);
+    }
+    const record = item as Record<string, unknown>;
+    if (typeof record.id !== 'string') {
+        throw new ProtocolError(`${label} entry requires id`);
+    }
+    if (requireChannel && typeof record.channel !== 'number') {
         throw new ProtocolError('Control.TimerX entry requires id and channel');
     }
     const entry: TimerXEntry = {
         id: record.id,
-        channel: record.channel,
+        channel: typeof record.channel === 'number' ? record.channel : 0,
         alias: typeof record.alias === 'string' ? record.alias : '',
         enabled: record.enable === 1,
         type: typeof record.type === 'number' ? record.type : 1,
@@ -134,19 +193,13 @@ function decodeEntry(item: unknown): TimerXEntry {
     return entry;
 }
 
-function decodeDigestRow(item: unknown): DigestTimerXRow {
-    if (typeof item !== 'object' || item === null) {
-        throw new ProtocolError('Digest.TimerX row must be an object');
-    }
-    const record = item as Record<string, unknown>;
-    if (typeof record.id !== 'string' || typeof record.channel !== 'number') {
-        throw new ProtocolError('Digest.TimerX row requires id and channel');
-    }
-    const row: DigestTimerXRow = { id: record.id, channel: record.channel };
-    if (typeof record.count === 'number') {
-        row.count = record.count;
-    }
-    return row;
+function encodeToggleExtend(on: boolean | undefined): Record<string, unknown> {
+    return {
+        toggle: {
+            onoff: on === false ? 0 : 1,
+            lmTime: 0
+        }
+    };
 }
 
 /**

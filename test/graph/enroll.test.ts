@@ -483,6 +483,35 @@ describe('enrollPhysicalDevice', () => {
         assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'system', 'timer', 'trigger']);
     });
 
+    it('appends timer and trigger for legacy Control.Timer / Control.Trigger', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Toggle': {},
+                    'Appliance.Control.Timer': { sunOffsetSupport: 1 },
+                    'Appliance.Control.Trigger': {}
+                }
+            },
+            allPayload: systemAllWithDigest({})
+        });
+
+        assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'system', 'timer', 'trigger']);
+    });
+
+    it('prefers TimerX over legacy Timer when both are advertised', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.Control.TimerX': {},
+                'Appliance.Control.Timer': {}
+            }),
+            allPayload: systemAllWithDigest({
+                togglex: [{ channel: 0, onoff: 1 }]
+            })
+        });
+
+        assert.ok(device.endpoints[0]?.traits.includes('timer'));
+    });
+
     it('does not append trigger to cover channels when Control.TriggerX is advertised', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: {

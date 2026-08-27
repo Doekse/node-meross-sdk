@@ -4,13 +4,14 @@ import { describe, it } from 'node:test';
 import { Endpoint } from '../../src/endpoint';
 import { MerossError } from '../../src/errors';
 import {
+    CONTROL_TRIGGER_NAMESPACE,
     DIGEST_TRIGGERX_NAMESPACE,
     TRIGGERX_NAMESPACE,
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
 import { TriggerTrait } from '../../src/traits/trigger';
-import type { TriggerTraitBind } from '../../src/traits/trigger';
+import type { TriggerGeneration, TriggerTraitBind } from '../../src/traits/trigger';
 
 const KEY = 'stub-key';
 const UUID = '2201201075575151809248e1e988531b';
@@ -42,6 +43,7 @@ const HOST_ENTRY = {
 function createHarness(options: {
     getAck?: Record<string, unknown>;
     namespaces?: ReadonlySet<string>;
+    generation?: TriggerGeneration;
 } = {}): {
     trait: TriggerTrait;
     requests: MerossMessage[];
@@ -49,11 +51,17 @@ function createHarness(options: {
 } {
     const requests: MerossMessage[] = [];
     const changes: Record<string, unknown>[] = [];
+    const generation = options.generation ?? 'x';
     const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['trigger'] });
-    const namespaces = options.namespaces ?? new Set([TRIGGERX_NAMESPACE, DIGEST_TRIGGERX_NAMESPACE]);
+    const namespaces = options.namespaces ?? new Set(
+        generation === 'legacy'
+            ? [CONTROL_TRIGGER_NAMESPACE]
+            : [TRIGGERX_NAMESPACE, DIGEST_TRIGGERX_NAMESPACE]
+    );
     const bind: TriggerTraitBind = {
         uuid: UUID,
         channel: CHANNEL,
+        generation,
         namespaces,
         request: async (requestOptions) => {
             const message = encodeMessage({
@@ -194,6 +202,7 @@ describe('TriggerTrait', () => {
         const trait0 = new TriggerTrait({
             uuid: UUID,
             channel: 0,
+            generation: 'x',
             namespaces,
             request,
             emitChange: () => {}
@@ -201,6 +210,7 @@ describe('TriggerTrait', () => {
         const trait1 = new TriggerTrait({
             uuid: UUID,
             channel: 1,
+            generation: 'x',
             namespaces,
             request,
             emitChange: () => {}
@@ -323,3 +333,79 @@ describe('TriggerTrait', () => {
         assert.deepEqual(trait.list(), []);
     });
 });
+
+describe('TriggerTrait legacy Control.Trigger', () => {
+    const LEGACY_WIRE = {
+        id: 'abcdefghijklm123',
+        type: 0,
+        enable: 1,
+        alias: 'test auto off',
+        createTime: 1560513139,
+        rule: {
+            _if_: { toggle: { onoff: 1, lmTime: 0 } },
+            _then_: { delay: { week: 129, duration: 69300 } },
+            _do_: { toggle: { onoff: 0, lmTime: 0 } }
+        }
+    };
+
+    it('applies Control.Trigger GETACK with flattened rule and filters uuid', () => {
+        const { trait, changes } = createHarness({ generation: 'legacy' });
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_TRIGGER_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { trigger: [LEGACY_WIRE] }
+        }));
+        assert.deepEqual(trait.list()[0]?.rule, { duration: 69300, week: 129 });
+        assert.equal(changes.length, 1);
+
+        changes.length = 0;
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_TRIGGER_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: '/appliance/other/publish',
+            uuid: 'other',
+            payload: { trigger: [{ ...LEGACY_WIRE, id: 'other' }] }
+        }));
+        assert.equal(changes.length, 0);
+    });
+
+    it('set SETs expanded legacy rules and remove SETs the remaining list', async () => {
+        const { trait, requests } = createHarness({ generation: 'legacy' });
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_TRIGGER_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { trigger: [LEGACY_WIRE] }
+        }));
+        requests.length = 0;
+
+        await trait.set({
+            id: 'newtrig1',
+            alias: 'auto off',
+            rule: { duration: 900, week: 255 },
+            createTime: 1673168351
+        });
+        assert.equal(requests[0]?.header.namespace, CONTROL_TRIGGER_NAMESPACE);
+        const setList = requests[0]?.payload.trigger as Array<{
+            id: string;
+            rule: { _then_: { delay: { duration: number } } };
+        }>;
+        assert.equal(setList.length, 2);
+        const created = setList.find((entry) => entry.id === 'newtrig1');
+        assert.equal(created?.rule._then_.delay.duration, 900);
+
+        requests.length = 0;
+        await trait.remove(LEGACY_WIRE.id);
+        assert.deepEqual(
+            (requests[0]?.payload.trigger as Array<{ id: string }>).map((entry) => entry.id),
+            ['newtrig1']
+        );
+    });
+});
+

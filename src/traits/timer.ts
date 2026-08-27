@@ -1,10 +1,13 @@
 import { MerossError } from '../errors';
 import {
+    CONTROL_TIMER_NAMESPACE,
     DIGEST_TIMERX_NAMESPACE,
     TIMERX_NAMESPACE,
+    decodeControlTimerPush,
     decodeDigestTimerXGetAck,
     decodeTimerXGetAck,
     decodeTimerXPush,
+    encodeControlTimerSet,
     encodeTimerXDelete,
     encodeTimerXGet,
     encodeTimerXSet,
@@ -14,6 +17,9 @@ import {
 import type { RoutedRequestOptions } from '../transport/router';
 
 export type TimerEntry = TimerXEntry;
+
+/** TimerX when advertised; classic Control.Timer only when TimerX is absent. */
+export type TimerGeneration = 'x' | 'legacy';
 
 export interface TimerValues {
     entries?: TimerEntry[];
@@ -31,12 +37,14 @@ export type TimerSetInput = Partial<TimerEntry> & {
 };
 
 /**
- * Transport + channel bind for one Control.TimerX endpoint. Session supplies this;
- * trait tests inject a fake request/emit pair.
+ * Transport + channel bind for one TimerX / Control.Timer endpoint. Session
+ * supplies this; trait tests inject a fake request/emit pair.
  */
 export interface TimerTraitBind {
     uuid: string;
     channel: number;
+    /** Chosen at enrollment from Ability: TimerX preferred over Control.Timer. */
+    generation: TimerGeneration;
     /**
      * Ability keys advertised by the board. Digest.TimerX listing no-ops when absent.
      */
@@ -46,9 +54,10 @@ export interface TimerTraitBind {
 }
 
 /**
- * Per-channel clock schedules via Appliance.Control.TimerX.
+ * Per-channel clock schedules via Appliance.Control.TimerX (or legacy Timer).
  * Digest.TimerX is only an id index; poller GETACK triggers Control.TimerX
- * GET-by-id in {@link handlePush} (ids are dynamic, not static jobs).
+ * GET-by-id in {@link handlePush} (ids are dynamic, not static jobs). Legacy
+ * Control.Timer has no Digest — GETACK carries the full list.
  */
 export class TimerTrait {
     private readonly bind: TimerTraitBind;
@@ -68,6 +77,16 @@ export class TimerTrait {
      */
     async set(input: TimerSetInput): Promise<TimerEntry> {
         const entry = normalizeSet(input, this.bind.channel);
+        if (this.bind.generation === 'legacy') {
+            const next = upsertLocal(this.entries, entry);
+            await this.bind.request({
+                namespace: CONTROL_TIMER_NAMESPACE,
+                method: 'SET',
+                payload: encodeControlTimerSet(next)
+            });
+            this.applyEntries(next);
+            return cloneEntry(entry);
+        }
         await this.bind.request({
             namespace: TIMERX_NAMESPACE,
             method: 'SET',
@@ -86,9 +105,20 @@ export class TimerTrait {
     }
 
     /**
-     * Firmware does not PUSH after DELETE, so the local list updates here.
+     * Firmware does not PUSH after DELETE (TimerX) or after a full-list SET
+     * (legacy), so the local list updates here.
      */
     async remove(id: string): Promise<void> {
+        if (this.bind.generation === 'legacy') {
+            const next = this.entries.filter((entry) => entry.id !== id);
+            await this.bind.request({
+                namespace: CONTROL_TIMER_NAMESPACE,
+                method: 'SET',
+                payload: encodeControlTimerSet(next)
+            });
+            this.applyEntries(next);
+            return;
+        }
         await this.bind.request({
             namespace: TIMERX_NAMESPACE,
             method: 'DELETE',
@@ -101,6 +131,17 @@ export class TimerTrait {
         const uuid = message.header.uuid
             ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
         if (!uuid || uuid !== this.bind.uuid) {
+            return;
+        }
+        if (message.header.namespace === CONTROL_TIMER_NAMESPACE && this.bind.generation === 'legacy') {
+            // Classic Toggle only applies on channel 0; pre-X Timer is the same board list.
+            if (this.bind.channel !== 0) {
+                return;
+            }
+            this.applyEntries(decodeControlTimerPush(message.payload));
+            return;
+        }
+        if (this.bind.generation === 'legacy') {
             return;
         }
         if (message.header.namespace === DIGEST_TIMERX_NAMESPACE) {
@@ -150,14 +191,7 @@ export class TimerTrait {
     }
 
     private upsert(entry: TimerEntry): void {
-        const next = this.entries.map(cloneEntry);
-        const index = next.findIndex((item) => item.id === entry.id);
-        if (index >= 0) {
-            next[index] = cloneEntry(entry);
-        } else {
-            next.push(cloneEntry(entry));
-        }
-        this.applyEntries(next);
+        this.applyEntries(upsertLocal(this.entries, entry));
     }
 
     private applyEntries(next: TimerEntry[]): void {
@@ -167,6 +201,17 @@ export class TimerTrait {
         this.entries = next.map(cloneEntry);
         this.bind.emitChange({ entries: this.list() });
     }
+}
+
+function upsertLocal(entries: TimerEntry[], entry: TimerEntry): TimerEntry[] {
+    const next = entries.map(cloneEntry);
+    const index = next.findIndex((item) => item.id === entry.id);
+    if (index >= 0) {
+        next[index] = cloneEntry(entry);
+    } else {
+        next.push(cloneEntry(entry));
+    }
+    return next;
 }
 
 function normalizeSet(input: TimerSetInput, channel: number): TimerEntry {

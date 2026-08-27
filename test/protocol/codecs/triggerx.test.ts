@@ -3,9 +3,12 @@ import { describe, it } from 'node:test';
 
 import { ProtocolError } from '../../../src/errors';
 import {
+    decodeControlTriggerGetAck,
     decodeDigestTriggerXGetAck,
     decodeTriggerXGetAck,
     decodeTriggerXPush,
+    encodeControlTriggerGet,
+    encodeControlTriggerSet,
     encodeDigestTriggerXGet,
     encodeTriggerXDelete,
     encodeTriggerXGet,
@@ -123,5 +126,56 @@ describe('Digest.TriggerX codec', () => {
 
     it('rejects a missing digest payload', () => {
         assert.throws(() => decodeDigestTriggerXGetAck({}), ProtocolError);
+    });
+});
+
+describe('Control.Trigger codec', () => {
+    const LEGACY = {
+        id: 'abcdefghijklm123',
+        type: 0,
+        enable: 1,
+        alias: 'test auto off',
+        createTime: 1560513139,
+        rule: {
+            _if_: { toggle: { onoff: 1, lmTime: 0 } },
+            _then_: { delay: { week: 129, duration: 69300 } },
+            _do_: { toggle: { onoff: 0, lmTime: 0 } }
+        }
+    };
+
+    it('encodes GET as an empty trigger dict', () => {
+        assert.deepEqual(encodeControlTriggerGet(), { trigger: {} });
+    });
+
+    it('encodes SET expanding host rule into _if_/_then_/_do_', () => {
+        assert.deepEqual(encodeControlTriggerSet([{
+            id: 'abcdefghijklm123',
+            channel: 0,
+            alias: 'test auto off',
+            enabled: true,
+            type: 0,
+            createTime: 1560513139,
+            rule: { duration: 69300, week: 129 }
+        }]), { trigger: [LEGACY] });
+    });
+
+    it('decodes nested legacy rule into duration/week', () => {
+        assert.deepEqual(decodeControlTriggerGetAck({ trigger: [LEGACY] }), [{
+            id: 'abcdefghijklm123',
+            channel: 0,
+            alias: 'test auto off',
+            enabled: true,
+            type: 0,
+            createTime: 1560513139,
+            rule: { duration: 69300, week: 129 }
+        }]);
+    });
+
+    it('rejects a missing trigger payload', () => {
+        assert.throws(() => decodeControlTriggerGetAck({}), ProtocolError);
+    });
+
+    it('rejects a malformed trigger payload', () => {
+        assert.throws(() => decodeControlTriggerGetAck({ trigger: 1 }), ProtocolError);
     });
 });

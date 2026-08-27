@@ -91,9 +91,17 @@ import {
     SYSTEM_POSITION_NAMESPACE,
     SYSTEM_TIME_NAMESPACE
 } from '../protocol/codecs/system';
-import { DIGEST_TIMERX_NAMESPACE } from '../protocol/codecs/timerx';
+import {
+    CONTROL_TIMER_NAMESPACE,
+    DIGEST_TIMERX_NAMESPACE,
+    TIMERX_NAMESPACE
+} from '../protocol/codecs/timerx';
 import { TOGGLEX_ALL_CHANNELS, TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
-import { DIGEST_TRIGGERX_NAMESPACE } from '../protocol/codecs/triggerx';
+import {
+    CONTROL_TRIGGER_NAMESPACE,
+    DIGEST_TRIGGERX_NAMESPACE,
+    TRIGGERX_NAMESPACE
+} from '../protocol/codecs/triggerx';
 import { CONTROL_WATER_NAMESPACE, DEVICE_CFG_NAMESPACE } from '../protocol/codecs/water';
 import type { MerossPayload } from '../protocol/message';
 import type { AbilityMap } from './ability';
@@ -372,9 +380,19 @@ const POLL: Record<string, PollSpec> = {
         payload: channelList('latest', 'climate')
     },
 
-    // Timer / trigger indexes
+    // Timer / trigger indexes (X) and legacy full-list GETs (pre-X)
     [DIGEST_TIMERX_NAMESPACE]: ONCE,
     [DIGEST_TRIGGERX_NAMESPACE]: ONCE,
+    [CONTROL_TIMER_NAMESPACE]: {
+        ...SMART_CONFIG,
+        skipIf: TIMERX_NAMESPACE,
+        payload: { list: 'timer' }
+    },
+    [CONTROL_TRIGGER_NAMESPACE]: {
+        ...SMART_CONFIG,
+        skipIf: TRIGGERX_NAMESPACE,
+        payload: { dict: 'trigger' }
+    },
 
     // Board climate
     [THERMOSTAT_MODE_NAMESPACE]: {

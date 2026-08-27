@@ -22,7 +22,9 @@ import {
     ELECTRICITYX_NAMESPACE,
     LIGHT_EFFECT_NAMESPACE,
     ProtocolDispatcher,
+    TIMERX_NAMESPACE,
     TOGGLEX_NAMESPACE,
+    TRIGGERX_NAMESPACE,
     deriveEncryptionKey,
     macAddressFromUuid,
     supportsLanEncryption,
@@ -52,7 +54,9 @@ import { SprinklerTrait } from './traits/sprinkler';
 import { SwitchTrait } from './traits/switch';
 import { SystemTrait } from './traits/system';
 import { TimerTrait } from './traits/timer';
+import type { TimerGeneration } from './traits/timer';
 import { TriggerTrait } from './traits/trigger';
+import type { TriggerGeneration } from './traits/trigger';
 
 export interface LoginOptions {
     email: string;
@@ -620,9 +624,13 @@ export class Session extends EventEmitter<SessionEvents> {
             });
         }
         if (graphEndpoint.traits.includes('timer')) {
+            const generation: TimerGeneration = TIMERX_NAMESPACE in physical.ability
+                ? 'x'
+                : 'legacy';
             timerTrait = new TimerTrait({
                 uuid: physical.uuid,
                 channel,
+                generation,
                 namespaces,
                 request,
                 emitChange: (values) => endpoint.emit('change', {
@@ -632,9 +640,13 @@ export class Session extends EventEmitter<SessionEvents> {
             });
         }
         if (graphEndpoint.traits.includes('trigger')) {
+            const generation: TriggerGeneration = TRIGGERX_NAMESPACE in physical.ability
+                ? 'x'
+                : 'legacy';
             triggerTrait = new TriggerTrait({
                 uuid: physical.uuid,
                 channel,
+                generation,
                 namespaces,
                 request,
                 emitChange: (values) => endpoint.emit('change', {

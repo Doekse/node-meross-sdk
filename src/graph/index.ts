@@ -10,8 +10,8 @@ import type {
     SystemHardwareState,
     SystemTimeState
 } from '../protocol/codecs/system';
-import { TIMERX_NAMESPACE } from '../protocol/codecs/timerx';
-import { TRIGGERX_NAMESPACE } from '../protocol/codecs/triggerx';
+import { CONTROL_TIMER_NAMESPACE, TIMERX_NAMESPACE } from '../protocol/codecs/timerx';
+import { CONTROL_TRIGGER_NAMESPACE, TRIGGERX_NAMESPACE } from '../protocol/codecs/triggerx';
 import { TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
 import type { MerossPayload } from '../protocol/message';
 import { abilityMaxCmdNum, decodeAbilityGetAck } from './ability';
@@ -129,8 +129,8 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
     const channelEnergy = ELECTRICITYX_NAMESPACE in ability || CONSUMPTIONH_NAMESPACE in ability;
     const hasDnd = 'Appliance.System.DNDMode' in ability;
     const hasAlarm = CONTROL_ALARM_NAMESPACE in ability || CONTROL_BEEP_NAMESPACE in ability;
-    const hasTimerX = TIMERX_NAMESPACE in ability;
-    const hasTriggerX = TRIGGERX_NAMESPACE in ability;
+    const hasTimer = TIMERX_NAMESPACE in ability || CONTROL_TIMER_NAMESPACE in ability;
+    const hasTrigger = TRIGGERX_NAMESPACE in ability || CONTROL_TRIGGER_NAMESPACE in ability;
     const isHub = 'Appliance.Hub.SubdeviceList' in ability || all.digest.hub !== undefined;
 
     return {
@@ -150,7 +150,7 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
         endpoints: isHub
             ? enrollHub(uuid, name, model, online, hasDnd, hasAlarm, all, input.subDevices ?? [])
             : enrollBoard(
-                uuid, name, model, online, boardEnergy, channelEnergy, hasDnd, hasAlarm, hasTimerX, hasTriggerX,
+                uuid, name, model, online, boardEnergy, channelEnergy, hasDnd, hasAlarm, hasTimer, hasTrigger,
                 ability, all, input.cloud
             )
     };
@@ -256,8 +256,8 @@ function enrollBoard(
     channelEnergy: boolean,
     hasDnd: boolean,
     hasAlarm: boolean,
-    hasTimerX: boolean,
-    hasTriggerX: boolean,
+    hasTimer: boolean,
+    hasTrigger: boolean,
     ability: AbilityMap,
     all: SystemAll,
     cloud: CloudDevice | undefined
@@ -299,9 +299,9 @@ function enrollBoard(
         if (hasAlarm && channel === 0 && !traits.includes('alarm')) {
             extra.push('alarm');
         }
-        // ToggleX-shaped TimerX extend only; cover/climate/humidifier/speaker use other extend objects.
+        // Toggle-shaped Timer/TimerX extend only; cover/climate/humidifier/speaker use other extend objects.
         if (
-            hasTimerX
+            hasTimer
             && (classHint === 'socket' || classHint === 'light' || classHint === 'fan')
             && !traits.includes('timer')
             && !traits.includes('media')
@@ -311,7 +311,7 @@ function enrollBoard(
         }
         // Same board endpoints as timer (socket/light/fan); skip media speakers.
         if (
-            hasTriggerX
+            hasTrigger
             && (classHint === 'socket' || classHint === 'light' || classHint === 'fan')
             && !traits.includes('trigger')
             && !traits.includes('media')

@@ -621,11 +621,16 @@ export type {
     BeepSetOptions
 } from './codecs/alarm';
 export {
+    CONTROL_TIMER_NAMESPACE,
     DIGEST_TIMERX_NAMESPACE,
     TIMERX_NAMESPACE,
+    decodeControlTimerGetAck,
+    decodeControlTimerPush,
     decodeDigestTimerXGetAck,
     decodeTimerXGetAck,
     decodeTimerXPush,
+    encodeControlTimerGet,
+    encodeControlTimerSet,
     encodeDigestTimerXGet,
     encodeTimerXDelete,
     encodeTimerXGet,
@@ -639,11 +644,16 @@ export type {
     TimerXSetOptions
 } from './codecs/timerx';
 export {
+    CONTROL_TRIGGER_NAMESPACE,
     DIGEST_TRIGGERX_NAMESPACE,
     TRIGGERX_NAMESPACE,
+    decodeControlTriggerGetAck,
+    decodeControlTriggerPush,
     decodeDigestTriggerXGetAck,
     decodeTriggerXGetAck,
     decodeTriggerXPush,
+    encodeControlTriggerGet,
+    encodeControlTriggerSet,
     encodeDigestTriggerXGet,
     encodeTriggerXDelete,
     encodeTriggerXGet,

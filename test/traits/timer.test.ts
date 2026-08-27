@@ -4,13 +4,14 @@ import { describe, it } from 'node:test';
 import { Endpoint } from '../../src/endpoint';
 import { MerossError } from '../../src/errors';
 import {
+    CONTROL_TIMER_NAMESPACE,
     DIGEST_TIMERX_NAMESPACE,
     TIMERX_NAMESPACE,
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
 import { TimerTrait } from '../../src/traits/timer';
-import type { TimerTraitBind } from '../../src/traits/timer';
+import type { TimerGeneration, TimerTraitBind } from '../../src/traits/timer';
 
 const KEY = 'stub-key';
 const UUID = '2201201075575151809248e1e988531b';
@@ -47,6 +48,7 @@ const HOST_ENTRY = {
 function createHarness(options: {
     getAck?: Record<string, unknown>;
     namespaces?: ReadonlySet<string>;
+    generation?: TimerGeneration;
 } = {}): {
     trait: TimerTrait;
     requests: MerossMessage[];
@@ -54,11 +56,17 @@ function createHarness(options: {
 } {
     const requests: MerossMessage[] = [];
     const changes: Record<string, unknown>[] = [];
+    const generation = options.generation ?? 'x';
     const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['timer'] });
-    const namespaces = options.namespaces ?? new Set([TIMERX_NAMESPACE, DIGEST_TIMERX_NAMESPACE]);
+    const namespaces = options.namespaces ?? new Set(
+        generation === 'legacy'
+            ? [CONTROL_TIMER_NAMESPACE]
+            : [TIMERX_NAMESPACE, DIGEST_TIMERX_NAMESPACE]
+    );
     const bind: TimerTraitBind = {
         uuid: UUID,
         channel: CHANNEL,
+        generation,
         namespaces,
         request: async (requestOptions) => {
             const message = encodeMessage({
@@ -199,6 +207,7 @@ describe('TimerTrait', () => {
         const trait0 = new TimerTrait({
             uuid: UUID,
             channel: 0,
+            generation: 'x',
             namespaces,
             request,
             emitChange: () => {}
@@ -206,6 +215,7 @@ describe('TimerTrait', () => {
         const trait1 = new TimerTrait({
             uuid: UUID,
             channel: 1,
+            generation: 'x',
             namespaces,
             request,
             emitChange: () => {}
@@ -336,3 +346,100 @@ describe('TimerTrait', () => {
         assert.deepEqual(trait.list(), []);
     });
 });
+
+describe('TimerTrait legacy Control.Timer', () => {
+    const LEGACY_WIRE = {
+        id: 'abcdefghijklm123',
+        type: 1,
+        enable: 1,
+        alias: 'on 20:52',
+        time: 1252,
+        week: 129,
+        duration: 0,
+        createTime: 1560513180,
+        extend: { toggle: { onoff: 1, lmTime: 0 } }
+    };
+
+    it('applies Control.Timer GETACK and ignores mismatched uuid', () => {
+        const { trait, changes } = createHarness({ generation: 'legacy' });
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_TIMER_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { timer: [LEGACY_WIRE] }
+        }));
+        assert.equal(trait.list().length, 1);
+        assert.equal(trait.list()[0]?.id, LEGACY_WIRE.id);
+        assert.equal(trait.list()[0]?.on, true);
+        assert.equal(changes.length, 1);
+
+        changes.length = 0;
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_TIMER_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: '/appliance/other/publish',
+            uuid: 'other',
+            payload: { timer: [{ ...LEGACY_WIRE, id: 'other' }] }
+        }));
+        assert.equal(changes.length, 0);
+        assert.equal(trait.list()[0]?.id, LEGACY_WIRE.id);
+    });
+
+    it('set SETs the full Control.Timer list and remove SETs without the id', async () => {
+        const { trait, requests, changes } = createHarness({ generation: 'legacy' });
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_TIMER_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { timer: [LEGACY_WIRE] }
+        }));
+        changes.length = 0;
+        requests.length = 0;
+
+        await trait.set({
+            id: 'newtimer1',
+            alias: 'Fan off',
+            time: 720,
+            week: 255,
+            on: false,
+            createTime: 1673168351
+        });
+        assert.equal(requests[0]?.header.namespace, CONTROL_TIMER_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'SET');
+        const setList = requests[0]?.payload.timer as Array<{ id: string }>;
+        assert.equal(setList.length, 2);
+        assert.ok(setList.some((entry) => entry.id === LEGACY_WIRE.id));
+        assert.ok(setList.some((entry) => entry.id === 'newtimer1'));
+
+        requests.length = 0;
+        await trait.remove(LEGACY_WIRE.id);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(
+            (requests[0]?.payload.timer as Array<{ id: string }>).map((entry) => entry.id),
+            ['newtimer1']
+        );
+        assert.deepEqual(trait.list().map((entry) => entry.id), ['newtimer1']);
+    });
+
+    it('does not emit when GETACK list is unchanged', () => {
+        const { trait, changes } = createHarness({ generation: 'legacy' });
+        const ack = encodeMessage({
+            namespace: CONTROL_TIMER_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { timer: [LEGACY_WIRE] }
+        });
+        trait.handlePush(ack);
+        changes.length = 0;
+        trait.handlePush(ack);
+        assert.equal(changes.length, 0);
+    });
+});
+

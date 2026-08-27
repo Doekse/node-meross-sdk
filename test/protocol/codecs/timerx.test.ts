@@ -3,9 +3,12 @@ import { describe, it } from 'node:test';
 
 import { ProtocolError } from '../../../src/errors';
 import {
+    decodeControlTimerGetAck,
     decodeDigestTimerXGetAck,
     decodeTimerXGetAck,
     decodeTimerXPush,
+    encodeControlTimerGet,
+    encodeControlTimerSet,
     encodeDigestTimerXGet,
     encodeTimerXDelete,
     encodeTimerXGet,
@@ -129,5 +132,63 @@ describe('Digest.TimerX codec', () => {
 
     it('rejects a missing digest payload', () => {
         assert.throws(() => decodeDigestTimerXGetAck({}), ProtocolError);
+    });
+});
+
+describe('Control.Timer codec', () => {
+    const LEGACY = {
+        id: 'abcdefghijklm123',
+        type: 1,
+        enable: 1,
+        alias: 'on 20:52',
+        time: 1252,
+        week: 129,
+        duration: 0,
+        createTime: 1560513180,
+        extend: { toggle: { onoff: 1, lmTime: 0 } }
+    };
+
+    it('encodes GET as an empty timer list', () => {
+        assert.deepEqual(encodeControlTimerGet(), { timer: [] });
+    });
+
+    it('encodes SET as a full timer list without channel', () => {
+        assert.deepEqual(encodeControlTimerSet([{
+            id: 'abcdefghijklm123',
+            channel: 0,
+            alias: 'on 20:52',
+            enabled: true,
+            type: 1,
+            time: 1252,
+            week: 129,
+            duration: 0,
+            sunOffset: 0,
+            createTime: 1560513180,
+            on: true
+        }]), { timer: [LEGACY] });
+    });
+
+    it('decodes GETACK list and defaults channel to 0', () => {
+        assert.deepEqual(decodeControlTimerGetAck({ timer: [LEGACY] }), [{
+            id: 'abcdefghijklm123',
+            channel: 0,
+            alias: 'on 20:52',
+            enabled: true,
+            type: 1,
+            time: 1252,
+            week: 129,
+            duration: 0,
+            sunOffset: 0,
+            createTime: 1560513180,
+            on: true
+        }]);
+    });
+
+    it('rejects a missing timer payload', () => {
+        assert.throws(() => decodeControlTimerGetAck({}), ProtocolError);
+    });
+
+    it('rejects a non-array timer payload', () => {
+        assert.throws(() => decodeControlTimerGetAck({ timer: {} }), ProtocolError);
     });
 });
