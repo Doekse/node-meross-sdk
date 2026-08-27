@@ -1,5 +1,6 @@
 import {
     CONFIG_OVERTEMP_NAMESPACE,
+    CONFIG_STANDBY_KILLER_NAMESPACE,
     CONSUMPTIONH_NAMESPACE,
     CONSUMPTIONX_NAMESPACE,
     CONSUMPTION_CONFIG_NAMESPACE,
@@ -17,6 +18,7 @@ import {
     decodeControlOverTempPush,
     decodeElectricityGetAck,
     decodeElectricityXGetAck,
+    decodeStandbyKillerPush,
     encodeAlertConfigSet,
     encodeConfigOverTempSet,
     encodeConsumptionConfigGet,
@@ -25,6 +27,7 @@ import {
     encodeConsumptionXGet,
     encodeElectricityGet,
     encodeElectricityXGet,
+    encodeStandbyKillerSet,
     type AlertConfigEntry,
     type AlertReportEntry,
     type ConfigOverTempState,
@@ -33,7 +36,8 @@ import {
     type ControlOverTempState,
     type ElectricityConfig,
     type ElectricitySample,
-    type MerossMessage
+    type MerossMessage,
+    type StandbyKillerEntry
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
 
@@ -52,6 +56,10 @@ export interface EnergyValues {
     alertConfigType?: number;
     alertConfig?: Record<string, unknown>;
     alertReport?: Record<string, unknown>;
+    standbyKillerEnabled?: boolean;
+    standbyKillerPower?: number;
+    standbyKillerTime?: number;
+    standbyKillerAlert?: boolean;
 }
 
 /**
@@ -171,6 +179,35 @@ export class EnergyTrait {
     }
 
     /**
+     * SET Config.StandbyKiller for this channel (MSS305). No-op when absent.
+     */
+    async setStandbyKiller(options: {
+        enabled?: boolean;
+        power?: number;
+        time?: number;
+        alert?: boolean;
+    }): Promise<void> {
+        if (!this.has(CONFIG_STANDBY_KILLER_NAMESPACE)) {
+            return;
+        }
+        await this.bind.request({
+            namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
+            method: 'SET',
+            payload: encodeStandbyKillerSet({
+                channel: this.bind.channel,
+                ...options
+            })
+        });
+        this.applyStandbyKiller({
+            channel: this.bind.channel,
+            ...(options.enabled !== undefined ? { enabled: options.enabled } : {}),
+            ...(options.power !== undefined ? { power: options.power } : {}),
+            ...(options.time !== undefined ? { time: options.time } : {}),
+            ...(options.alert !== undefined ? { alert: options.alert } : {})
+        });
+    }
+
+    /**
      * DELETE is all-or-nothing and does not PUSH, so the local list updates here.
      * No-op when ConsumptionX is not advertised.
      */
@@ -244,6 +281,14 @@ export class EnergyTrait {
                 .find((row) => row.channel === this.bind.channel);
             if (entry) {
                 this.applyAlertReport(entry);
+            }
+            return;
+        }
+        if (message.header.namespace === CONFIG_STANDBY_KILLER_NAMESPACE && this.has(CONFIG_STANDBY_KILLER_NAMESPACE)) {
+            const entry = decodeStandbyKillerPush(message.payload)
+                .find((row) => row.channel === this.bind.channel);
+            if (entry) {
+                this.applyStandbyKiller(entry);
             }
         }
     }
@@ -399,6 +444,32 @@ export class EnergyTrait {
     private applyAlertReport(entry: AlertReportEntry): void {
         const values: EnergyValues = { alertReport: entry.fields };
         if (JSON.stringify(this.last.alertReport) === JSON.stringify(values.alertReport)) {
+            return;
+        }
+        this.last = { ...this.last, ...values };
+        this.bind.emitChange(values);
+    }
+
+    private applyStandbyKiller(entry: StandbyKillerEntry): void {
+        const values: EnergyValues = {};
+        if (entry.enabled !== undefined) {
+            values.standbyKillerEnabled = entry.enabled;
+        }
+        if (entry.power !== undefined) {
+            values.standbyKillerPower = entry.power;
+        }
+        if (entry.time !== undefined) {
+            values.standbyKillerTime = entry.time;
+        }
+        if (entry.alert !== undefined) {
+            values.standbyKillerAlert = entry.alert;
+        }
+        if (
+            this.last.standbyKillerEnabled === values.standbyKillerEnabled
+            && this.last.standbyKillerPower === values.standbyKillerPower
+            && this.last.standbyKillerTime === values.standbyKillerTime
+            && this.last.standbyKillerAlert === values.standbyKillerAlert
+        ) {
             return;
         }
         this.last = { ...this.last, ...values };

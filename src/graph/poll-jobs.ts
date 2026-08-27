@@ -65,6 +65,7 @@ import {
 import {
     CONTROL_ALERT_CONFIG_NAMESPACE
 } from '../protocol/codecs/alertconfig';
+import { CONFIG_STANDBY_KILLER_NAMESPACE } from '../protocol/codecs/standbykiller';
 import { PRESENCE_CONFIG_NAMESPACE } from '../protocol/codecs/presence';
 import {
     CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
@@ -267,6 +268,10 @@ const POLL: Record<string, PollSpec> = {
     [CONTROL_ALERT_CONFIG_NAMESPACE]: {
         ...SMART_CONFIG,
         payload: channelList('config')
+    },
+    [CONFIG_STANDBY_KILLER_NAMESPACE]: {
+        ...SMART_CONFIG,
+        payload: channelList('config', 'energy')
     },
 
     // Digest / board state

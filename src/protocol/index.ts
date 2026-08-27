@@ -158,6 +158,17 @@ export type {
     AlertReportEntry
 } from './codecs/alertconfig';
 export {
+    CONFIG_STANDBY_KILLER_NAMESPACE,
+    decodeStandbyKillerGetAck,
+    decodeStandbyKillerPush,
+    encodeStandbyKillerGet,
+    encodeStandbyKillerSet
+} from './codecs/standbykiller';
+export type {
+    StandbyKillerEntry,
+    StandbyKillerSetOptions
+} from './codecs/standbykiller';
+export {
     GARAGE_STATE_NAMESPACE,
     GARAGE_CONFIG_NAMESPACE,
     GARAGE_MULTIPLE_CONFIG_NAMESPACE,
