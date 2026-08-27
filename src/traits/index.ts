@@ -9,7 +9,7 @@ export type { SensorFamily, SensorValues, SensorSmokeStatus, SensorAlertBand } f
 export { PresenceTrait } from './presence';
 export type { PresenceValues } from './presence';
 export { SprinklerTrait } from './sprinkler';
-export type { SprinklerValues, SprinklerScheduleEntry } from './sprinkler';
+export type { SprinklerValues, SprinklerScheduleEntry, SprinklerCycleSummary } from './sprinkler';
 export { SprayTrait } from './spray';
 export type { SprayValues, SprayMode } from './spray';
 export { FanTrait } from './fan';

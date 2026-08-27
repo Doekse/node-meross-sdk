@@ -5,6 +5,7 @@ import { ProtocolError } from '../../../src/errors';
 import {
     decodeDeviceCfgGetAck,
     decodeDeviceCfgPush,
+    decodeWaterEventPush,
     decodeWaterGetAck,
     decodeWaterPlanGetAck,
     decodeWaterPlanPush,
@@ -167,6 +168,51 @@ describe('Config.WaterPlan codec', () => {
     it('rejects an entry without subId', () => {
         assert.throws(
             () => decodeWaterPlanGetAck({ config: [{ channel: 0 }] }),
+            ProtocolError
+        );
+    });
+});
+
+describe('Control.WaterEvent codec', () => {
+    it('decodes a completed-cycle PUSH keyed by control and subId', () => {
+        const [entry] = decodeWaterEventPush({
+            control: [{
+                channel: 0,
+                subId: SUB_ID,
+                dura: 900,
+                waCon: 42,
+                timestamp: 1_724_000_000
+            }]
+        });
+        assert.deepEqual(entry, {
+            subId: SUB_ID,
+            channel: 0,
+            duration: 900,
+            waterConsumption: 42,
+            timestamp: 1_724_000_000
+        });
+    });
+
+    it('keeps optional dura, waCon, and timestamp independently', () => {
+        const [entry] = decodeWaterEventPush({
+            control: [{ subId: SUB_ID, dura: 900 }]
+        });
+        assert.deepEqual(entry, { subId: SUB_ID, channel: 0, duration: 900 });
+    });
+
+    it('omits rows that have no dura, waCon, or timestamp', () => {
+        assert.deepEqual(decodeWaterEventPush({
+            control: [{ subId: SUB_ID, channel: 0 }]
+        }), []);
+    });
+
+    it('rejects a non-array control payload', () => {
+        assert.throws(() => decodeWaterEventPush({ control: {} }), ProtocolError);
+    });
+
+    it('rejects an entry without subId', () => {
+        assert.throws(
+            () => decodeWaterEventPush({ control: [{ channel: 0, dura: 60 }] }),
             ProtocolError
         );
     });

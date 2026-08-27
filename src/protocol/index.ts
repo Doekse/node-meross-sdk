@@ -491,12 +491,14 @@ export type {
 } from './codecs/sensor';
 export {
     CONTROL_WATER_NAMESPACE,
+    CONTROL_WATER_EVENT_NAMESPACE,
     DEVICE_CFG_NAMESPACE,
     WATER_PLAN_NAMESPACE,
     encodeWaterGet,
     encodeWaterSet,
     decodeWaterGetAck,
     decodeWaterPush,
+    decodeWaterEventPush,
     encodeDeviceCfgGet,
     encodeDeviceCfgSet,
     decodeDeviceCfgGetAck,
@@ -508,6 +510,7 @@ export {
 } from './codecs/water';
 export type {
     WaterControlState,
+    WaterEventState,
     MstDeviceCfgState,
     WaterPlanEntry,
     WaterGetOptions,

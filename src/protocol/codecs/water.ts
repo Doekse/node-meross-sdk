@@ -2,6 +2,8 @@ import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
 export const CONTROL_WATER_NAMESPACE = 'Appliance.Control.Water';
+/** Completed watering cycle. PUSH-only; payload key is `control`. */
+export const CONTROL_WATER_EVENT_NAMESPACE = 'Appliance.Control.WaterEvent';
 export const DEVICE_CFG_NAMESPACE = 'Appliance.Config.DeviceCfg';
 /** MST100 watering schedules. Payload key is `config`. */
 export const WATER_PLAN_NAMESPACE = 'Appliance.Config.WaterPlan';
@@ -12,6 +14,18 @@ export interface WaterControlState {
     on: boolean;
     /** Watering duration in seconds when the payload carries dura. */
     duration?: number;
+}
+
+/** One Control.WaterEvent row after a cycle finishes. */
+export interface WaterEventState {
+    subId: string;
+    channel: number;
+    /** Actual watering duration in seconds (`dura`). */
+    duration?: number;
+    /** Firmware water-consumption counter (`waCon`). */
+    waterConsumption?: number;
+    /** Unix timestamp when the cycle completed. */
+    timestamp?: number;
 }
 
 export interface MstDeviceCfgState {
@@ -121,6 +135,42 @@ export function decodeWaterGetAck(payload: MerossPayload): WaterControlState[] {
 
 export function decodeWaterPush(payload: MerossPayload): WaterControlState[] {
     return decodeWaterControl(payload);
+}
+
+/**
+ * Control.WaterEvent is PUSH-only. Rows with none of dura / waCon / timestamp
+ * are omitted the same way Hub.Exception omits rows without `code`.
+ * `WaterEvent.Skip` / `WaterPlan.Skip` are cloud-weather and are not decoded.
+ */
+export function decodeWaterEventPush(payload: MerossPayload): WaterEventState[] {
+    const entries: WaterEventState[] = [];
+    for (const item of decodeArray(payload, 'control', 'Control.WaterEvent')) {
+        const { subId, channel, dura, waCon, timestamp } = item;
+        if (typeof subId !== 'string') {
+            throw new ProtocolError('Control.WaterEvent entry requires subId');
+        }
+        const result: WaterEventState = {
+            subId,
+            channel: typeof channel === 'number' ? channel : 0
+        };
+        if (typeof dura === 'number') {
+            result.duration = dura;
+        }
+        if (typeof waCon === 'number') {
+            result.waterConsumption = waCon;
+        }
+        if (typeof timestamp === 'number') {
+            result.timestamp = timestamp;
+        }
+        if (
+            result.duration !== undefined
+            || result.waterConsumption !== undefined
+            || result.timestamp !== undefined
+        ) {
+            entries.push(result);
+        }
+    }
+    return entries;
 }
 
 export function encodeDeviceCfgGet(options: DeviceCfgGetOptions): MerossPayload {

@@ -17,7 +17,7 @@ export {
 export type {
     ElectricityConfig,
     SensorFamily, SensorValues, SensorSmokeStatus, SensorAlertBand,
-    PresenceValues, SprinklerValues, SprinklerScheduleEntry, SprayValues, SprayMode, FanValues,
+    PresenceValues, SprinklerValues, SprinklerScheduleEntry, SprinklerCycleSummary, SprayValues, SprayMode, FanValues,
     FanButtonConfig, FanButtonConfigSetOptions,
     DiffuserValues, DiffuserLightMode, DiffuserSprayMode, MediaValues, AlarmValues,
     SystemValues, SystemDebugState, SystemFirmwareState, SystemHardwareState,

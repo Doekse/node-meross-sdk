@@ -1,5 +1,6 @@
 import { CommandError } from '../errors';
 import {
+    CONTROL_WATER_EVENT_NAMESPACE,
     CONTROL_WATER_NAMESPACE,
     DEVICE_CFG_NAMESPACE,
     HUB_BATTERY_NAMESPACE,
@@ -10,6 +11,7 @@ import {
     decodeDeviceCfgPush,
     decodeHubExceptionPush,
     decodeHubSubDeviceVersionPush,
+    decodeWaterEventPush,
     decodeWaterPlanGetAck,
     decodeWaterPush,
     encodeDeviceCfgSet,
@@ -18,9 +20,20 @@ import {
     encodeWaterSet,
     type MerossMessage,
     type WaterControlState,
+    type WaterEventState,
     type WaterPlanEntry
 } from '../protocol';
 import type { RoutedRequestOptions } from '../transport/router';
+
+/** Completed watering cycle from Control.WaterEvent. */
+export interface SprinklerCycleSummary {
+    /** Actual watering duration in seconds. */
+    duration?: number;
+    /** Firmware water-consumption counter. */
+    waterConsumption?: number;
+    /** Unix timestamp when the cycle completed. */
+    timestamp?: number;
+}
 
 export interface SprinklerValues {
     on?: boolean;
@@ -30,6 +43,8 @@ export interface SprinklerValues {
     fault?: number;
     firmwareVersion?: string;
     hardwareVersion?: string;
+    /** Most recent completed cycle from Control.WaterEvent. */
+    lastCycle?: SprinklerCycleSummary;
 }
 
 export type SprinklerScheduleEntry = WaterPlanEntry;
@@ -41,7 +56,7 @@ export type SprinklerScheduleEntry = WaterPlanEntry;
 export interface SprinklerTraitBind {
     uuid: string;
     subDeviceId: string;
-    /** Ability keys; DeviceCfg, Battery, and WaterPlan no-op when absent. */
+    /** Ability keys; DeviceCfg, Battery, WaterPlan, and WaterEvent no-op when absent. */
     namespaces?: ReadonlySet<string>;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
     emitChange: (values: SprinklerValues) => void;
@@ -50,7 +65,8 @@ export interface SprinklerTraitBind {
 /**
  * Hub child sprinkler (MST100). On/off uses Control.Water onoff 1/2; default
  * duration lives in DeviceCfg mstCfg.dura. Schedules use Config.WaterPlan when
- * the hub actually answers (many reply error 5000).
+ * the hub actually answers (many reply error 5000). Completed cycles arrive as
+ * Control.WaterEvent PUSH.
  */
 export class SprinklerTrait {
     private readonly bind: SprinklerTraitBind;
@@ -165,6 +181,14 @@ export class SprinklerTrait {
             }
             return;
         }
+        if (ns === CONTROL_WATER_EVENT_NAMESPACE && this.has(ns)) {
+            for (const entry of decodeWaterEventPush(payload)) {
+                if (entry.subId === subId) {
+                    this.applyChange({ lastCycle: cycleSummary(entry) });
+                }
+            }
+            return;
+        }
         if (ns === DEVICE_CFG_NAMESPACE && this.has(ns)) {
             for (const entry of decodeDeviceCfgPush(payload)) {
                 if (entry.subId === subId && entry.duration !== undefined) {
@@ -209,7 +233,14 @@ export class SprinklerTrait {
         const next: SprinklerValues = {};
         for (const key of Object.keys(patch) as Array<keyof SprinklerValues>) {
             const value = patch[key];
-            if (value === undefined || this.last[key] === value) {
+            if (value === undefined) {
+                continue;
+            }
+            const previous = this.last[key];
+            const changed = typeof value === 'object'
+                ? JSON.stringify(previous) !== JSON.stringify(value)
+                : previous !== value;
+            if (!changed) {
                 continue;
             }
             (this.last as Record<string, unknown>)[key] = value;
@@ -231,6 +262,20 @@ function waterPatch(entry: WaterControlState): SprinklerValues {
         patch.duration = entry.duration;
     }
     return patch;
+}
+
+function cycleSummary(entry: WaterEventState): SprinklerCycleSummary {
+    const summary: SprinklerCycleSummary = {};
+    if (entry.duration !== undefined) {
+        summary.duration = entry.duration;
+    }
+    if (entry.waterConsumption !== undefined) {
+        summary.waterConsumption = entry.waterConsumption;
+    }
+    if (entry.timestamp !== undefined) {
+        summary.timestamp = entry.timestamp;
+    }
+    return summary;
 }
 
 function cloneScheduleEntry(entry: SprinklerScheduleEntry): SprinklerScheduleEntry {

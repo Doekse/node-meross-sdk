@@ -214,7 +214,7 @@ Traits are present only when the board advertised the matching ability. Use opti
 | `fan`       | Fans                               | `setOn`, `setSpeed`, `getButtonConfig` / `setButtonConfig`                            |
 | `spray`     | Humidifiers                        | `getMode()`, `setMode('off'                                                           |
 | `diffuser`  | Diffusers                          | Light + spray mode, brightness, RGB                                                   |
-| `sprinkler` | Hub sprinkler valves               | `setOn`, `setDuration`, `getSchedule`                                                 |
+| `sprinkler` | Hub sprinkler valves               | `setOn`, `setDuration`, `getSchedule`; last cycle on `change`                         |
 | `media`     | Speakers                           | `setMuted`, `setVolume`, `setSong`                                                    |
 | `alarm`     | Hub sirens, board chimes           | `setOn(on, durationSeconds?)`, `setLinked`, `setBeep`                                 |
 | `dnd`       | LED mute on the board              | `isOn()`, `setOn(boolean)`                                                            |

@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { CommandError } from '../../src/errors';
 import { Endpoint } from '../../src/endpoint';
 import {
+    CONTROL_WATER_EVENT_NAMESPACE,
     CONTROL_WATER_NAMESPACE,
     DEVICE_CFG_NAMESPACE,
     HUB_EXCEPTION_NAMESPACE,
@@ -231,5 +232,79 @@ describe('SprinklerTrait', () => {
         assert.equal(changes[0].fault, 5061);
         assert.equal(changes[1].firmwareVersion, '5.1.8');
         assert.equal(changes[1].hardwareVersion, '1.1.5');
+    });
+
+    it('handlePush emits lastCycle from Control.WaterEvent for this subId only', () => {
+        const { trait, changes } = createHarness({}, new Set([
+            ...SPRINKLER_NAMESPACES,
+            CONTROL_WATER_EVENT_NAMESPACE
+        ]));
+        trait.handlePush(pushMessage(CONTROL_WATER_EVENT_NAMESPACE, {
+            control: [
+                {
+                    channel: 0,
+                    subId: SUB_DEVICE_ID,
+                    dura: 900,
+                    waCon: 12,
+                    timestamp: 1_724_000_000
+                },
+                {
+                    channel: 0,
+                    subId: 'other-id',
+                    dura: 60,
+                    timestamp: 1_724_000_100
+                }
+            ]
+        }));
+
+        assert.deepEqual(changes, [{
+            lastCycle: {
+                duration: 900,
+                waterConsumption: 12,
+                timestamp: 1_724_000_000
+            }
+        }]);
+    });
+
+    it('dedupes identical Control.WaterEvent cycle summaries', () => {
+        const { trait, changes } = createHarness({}, new Set([
+            ...SPRINKLER_NAMESPACES,
+            CONTROL_WATER_EVENT_NAMESPACE
+        ]));
+        const payload = {
+            control: [{
+                channel: 0,
+                subId: SUB_DEVICE_ID,
+                dura: 600,
+                timestamp: 1_724_000_000
+            }]
+        };
+        trait.handlePush(pushMessage(CONTROL_WATER_EVENT_NAMESPACE, payload));
+        trait.handlePush(pushMessage(CONTROL_WATER_EVENT_NAMESPACE, payload));
+        assert.equal(changes.length, 1);
+    });
+
+    it('ignores Control.WaterEvent PUSH when uuid does not match the bind', () => {
+        const { trait, changes } = createHarness({}, new Set([
+            ...SPRINKLER_NAMESPACES,
+            CONTROL_WATER_EVENT_NAMESPACE
+        ]));
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_WATER_EVENT_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: '/appliance/other/publish',
+            uuid: 'other',
+            payload: { control: [{ subId: SUB_DEVICE_ID, dura: 60, timestamp: 1 }] }
+        }));
+        assert.equal(changes.length, 0);
+    });
+
+    it('ignores Control.WaterEvent when Ability lacks the namespace', () => {
+        const { trait, changes } = createHarness({}, SPRINKLER_NAMESPACES);
+        trait.handlePush(pushMessage(CONTROL_WATER_EVENT_NAMESPACE, {
+            control: [{ subId: SUB_DEVICE_ID, dura: 60, timestamp: 1 }]
+        }));
+        assert.equal(changes.length, 0);
     });
 });
