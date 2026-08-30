@@ -82,6 +82,24 @@ export interface SessionOptions {
     cloud?: CloudClientOptions;
     mqttConnect?: MqttConnectFn;
     lanFetch?: typeof globalThis.fetch;
+    /**
+     * First-attempt LAN HTTP timeout. The default (1s) is shorter than some
+     * battery-conscious boards take to accept a TCP connection at all — an
+     * MSG200 on Wi-Fi power save was measured between 0.6s and 3.2s — so every
+     * first attempt aborts and traffic falls to cloud MQTT, which is rate
+     * limited to 5 publishes per 91s. Raise it for such devices.
+     */
+    lanTimeoutMs?: number;
+    /**
+     * LAN transport errors tolerated per {@link lanErrorWindowMs} before the
+     * router stops trying LAN for the rest of that window. The default (1) is
+     * brittle on boards that wake slowly: a single miss blackholes LAN for a
+     * full minute, pushing every request — including user commands — onto
+     * cloud MQTT, which is usually already spent on polling.
+     */
+    lanMaxErrors?: number;
+    /** Sliding window for {@link lanMaxErrors}. Default 60s. */
+    lanErrorWindowMs?: number;
 }
 
 interface SessionEvents {
@@ -100,6 +118,9 @@ export class Session extends EventEmitter<SessionEvents> {
     private readonly token: TokenData;
     private readonly mqttConnect?: MqttConnectFn;
     private readonly lanFetch?: typeof globalThis.fetch;
+    private readonly lanTimeoutMs?: number;
+    private readonly lanMaxErrors?: number;
+    private readonly lanErrorWindowMs?: number;
     private graph = new DeviceGraph();
     private readonly endpoints = new Map<string, Endpoint>();
     private readonly boards = new Map<string, {
@@ -118,6 +139,9 @@ export class Session extends EventEmitter<SessionEvents> {
         this.cloud = cloud;
         this.mqttConnect = options.mqttConnect;
         this.lanFetch = options.lanFetch;
+        this.lanTimeoutMs = options.lanTimeoutMs;
+        this.lanMaxErrors = options.lanMaxErrors;
+        this.lanErrorWindowMs = options.lanErrorWindowMs;
         this.inventory = new Inventory();
     }
 
@@ -174,9 +198,15 @@ export class Session extends EventEmitter<SessionEvents> {
             key: this.token.key,
             from: mqtt.clientResponseTopic,
             dispatcher,
-            fetch: this.lanFetch
+            fetch: this.lanFetch,
+            timeoutMs: this.lanTimeoutMs
         });
-        this.router = new TransportRouter({ mqtt, lan });
+        this.router = new TransportRouter({
+            mqtt,
+            lan,
+            maxErrors: this.lanMaxErrors,
+            errorBudgetTimeWindowMs: this.lanErrorWindowMs
+        });
         try {
             await this.router.connect();
             await this.sync();
