@@ -50,6 +50,8 @@ export interface CoverTraitBind {
      * Optional garage config methods use this to no-op when unsupported.
      */
     namespaces?: ReadonlySet<string>;
+    /** Seed from System.All digest so isOpen() is known before the first poll. */
+    initialOpen?: boolean;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
     emitChange: (values: CoverValues) => void;
 }
@@ -68,6 +70,7 @@ export class CoverTrait {
 
     constructor(bind: CoverTraitBind) {
         this.bind = bind;
+        this.on = bind.initialOpen;
     }
 
     private has(namespace: string): boolean {

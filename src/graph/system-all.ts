@@ -17,6 +17,18 @@ export interface DigestToggle {
     on?: boolean;
 }
 
+/**
+ * One `digest.garageDoor` row. Firmware reports the door's current state here,
+ * so hosts can show open/closed immediately after System.All instead of waiting
+ * for the first PUSH or poll. `doorEnable` is 0 on channels of a multi-door
+ * board that are not wired up (MSG200 ships three; most installs use one or two).
+ */
+export interface DigestGarageDoor {
+    channel: number;
+    open?: boolean;
+    doorEnable?: boolean;
+}
+
 export interface SystemAll {
     hardware: SystemHardwareState;
     firmware: SystemFirmwareState;
@@ -28,6 +40,8 @@ export interface SystemAll {
         togglex: DigestToggle[];
         light: number[];
         garageDoor: number[];
+        /** Same rows as `garageDoor`, with the state firmware reported. */
+        garageDoorState: DigestGarageDoor[];
         rollerShutter: number[];
         spray: number[];
         fan: number[];
@@ -82,6 +96,7 @@ export function decodeSystemAllGetAck(payload: MerossPayload): SystemAll {
             togglex: digestTogglex(d.togglex),
             light: channelList(d.light, 'light'),
             garageDoor: channelList(d.garageDoor, 'garageDoor'),
+            garageDoorState: digestGarageDoor(d.garageDoor),
             rollerShutter: channelList(d.rollerShutter, 'rollerShutter'),
             spray: channelList(d.spray, 'spray'),
             fan: channelList(d.fan, 'fan'),
@@ -125,6 +140,33 @@ function channelList(raw: unknown, field: string): number[] {
             throw new ProtocolError(`System.All digest.${field} channel is required`);
         }
         return channel;
+    });
+}
+
+function digestGarageDoor(raw: unknown): DigestGarageDoor[] {
+    if (raw === undefined) {
+        return [];
+    }
+    if (!Array.isArray(raw)) {
+        throw new ProtocolError('System.All digest.garageDoor must be an array');
+    }
+    return raw.map((item) => {
+        const { channel, open, doorEnable } = (item ?? {}) as Record<string, unknown>;
+        if (typeof channel !== 'number') {
+            throw new ProtocolError('System.All digest.garageDoor channel is required');
+        }
+        const row: DigestGarageDoor = { channel };
+        if (typeof open === 'number') {
+            row.open = open === 1;
+        } else if (typeof open === 'boolean') {
+            row.open = open;
+        }
+        if (typeof doorEnable === 'number') {
+            row.doorEnable = doorEnable === 1;
+        } else if (typeof doorEnable === 'boolean') {
+            row.doorEnable = doorEnable;
+        }
+        return row;
     });
 }
 

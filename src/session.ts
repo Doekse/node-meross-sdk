@@ -616,6 +616,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 channel,
                 kind,
                 namespaces,
+                initialOpen: graphEndpoint.on,
                 request,
                 emitChange: changeEmitter('cover')
             });
