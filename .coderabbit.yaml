@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!dist/**"
+    - "!coverage/**"
+    - "!**/*.map"
+    - "!package-lock.json"
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        Follow REVIEW.md. Match patterns already established nearby in this
+        repository. Prefer the local approach over a new abstraction, helper,
+        or framework.
+
+        Flag overcomplicated changes: extra layers, speculative generality,
+        premature abstractions, and refactors unrelated to the PR goal.
+
+        Flag workarounds. If the PR papers over a bug, API gap, or type issue
+        with casts, special-case branches, duplicated logic, or temporary
+        guards, require the root-cause fix that makes the workaround unnecessary.
+
+        Prefer suggestions that match local style and keep the change as small
+        as the fix allows. Do not suggest alternative architectures unless the
+        current approach is clearly wrong.
+    - path: "src/**"
+      instructions: |
+        This package exposes Session, Endpoint, and Trait APIs. Transports,
+        protocol codecs, and the device graph stay internal unless a change
+        deliberately expands the public surface in src/index.ts.
+
+        Focus on API correctness, error handling, protocol and transport
+        safety, and breaking changes to exported types or behavior.
+
+        Prefer extending existing trait or transport patterns over introducing
+        parallel APIs.
+    - path: "test/**"
+      instructions: |
+        Tests use node:test (describe/it) and the built-in mock API
+        (t.mock.method, t.mock.fn, t.mock.timers). Do not suggest sinon or
+        other mock libraries.
+
+        Flag flaky timing, weak assertions, and missing failure-path coverage.
+        Prefer tests that exercise real error and edge behavior over tests that
+        only assert the happy path.
+    - path: ".github/**"
+      instructions: |
+        Keep CI least-privilege. Flag unnecessary permissions, unpinned
+        third-party actions, and workflow changes that broaden secrets or
+        write access without a clear need.
+chat:
+  auto_reply: true
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - files: REVIEW.md
+        applyTo: "**/*"
