@@ -705,9 +705,10 @@ describe('DevicePoller', () => {
         await harness.advance(SYSTEM_ALL_PERIOD_MS - INTERVAL_MS);
 
         assert.equal(harness.requestGets.mock.callCount(), 2);
-        assert.ok(
-            harness.getsHistory[1]?.some((get) => get.namespace === SYSTEM_ALL_NAMESPACE)
-        );
+        assert.deepEqual(harness.getsHistory[1], [{
+            namespace: SYSTEM_ALL_NAMESPACE,
+            payload: {}
+        }]);
 
         harness.poller.stop();
     });
