@@ -1,6 +1,6 @@
 {
   "name": "node-meross-sdk",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha",
   "description": "Control Meross devices from Node.js using a Session, Endpoint, and Trait API",
   "author": "Abe Haverkamp",
   "license": "MIT",
@@ -40,8 +40,12 @@
   "files": [
     "dist",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "clean": "rm -rf dist",

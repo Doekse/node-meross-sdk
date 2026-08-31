@@ -1,7 +1,7 @@
 # node-meross-sdk
 
 [![CI](https://github.com/Doekse/node-meross-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/Doekse/node-meross-sdk/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/node-meross-sdk.svg)](https://www.npmjs.com/package/node-meross-sdk)
+[![npm version](https://img.shields.io/npm/v/node-meross-sdk/alpha.svg)](https://www.npmjs.com/package/node-meross-sdk)
 [![npm downloads](https://img.shields.io/npm/dm/node-meross-sdk.svg)](https://www.npmjs.com/package/node-meross-sdk)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-included-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -29,6 +29,7 @@ It was built to power a [Homey](https://homey.app) integration, and to give othe
 - [Traits](#traits)
 - [Errors](#errors)
 - [Development](#development)
+- [Changelog](#changelog)
 - [Contributing](#contributing)
 - [Credits](#credits)
 - [License](#license)
@@ -62,13 +63,11 @@ The first published release is `0.1.0-alpha`.
 
 ## Installation
 
-Not published yet. After the first alpha:
-
 ```bash
-npm install node-meross-sdk
+npm install node-meross-sdk@alpha
 ```
 
-The package emits CommonJS from `dist/` and includes TypeScript declarations.
+This is a prerelease on the `alpha` dist-tag. The package emits CommonJS from `dist/` and includes TypeScript declarations.
 
 ## Quick start
 
@@ -282,7 +281,11 @@ npm run typecheck
 npm run build
 ```
 
-Tests use Node's built-in `node:test` runner. CI lints, typechecks, and runs tests on Node 22 and 24.
+Tests use Node's built-in `node:test` runner. CI lints, typechecks, and runs tests on Node 22 and 24. Bumping `version` in `package.json` on `main` creates a GitHub Release from `CHANGELOG.md` and publishes to npm.
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md).
 
 ## Contributing
 

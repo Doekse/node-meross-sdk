@@ -1,0 +1,102 @@
+# Publishes to npm from this workflow file only. npm Trusted Publishing keys
+# off the top-level workflow filename; calling this file via workflow_call
+# makes that identity disagree and the upload is rejected.
+#
+# A GITHUB_TOKEN-created GitHub Release does not fire `release` workflows, so
+# a version bump on the default branch creates the tag/release and publishes
+# in the same run. workflow_dispatch and UI-created releases still publish here.
+#
+# Configure an npm trusted publisher for this workflow (GitHub OIDC):
+#   Doekse / node-meross-sdk / publish-npm.yml / environment npm
+#
+# npm cannot attach a trusted publisher until the package exists. Claim the
+# name once (stub 0.0.0 or this version with --tag alpha), then lock CI to OIDC.
+name: Publish to npm
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      created: ${{ steps.create_release.outputs.created }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Create tag and GitHub Release if version changed
+        id: create_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/create_release_on_version_bump.py --repo-root "${GITHUB_WORKSPACE}"
+
+  publish:
+    needs: [release]
+    if: ${{ !cancelled() && (needs.release.result == 'skipped' || needs.release.outputs.created == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/node-meross-sdk
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Publish to npm
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          if npm view "node-meross-sdk@${VERSION}" version >/dev/null 2>&1; then
+            echo "Version ${VERSION} is already on npm; skipping publish."
+            exit 0
+          fi
+          TAG="$(node -p "const v=require('./package.json').version; const i=v.indexOf('-'); i===-1 ? 'latest' : v.slice(i+1).split(/[.+]/)[0]")"
+          npm publish --access public --tag "${TAG}"
