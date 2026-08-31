@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createServer, type AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
 
 import { CommandError, ProtocolError, TransportError } from '../../src/errors';
@@ -404,5 +405,36 @@ describe('LanHttpTransport', () => {
         });
         assert.equal(calls, 2);
         assert.equal(reply.header.method, 'GETACK');
+    });
+
+    it('accepts LF-terminated HTTP that undici fetch would reject', async () => {
+        // Raw TCP: `http.Server` would emit CRLF and would not prove the firmware case.
+        const server = createServer((socket) => {
+            socket.once('data', (raw) => {
+                const requestBody = raw.toString().split('\r\n\r\n')[1] ?? '';
+                const responseBody = JSON.stringify(ackFor(decodeMessage(requestBody, KEY), 'GETACK'));
+                socket.end(
+                    `HTTP/1.1 200 OK\nContent-Length: ${Buffer.byteLength(responseBody)}\n\n${responseBody}`
+                );
+            });
+        });
+        await new Promise<void>((resolve) => {
+            server.listen(0, '127.0.0.1', resolve);
+        });
+        const transport = new LanHttpTransport({ key: KEY, from: FROM });
+        const ip = `127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+        try {
+            const reply = await transport.request({
+                uuid: UUID,
+                ip,
+                namespace: TOGGLEX_NAMESPACE,
+                method: 'GET'
+            });
+
+            assert.equal(reply.header.method, 'GETACK');
+        } finally {
+            server.close();
+        }
     });
 });

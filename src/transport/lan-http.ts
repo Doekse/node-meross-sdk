@@ -1,3 +1,5 @@
+import http from 'node:http';
+
 import { ProtocolError, TransportError } from '../errors';
 import {
     DEFAULT_COMMAND_TIMEOUT_MS,
@@ -41,6 +43,9 @@ export interface LanHttpTransportOptions {
  * this still registers with {@link ProtocolDispatcher} to share pending ids
  * with MQTT (a cloud PUSH can arrive while a LAN GET is in flight).
  *
+ * Default client is `node:http` with `insecureHTTPParser`: some firmware ends
+ * response lines with LF, which undici `fetch` rejects.
+ *
  * POSTs to the same uuid are serialized: Meross devices mishandle concurrent
  * HTTP ([meross_lan #206](https://github.com/krahabb/meross_lan/issues/206)).
  */
@@ -57,7 +62,7 @@ export class LanHttpTransport {
     constructor(options: LanHttpTransportOptions) {
         this.key = options.key;
         this.from = options.from;
-        this.fetchFn = options.fetch ?? globalThis.fetch.bind(globalThis);
+        this.fetchFn = options.fetch ?? defaultFetch;
         this.timeoutMs = options.timeoutMs ?? DEFAULT_LAN_TIMEOUT_MS;
         this.dispatcher = options.dispatcher ?? new ProtocolDispatcher();
     }
@@ -181,4 +186,37 @@ export class LanHttpTransport {
             clearTimeout(timer);
         }
     }
+}
+
+/**
+ * Firmware on some boards ends HTTP lines with LF, not CRLF. undici `fetch`
+ * has no way to accept that; `insecureHTTPParser` does.
+ */
+function defaultFetch(input: string | URL | Request, init: RequestInit = {}): Promise<Response> {
+    const body = typeof init.body === 'string' ? init.body : '';
+    return new Promise((resolve, reject) => {
+        const req = http.request(String(input), {
+            method: init.method ?? 'POST',
+            headers: {
+                ...(init.headers as http.OutgoingHttpHeaders),
+                'Content-Length': Buffer.byteLength(body)
+            },
+            agent: false,
+            insecureHTTPParser: true,
+            signal: init.signal ?? undefined
+        }, (res) => {
+            const chunks: Buffer[] = [];
+            res.on('data', (chunk: Buffer) => {
+                chunks.push(chunk);
+            });
+            res.on('end', () => {
+                resolve(new Response(Buffer.concat(chunks), {
+                    status: res.statusCode ?? 0,
+                    statusText: res.statusMessage ?? ''
+                }));
+            });
+        });
+        req.on('error', reject);
+        req.end(body);
+    });
 }
