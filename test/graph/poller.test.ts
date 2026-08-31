@@ -65,6 +65,7 @@ function createHarness(
     options: {
         online?: boolean;
         cloudPath?: boolean;
+        httpDown?: boolean;
         maxCmdNum?: number;
         jobs?: readonly PollJob[];
         intervalMs?: number;
@@ -93,6 +94,7 @@ function createHarness(
         uuid: UUID,
         isOnline: () => online,
         isCloudPath: () => cloudPath,
+        httpDown: () => options.httpDown ?? false,
         maxCmdNum: () => options.maxCmdNum ?? 3,
         requestGets,
         onAck: (message) => {
@@ -668,6 +670,75 @@ describe('DevicePoller', () => {
         );
 
         await harness.advance(INTERVAL_MS);
+        assert.equal(harness.requestGets.mock.callCount(), 1);
+
+        harness.poller.stop();
+    });
+
+    it('polls System.All on the heartbeat while MQTT is active and HTTP is down', async (t) => {
+        const harness = createHarness(t, {
+            cloudPath: true,
+            httpDown: true,
+            jobs: [
+                {
+                    namespace: SYSTEM_ALL_NAMESPACE,
+                    strategy: 'all',
+                    periodMs: SYSTEM_ALL_PERIOD_MS,
+                    periodCloudMs: CLOUDMQTT_PERIOD_MS
+                },
+                {
+                    namespace: TOGGLEX_NAMESPACE,
+                    strategy: 'default',
+                    periodMs: 0,
+                    periodCloudMs: CLOUDMQTT_PERIOD_MS
+                }
+            ]
+        });
+
+        harness.poller.recordPush(push(TOGGLEX_NAMESPACE));
+        harness.poller.start();
+        await harness.advance(0);
+        await harness.advance(INTERVAL_MS);
+        // MQTT skip expires at SYSTEM_ALL_PERIOD_MS; a later PUSH keeps this a probe.
+        harness.poller.recordPush(push(TOGGLEX_NAMESPACE));
+
+        await harness.advance(SYSTEM_ALL_PERIOD_MS - INTERVAL_MS);
+
+        assert.equal(harness.requestGets.mock.callCount(), 2);
+        assert.ok(
+            harness.getsHistory[1]?.some((get) => get.namespace === SYSTEM_ALL_NAMESPACE)
+        );
+
+        harness.poller.stop();
+    });
+
+    it('does not poll System.All on the heartbeat for a cloud-only device', async (t) => {
+        const harness = createHarness(t, {
+            cloudPath: true,
+            jobs: [
+                {
+                    namespace: SYSTEM_ALL_NAMESPACE,
+                    strategy: 'all',
+                    periodMs: SYSTEM_ALL_PERIOD_MS,
+                    periodCloudMs: CLOUDMQTT_PERIOD_MS
+                },
+                {
+                    namespace: TOGGLEX_NAMESPACE,
+                    strategy: 'default',
+                    periodMs: 0,
+                    periodCloudMs: CLOUDMQTT_PERIOD_MS
+                }
+            ]
+        });
+
+        harness.poller.recordPush(push(TOGGLEX_NAMESPACE));
+        harness.poller.start();
+        await harness.advance(0);
+        await harness.advance(INTERVAL_MS);
+        harness.poller.recordPush(push(TOGGLEX_NAMESPACE));
+
+        await harness.advance(SYSTEM_ALL_PERIOD_MS - INTERVAL_MS);
+
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
         harness.poller.stop();

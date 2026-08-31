@@ -461,6 +461,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 uuid,
                 isOnline: () => availability.isOnline(),
                 isCloudPath: () => this.connectedRouter.isCloudPath(uuid, physical.innerIp),
+                httpDown: () => this.connectedRouter.isHttpDown(uuid),
                 maxCmdNum: () => physical.maxCmdNum,
                 requestGets: (gets, maxCmdNum) => this.connectedRouter.requestGets({
                     uuid,

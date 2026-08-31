@@ -12,13 +12,11 @@ import {
 import type { MerossMessage, MerossPayload } from '../protocol';
 
 /**
- * First-attempt LAN HTTP timeout. Device HTTP times out with no apparent cause,
- * so attempts escalate from here (1s → 2s → 4s) the way meross_lan escalates
- * its connect timeout, rather than spending the router's error budget on one abort.
- * Raising this shortens the escalation, since the total must still fit inside
- * {@link DEFAULT_COMMAND_TIMEOUT_MS}.
+ * meross_lan `ClientTimeout.total`. Sleepy boards take 0.6s–3.2s to accept TCP
+ * after a Wi-Fi wake; aborting the whole POST at the 1s connect budget dropped
+ * those.
  */
-export const DEFAULT_LAN_TIMEOUT_MS = 1_000;
+export const DEFAULT_LAN_TIMEOUT_MS = DEFAULT_COMMAND_TIMEOUT_MS;
 
 export interface LanHttpRequestOptions {
     uuid: string;
@@ -34,8 +32,6 @@ export interface LanHttpTransportOptions {
     from: string;
     dispatcher?: ProtocolDispatcher;
     fetch?: typeof globalThis.fetch;
-    /** First-attempt abort timeout; each retry doubles it while the total still fits. */
-    timeoutMs?: number;
 }
 
 /**
@@ -55,7 +51,6 @@ export class LanHttpTransport {
     private readonly key: string;
     private readonly from: string;
     private readonly fetchFn: typeof globalThis.fetch;
-    private readonly timeoutMs: number;
     /** Tail of each uuid's POST chain, not a backlog: one entry per device. */
     private readonly queues = new Map<string, Promise<void>>();
 
@@ -63,7 +58,6 @@ export class LanHttpTransport {
         this.key = options.key;
         this.from = options.from;
         this.fetchFn = options.fetch ?? defaultFetch;
-        this.timeoutMs = options.timeoutMs ?? DEFAULT_LAN_TIMEOUT_MS;
         this.dispatcher = options.dispatcher ?? new ProtocolDispatcher();
     }
 
@@ -83,11 +77,8 @@ export class LanHttpTransport {
     }
 
     /**
-     * Escalates the abort timeout across attempts, stopping while the total
-     * still fits inside {@link DEFAULT_COMMAND_TIMEOUT_MS}: letting the pending
-     * timer fire first would raise CommandError, which TransportRouter treats
-     * as a delivered command and does not fail over to MQTT. Every exit settles
-     * the pending id, so the returned promise never outlives the POST.
+     * Abort must reject pending as a transport miss: a pending CommandError
+     * looks delivered, so TransportRouter would not fail over to MQTT.
      */
     private async post(options: LanHttpRequestOptions): Promise<MerossMessage> {
         const message = encodeMessage({
@@ -99,35 +90,25 @@ export class LanHttpTransport {
             uuid: options.uuid
         });
         const messageId = message.header.messageId;
-        const reply = this.dispatcher.pending.register(messageId, DEFAULT_COMMAND_TIMEOUT_MS);
+        const controller = new AbortController();
+        const timer = setTimeout(() => {
+            this.dispatcher.pending.reject(messageId, new TransportError(
+                `LAN HTTP timed out after ${DEFAULT_LAN_TIMEOUT_MS}ms`,
+                'LAN_TIMEOUT'
+            ));
+            controller.abort();
+        }, DEFAULT_LAN_TIMEOUT_MS);
+        const reply = this.dispatcher.pending.register(messageId, DEFAULT_LAN_TIMEOUT_MS);
 
-        // Encode once so retries reuse the same messageId (pending rejects duplicates).
         let body = JSON.stringify(message);
         if (options.encryptionKey) {
             body = encryptPayload(body, options.encryptionKey);
         }
 
-        let attemptTimeoutMs = this.timeoutMs;
-        let elapsedMs = 0;
-        for (;;) {
-            try {
-                await this.attempt(options, body, attemptTimeoutMs);
-                break;
-            } catch (error) {
-                if (error instanceof Error && error.name === 'AbortError') {
-                    elapsedMs += attemptTimeoutMs;
-                    const nextTimeoutMs = attemptTimeoutMs * 2;
-                    if (elapsedMs + nextTimeoutMs < DEFAULT_COMMAND_TIMEOUT_MS) {
-                        attemptTimeoutMs = nextTimeoutMs;
-                        continue;
-                    }
-                    this.dispatcher.pending.reject(messageId, new TransportError(
-                        `LAN HTTP timed out after ${elapsedMs}ms`,
-                        'LAN_TIMEOUT'
-                    ));
-                    break;
-                }
-
+        try {
+            await this.attempt(options, body, controller.signal);
+        } catch (error) {
+            if (!(error instanceof Error && error.name === 'AbortError')) {
                 this.dispatcher.pending.reject(
                     messageId,
                     error instanceof ProtocolError || error instanceof TransportError
@@ -137,53 +118,48 @@ export class LanHttpTransport {
                             'LAN_UNREACHABLE'
                         )
                 );
-                break;
             }
+        } finally {
+            clearTimeout(timer);
         }
 
         return reply;
     }
 
     /**
-     * Lets the abort surface as AbortError rather than normalising it here, so
-     * {@link post} can tell a transient blip from a hard failure.
+     * Lets AbortError through so {@link post} does not map a timeout to
+     * LAN_UNREACHABLE; abort already settled pending.
      */
     private async attempt(
         options: LanHttpRequestOptions,
         body: string,
-        timeoutMs: number
+        signal: AbortSignal
     ): Promise<void> {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
-        try {
-            const response = await this.fetchFn(`http://${options.ip}/config`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': options.encryptionKey
-                        ? 'application/octet-stream'
-                        : 'application/json'
-                },
-                body,
-                signal: controller.signal
-            });
+        const response = await this.fetchFn(`http://${options.ip}/config`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': options.encryptionKey
+                    ? 'application/octet-stream'
+                    : 'application/json'
+            },
+            body,
+            signal
+        });
 
-            if (response.status !== 200) {
-                throw new TransportError(
-                    `LAN HTTP ${response.status}: ${response.statusText}`,
-                    'LAN_HTTP_ERROR'
-                );
-            }
+        if (response.status !== 200) {
+            throw new TransportError(
+                `LAN HTTP ${response.status}: ${response.statusText}`,
+                'LAN_HTTP_ERROR'
+            );
+        }
 
-            let text = await response.text();
-            if (options.encryptionKey) {
-                text = decryptPayload(text, options.encryptionKey);
-            }
+        let text = await response.text();
+        if (options.encryptionKey) {
+            text = decryptPayload(text, options.encryptionKey);
+        }
 
-            if (this.dispatcher.handle(decodeMessage(text, this.key)) !== 'reply') {
-                throw new ProtocolError('LAN HTTP response did not match a pending request');
-            }
-        } finally {
-            clearTimeout(timer);
+        if (this.dispatcher.handle(decodeMessage(text, this.key)) !== 'reply') {
+            throw new ProtocolError('LAN HTTP response did not match a pending request');
         }
     }
 }

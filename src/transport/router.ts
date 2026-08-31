@@ -1,6 +1,7 @@
-import { CommandError, ProtocolError, TransportError } from '../errors';
+import { CommandError, ProtocolError } from '../errors';
 import {
     MULTIPLE_NAMESPACE,
+    SYSTEM_ALL_NAMESPACE,
     canPackInMultiple,
     decodeMultipleAck,
     encodeMultipleSet
@@ -9,9 +10,6 @@ import type { MerossMessage, MerossPayload } from '../protocol';
 import type { LanHttpTransport } from './lan-http';
 import type { MqttTransport } from './mqtt';
 import type { PublishPriority } from './rate-limit';
-
-export const DEFAULT_MAX_ERRORS = 1;
-export const DEFAULT_ERROR_BUDGET_WINDOW_MS = 60_000;
 
 export interface RoutedRequestOptions {
     uuid: string;
@@ -49,36 +47,22 @@ export interface RequestGetsOptions {
 export interface TransportRouterOptions {
     mqtt: MqttTransport;
     lan: LanHttpTransport;
-    maxErrors?: number;
-    errorBudgetTimeWindowMs?: number;
-    now?: () => number;
-}
-
-/** Remaining LAN failures allowed for one device before the window resets. */
-interface ErrorBudget {
-    remaining: number;
-    windowStart: number;
 }
 
 /**
- * Always try LAN when an IP is known; MQTT is the fallback. There is no
- * public `transportMode` — hosts should not choose a path.
+ * Prefer LAN when an IP is known; MQTT is the fallback for that request.
+ * There is no public `transportMode` — hosts should not choose a path.
  */
 export class TransportRouter {
     readonly mqtt: MqttTransport;
     readonly lan: LanHttpTransport;
 
-    private readonly maxErrors: number;
-    private readonly windowMs: number;
-    private readonly now: () => number;
-    private readonly errorBudgets = new Map<string, ErrorBudget>();
+    /** meross_lan `_http_active is None` — HTTP was reachable, then System.All missed. */
+    private readonly httpDown = new Set<string>();
 
     constructor(options: TransportRouterOptions) {
         this.mqtt = options.mqtt;
         this.lan = options.lan;
-        this.maxErrors = options.maxErrors ?? DEFAULT_MAX_ERRORS;
-        this.windowMs = options.errorBudgetTimeWindowMs ?? DEFAULT_ERROR_BUDGET_WINDOW_MS;
-        this.now = options.now ?? Date.now;
     }
 
     async connect(): Promise<void> {
@@ -86,21 +70,29 @@ export class TransportRouter {
     }
 
     async disconnect(): Promise<void> {
-        this.errorBudgets.clear();
+        this.httpDown.clear();
         await this.mqtt.disconnect();
     }
 
     /**
-     * True when {@link request} would skip LAN (no IP or error budget spent).
-     * DevicePoller uses this for cloud smart/once caps.
+     * DevicePoller uses this for cloud smart/once caps: no IP, or HTTP marked
+     * down.
      */
     isCloudPath(uuid: string, ip?: string | null): boolean {
-        return !ip || this.errorBudget(uuid).remaining < 1;
+        return !ip || this.httpDown.has(uuid);
+    }
+
+    /**
+     * The poller probes System.All on this, not on cloud-only devices that
+     * never had a host.
+     */
+    isHttpDown(uuid: string): boolean {
+        return this.httpDown.has(uuid);
     }
 
     /**
      * Device ERROR and an unusable LAN body are delivered commands, not
-     * transport failures, so they do not failover.
+     * transport failures, so they do not failover or mark HTTP down.
      */
     async request(options: RoutedRequestOptions): Promise<MerossMessage> {
         const command = {
@@ -111,19 +103,24 @@ export class TransportRouter {
             priority: options.priority
         };
 
-        if (options.ip && this.errorBudget(options.uuid).remaining >= 1) {
+        const tryLan = Boolean(options.ip)
+            && (!this.httpDown.has(options.uuid) || options.namespace === SYSTEM_ALL_NAMESPACE);
+
+        if (tryLan) {
             try {
-                return await this.lan.request({
+                const reply = await this.lan.request({
                     ...command,
-                    ip: options.ip,
+                    ip: options.ip!,
                     encryptionKey: options.encryptionKey
                 });
+                this.httpDown.delete(options.uuid);
+                return reply;
             } catch (error) {
                 if (error instanceof CommandError || error instanceof ProtocolError) {
                     throw error;
                 }
-                if (error instanceof TransportError) {
-                    this.errorBudget(options.uuid).remaining -= 1;
+                if (options.namespace === SYSTEM_ALL_NAMESPACE) {
+                    this.httpDown.add(options.uuid);
                 }
             }
         }
@@ -218,15 +215,5 @@ export class TransportRouter {
             }));
         }
         return results;
-    }
-
-    private errorBudget(uuid: string): ErrorBudget {
-        const now = this.now();
-        let entry = this.errorBudgets.get(uuid);
-        if (!entry || now > entry.windowStart + this.windowMs) {
-            entry = { remaining: this.maxErrors, windowStart: now };
-            this.errorBudgets.set(uuid, entry);
-        }
-        return entry;
     }
 }

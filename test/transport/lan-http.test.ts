@@ -68,7 +68,7 @@ function createTransport(
     return { transport, calls };
 }
 
-/** Drain nested microtasks so a retry can arm its next abort timer under fake time. */
+/** Drain nested microtasks so the abort timer is armed before fake time advances. */
 function flushMicrotasks(): Promise<void> {
     return Promise.resolve().then(() => Promise.resolve());
 }
@@ -205,7 +205,11 @@ describe('LanHttpTransport', () => {
         );
     });
 
-    it('times out after escalating 1s/2s/4s when the device never answers', async (t) => {
+    it('uses the command timeout as the LAN total', () => {
+        assert.equal(DEFAULT_LAN_TIMEOUT_MS, DEFAULT_COMMAND_TIMEOUT_MS);
+    });
+
+    it('throws LAN_TIMEOUT when the POST hangs past the total budget', async (t) => {
         t.mock.timers.enable({ apis: ['setTimeout'] });
         const { transport, calls } = createTransport((_url, init) => new Promise((_resolve, reject) => {
             init.signal?.addEventListener('abort', () => {
@@ -219,45 +223,31 @@ describe('LanHttpTransport', () => {
             namespace: TOGGLEX_NAMESPACE,
             method: 'GET'
         });
-        // Per-uuid queue awaits the prior request before arming the abort timer.
         await flushMicrotasks();
-        // 1s → 2s → 4s; a fourth attempt (8s) would outrun the pending timer.
         t.mock.timers.tick(DEFAULT_LAN_TIMEOUT_MS);
         await flushMicrotasks();
-        t.mock.timers.tick(DEFAULT_LAN_TIMEOUT_MS * 2);
-        await flushMicrotasks();
-        t.mock.timers.tick(DEFAULT_LAN_TIMEOUT_MS * 4);
-        await flushMicrotasks();
+
         await assert.rejects(
             pending,
             (err: unknown) =>
                 err instanceof TransportError
                 && err.code === 'LAN_TIMEOUT'
-                && err.message === `LAN HTTP timed out after ${DEFAULT_LAN_TIMEOUT_MS * 7}ms`
+                && err.message === `LAN HTTP timed out after ${DEFAULT_LAN_TIMEOUT_MS}ms`
         );
-        assert.equal(calls.length, 3);
-        assert.ok(DEFAULT_LAN_TIMEOUT_MS * 7 < DEFAULT_COMMAND_TIMEOUT_MS);
-        const bodies = calls.map((call) => String(call.init.body));
-        assert.equal(new Set(bodies).size, 1);
-        const messageIds = bodies.map((body) => decodeMessage(body, KEY).header.messageId);
-        assert.equal(new Set(messageIds).size, 1);
+        assert.equal(calls.length, 1);
     });
 
-    it('retries on AbortError and reuses the same messageId', async (t) => {
+    it('lets a slow wake finish inside the total budget', async (t) => {
         t.mock.timers.enable({ apis: ['setTimeout'] });
-        let attempts = 0;
-        const { transport, calls } = createTransport((_url, init) => {
-            attempts++;
-            if (attempts < 3) {
-                return new Promise((_resolve, reject) => {
-                    init.signal?.addEventListener('abort', () => {
-                        reject(abortError());
-                    });
-                });
-            }
+        const { transport, calls } = createTransport((_url, init) => new Promise((resolve, reject) => {
             const sent = decodeMessage(String(init.body), KEY);
-            return Promise.resolve(jsonResponse(ackFor(sent, 'GETACK')));
-        });
+            const onAbort = () => reject(abortError());
+            init.signal?.addEventListener('abort', onAbort);
+            setTimeout(() => {
+                init.signal?.removeEventListener('abort', onAbort);
+                resolve(jsonResponse(ackFor(sent, 'GETACK')));
+            }, 3_000);
+        }));
 
         const pending = transport.request({
             uuid: UUID,
@@ -266,19 +256,16 @@ describe('LanHttpTransport', () => {
             method: 'GET'
         });
         await flushMicrotasks();
-        t.mock.timers.tick(DEFAULT_LAN_TIMEOUT_MS);
+        t.mock.timers.tick(3_000);
         await flushMicrotasks();
-        t.mock.timers.tick(DEFAULT_LAN_TIMEOUT_MS * 2);
-        await flushMicrotasks();
+
         const reply = await pending;
 
         assert.equal(reply.header.method, 'GETACK');
-        assert.equal(calls.length, 3);
-        const messageIds = calls.map(
-            (call) => decodeMessage(String(call.init.body), KEY).header.messageId
-        );
-        assert.equal(new Set(messageIds).size, 1);
-        assert.equal(messageIds[0], reply.header.messageId);
+        assert.equal(calls.length, 1);
+        const sent = decodeMessage(String(calls[0]!.init.body), KEY);
+        assert.equal(sent.header.messageId, reply.header.messageId);
+        assert.equal(transport.dispatcher.pending.has(sent.header.messageId), false);
     });
 
     it('maps a fetch failure to LAN_UNREACHABLE', async () => {

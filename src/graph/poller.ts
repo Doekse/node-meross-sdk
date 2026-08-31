@@ -12,7 +12,10 @@ export const DEFAULT_POLL_INTERVAL_MS = 30_000;
  */
 export const POLL_START_STAGGER_MS = 250;
 
-/** HTTP-only System.All; sits near the firmware heartbeat window. */
+/**
+ * Firmware heartbeat window. meross_lan also probes HTTP on this while MQTT is
+ * current.
+ */
 export const SYSTEM_ALL_PERIOD_MS = 295_000;
 
 /** Watt-hour totals do not need the instantaneous electricity period. */
@@ -63,11 +66,17 @@ export interface DevicePollerOptions {
     uuid: string;
     isOnline: () => boolean;
     /**
-     * True when the next batch will go over cloud MQTT (no LAN IP or the
-     * router error budget is spent), which limits the cycle to a single
-     * publish rather than one request per due job.
+     * True when the next batch will go over cloud MQTT (no LAN IP, or HTTP
+     * marked down), which limits the cycle to a single publish rather than one
+     * request per due job.
      */
     isCloudPath: () => boolean;
+    /**
+     * Extra System.All while MQTT is live, only after HTTP had a host and then
+     * missed. {@link isCloudPath} is also true with no LAN IP, which must not
+     * probe.
+     */
+    httpDown?: () => boolean;
     maxCmdNum: () => number;
     requestGets: (gets: GetCommand[], maxCmdNum: number) => Promise<MerossMessage[]>;
     /** Fan out GETACKs the same way Session fans out PUSH. */
@@ -134,6 +143,7 @@ export class DevicePoller {
     private readonly uuid: string;
     private readonly isOnline: () => boolean;
     private readonly isCloudPath: () => boolean;
+    private readonly httpDown: () => boolean;
     private readonly maxCmdNum: () => number;
     private readonly requestGets: DevicePollerOptions['requestGets'];
     private readonly onAck: (message: MerossMessage) => void;
@@ -151,6 +161,7 @@ export class DevicePoller {
         this.uuid = options.uuid;
         this.isOnline = options.isOnline;
         this.isCloudPath = options.isCloudPath;
+        this.httpDown = options.httpDown ?? (() => false);
         this.maxCmdNum = options.maxCmdNum;
         this.requestGets = options.requestGets;
         this.onAck = options.onAck;
@@ -302,7 +313,10 @@ export class DevicePoller {
             if (job.strategy !== 'all') {
                 continue;
             }
-            pollAll = job.nextMs === null || (!mqttActive && epoch >= job.nextMs);
+            // Cloud-only devices never had a host; meross_lan only probes when
+            // HTTP had been preferred and then dropped.
+            pollAll = job.nextMs === null
+                || (epoch >= job.nextMs && (!mqttActive || this.httpDown()));
             if (pollAll) {
                 due.push(job);
             }
