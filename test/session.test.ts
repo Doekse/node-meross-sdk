@@ -318,7 +318,7 @@ describe('Session.connect', () => {
         assert.equal(rows[0]?.name, 'Kitchen plug');
         assert.equal(rows[0]?.classHint, 'socket');
         assert.deepEqual(rows[0]?.traits, ['switch', 'system', 'energy']);
-        assert.equal(rows[0]?.online, undefined);
+        assert.equal('online' in (rows[0] ?? {}), false);
         await session.disconnect();
     });
 
@@ -363,7 +363,7 @@ describe('Session.connect', () => {
 
         assert.deepEqual(availability, [false]);
         assert.equal(endpoint.isOnline(), false);
-        assert.equal(session.inventory.endpoints()[0]?.online, undefined);
+        assert.equal('online' in (session.inventory.endpoints()[0] ?? {}), false);
         await session.disconnect();
     });
 
