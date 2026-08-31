@@ -78,8 +78,6 @@ function createMqtt(overrides: Partial<MqttTransportOptions> = {}) {
 
 function createRouted(options: {
     lan?: (sent: MerossMessage, calls: FetchCall[]) => Promise<Response> | Response;
-    now?: () => number;
-    errorBudgetTimeWindowMs?: number;
     rateLimiter?: PublishRateLimiter;
 } = {}) {
     const dispatcher = new ProtocolDispatcher();
@@ -99,9 +97,7 @@ function createRouted(options: {
     });
     const router = new TransportRouter({
         mqtt: mqtt.transport,
-        lan,
-        now: options.now,
-        errorBudgetTimeWindowMs: options.errorBudgetTimeWindowMs
+        lan
     });
     return { router, mqtt, lanCalls };
 }
@@ -151,6 +147,14 @@ describe('TransportRouter', () => {
         assert.equal(reply.header.method, 'GETACK');
     });
 
+    it('treats a missing IP as cloud path without marking HTTP down', () => {
+        const { router } = createRouted();
+
+        assert.equal(router.isCloudPath(UUID, IP), false);
+        assert.equal(router.isCloudPath(UUID, null), true);
+        assert.equal(router.isHttpDown(UUID), false);
+    });
+
     it('uses MQTT when no IP is known', async () => {
         const { router, mqtt, lanCalls } = createRouted();
         await router.connect();
@@ -167,7 +171,7 @@ describe('TransportRouter', () => {
         assert.equal(reply.header.method, 'GETACK');
     });
 
-    it('fails over to MQTT after a LAN transport error and spends the error budget', async () => {
+    it('fails over to MQTT after a LAN transport error', async () => {
         const { router, mqtt, lanCalls } = createRouted({
             lan: async () => jsonResponse('down', 500, 'Error')
         });
@@ -186,7 +190,7 @@ describe('TransportRouter', () => {
         assert.equal(reply.header.method, 'SETACK');
     });
 
-    it('skips LAN once the error budget is exhausted', async () => {
+    it('retries LAN on the next request after a transport error', async () => {
         const { router, mqtt, lanCalls } = createRouted({
             lan: async () => {
                 throw new Error('EHOSTUNREACH');
@@ -194,9 +198,6 @@ describe('TransportRouter', () => {
         });
         await router.connect();
 
-        assert.equal(router.isCloudPath(UUID, IP), false);
-        assert.equal(router.isCloudPath(UUID, null), true);
-
         await connectAndAckMqtt(mqtt, router.request({
             uuid: UUID,
             ip: IP,
@@ -208,14 +209,74 @@ describe('TransportRouter', () => {
             ip: IP,
             namespace: TOGGLEX_NAMESPACE,
             method: 'GET'
+        }));
+
+        assert.equal(lanCalls.length, 2);
+        assert.equal(mqtt.getClient().published.length, 2);
+        assert.equal(router.isCloudPath(UUID, IP), false);
+        assert.equal(router.isHttpDown(UUID), false);
+    });
+
+    it('marks HTTP down after a System.All LAN miss and skips later LAN', async () => {
+        const { router, mqtt, lanCalls } = createRouted({
+            lan: async () => {
+                throw new Error('EHOSTUNREACH');
+            }
+        });
+        await router.connect();
+
+        await connectAndAckMqtt(mqtt, router.request({
+            uuid: UUID,
+            ip: IP,
+            namespace: SYSTEM_ALL_NAMESPACE,
+            method: 'GET'
+        }));
+        await connectAndAckMqtt(mqtt, router.request({
+            uuid: UUID,
+            ip: IP,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'SET'
         }));
 
         assert.equal(lanCalls.length, 1);
         assert.equal(mqtt.getClient().published.length, 2);
+        assert.equal(router.isHttpDown(UUID), true);
         assert.equal(router.isCloudPath(UUID, IP), true);
     });
 
-    it('does not spend budget or failover on a device ERROR method', async () => {
+    it('probes LAN on System.All while HTTP is down and recovers on success', async () => {
+        const { router, mqtt, lanCalls } = createRouted({
+            lan: async (sent, calls) => {
+                if (calls.length === 1) {
+                    throw new Error('ECONNRESET');
+                }
+                return defaultLanOk(sent);
+            }
+        });
+        await router.connect();
+
+        await connectAndAckMqtt(mqtt, router.request({
+            uuid: UUID,
+            ip: IP,
+            namespace: SYSTEM_ALL_NAMESPACE,
+            method: 'GET'
+        }));
+
+        const reply = await router.request({
+            uuid: UUID,
+            ip: IP,
+            namespace: SYSTEM_ALL_NAMESPACE,
+            method: 'GET'
+        });
+
+        assert.equal(reply.header.method, 'GETACK');
+        assert.equal(lanCalls.length, 2);
+        assert.equal(router.isHttpDown(UUID), false);
+        assert.equal(router.isCloudPath(UUID, IP), false);
+        assert.equal(mqtt.getClient().published.length, 1);
+    });
+
+    it('does not failover on a device ERROR method', async () => {
         const { router, mqtt, lanCalls } = createRouted({
             lan: async (sent, calls) => {
                 if (calls.length === 1) {
@@ -241,7 +302,7 @@ describe('TransportRouter', () => {
         assert.equal(retry.header.method, 'GETACK');
     });
 
-    it('does not spend budget or failover on a LAN protocol error', async () => {
+    it('does not failover on a LAN protocol error', async () => {
         const { router, mqtt, lanCalls } = createRouted({
             lan: async (sent, calls) => {
                 if (calls.length === 1) {
@@ -273,11 +334,8 @@ describe('TransportRouter', () => {
         assert.equal(retry.header.method, 'GETACK');
     });
 
-    it('restores LAN after the error-budget window elapses', async () => {
-        let now = 1_000;
+    it('uses LAN again as soon as a later request succeeds', async () => {
         const { router, mqtt, lanCalls } = createRouted({
-            now: () => now,
-            errorBudgetTimeWindowMs: 60_000,
             lan: async (sent, calls) => {
                 if (calls.length === 1) {
                     throw new Error('ECONNRESET');
@@ -294,7 +352,6 @@ describe('TransportRouter', () => {
             method: 'GET'
         }));
 
-        now += 60_001;
         const reply = await router.request({
             uuid: UUID,
             ip: IP,
@@ -302,6 +359,7 @@ describe('TransportRouter', () => {
             method: 'GET'
         });
         assert.equal(lanCalls.length, 2);
+        assert.equal(mqtt.getClient().published.length, 1);
         assert.equal(reply.header.method, 'GETACK');
     });
 
@@ -470,7 +528,7 @@ describe('TransportRouter', () => {
         assert.equal(packed.header.namespace, MULTIPLE_NAMESPACE);
     });
 
-    it('clears the error budget on disconnect so LAN is retried', async () => {
+    it('still prefers LAN after disconnect', async () => {
         const { router, mqtt, lanCalls } = createRouted({
             lan: async (sent, calls) => {
                 if (calls.length === 1) {

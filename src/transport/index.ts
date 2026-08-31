@@ -20,11 +20,7 @@ export {
     PublishRateLimiter
 } from './rate-limit';
 export type { PublishPriority, PublishRateLimiterOptions } from './rate-limit';
-export {
-    DEFAULT_ERROR_BUDGET_WINDOW_MS,
-    DEFAULT_MAX_ERRORS,
-    TransportRouter
-} from './router';
+export { TransportRouter } from './router';
 export type {
     GetCommand,
     RequestGetsOptions,
