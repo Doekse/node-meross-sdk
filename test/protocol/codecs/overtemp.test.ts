@@ -62,15 +62,21 @@ describe('Config.OverTemp codec', () => {
         assert.deepEqual(decodeConfigOverTempPush(payload), decodeConfigOverTempGetAck(payload));
     });
 
-    it('rejects a missing or invalid overTemp object', () => {
+    it('rejects a missing overTemp object', () => {
         assert.throws(
             () => decodeConfigOverTempGetAck({}),
             (err: unknown) => err instanceof ProtocolError
         );
+    });
+
+    it('rejects an overTemp array', () => {
         assert.throws(
             () => decodeConfigOverTempGetAck({ overTemp: [] }),
             (err: unknown) => err instanceof ProtocolError
         );
+    });
+
+    it('rejects an invalid enable flag', () => {
         assert.throws(
             () => decodeConfigOverTempGetAck({ overTemp: { enable: 3 } }),
             (err: unknown) => err instanceof ProtocolError
@@ -120,11 +126,14 @@ describe('Control.OverTemp codec', () => {
         assert.deepEqual(decodeControlOverTempPush(payload), decodeControlOverTempGetAck(payload));
     });
 
-    it('rejects a missing overTemp payload or invalid value', () => {
+    it('rejects a missing overTemp payload', () => {
         assert.throws(
             () => decodeControlOverTempGetAck({}),
             (err: unknown) => err instanceof ProtocolError
         );
+    });
+
+    it('rejects a row missing value', () => {
         assert.throws(
             () => decodeControlOverTempGetAck({ overTemp: [{ channel: 0 }] }),
             (err: unknown) => err instanceof ProtocolError

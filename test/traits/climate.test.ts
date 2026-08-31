@@ -29,6 +29,7 @@ import {
 } from '../../src/protocol';
 import { ClimateTrait } from '../../src/traits/climate';
 import type { ClimateTraitBind } from '../../src/traits/climate';
+import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
 const UUID = '2206138957096651080248e1e99705a4';
@@ -43,34 +44,15 @@ function createBoardHarness(
     trait: ClimateTrait;
     requests: MerossMessage[];
 } {
-    const requests: MerossMessage[] = [];
     const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['climate'] });
+    const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
     const bind: ClimateTraitBind = {
         kind: 'board',
         uuid: UUID,
         channel: CHANNEL,
         generation,
         namespaces: new Set(namespaces),
-        request: async (options) => {
-            const message = encodeMessage({
-                namespace: options.namespace,
-                method: options.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: options.payload,
-                uuid: UUID
-            });
-            requests.push(message);
-            return encodeMessage({
-                namespace: options.namespace,
-                method: 'SETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
-                payload: {}
-            });
-        },
+        request,
         emitChange: (values) => endpoint.emit('change', { trait: 'climate', values: { ...values } })
     };
     return { endpoint, trait: new ClimateTrait(bind), requests };
@@ -81,33 +63,14 @@ function createHubHarness(namespaces: readonly string[] = []): {
     trait: ClimateTrait;
     requests: MerossMessage[];
 } {
-    const requests: MerossMessage[] = [];
     const endpoint = new Endpoint({ id: `${UUID}#${SUB_DEVICE_ID}`, traits: ['climate'] });
+    const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
     const bind: ClimateTraitBind = {
         kind: 'hub',
         uuid: UUID,
         subDeviceId: SUB_DEVICE_ID,
         namespaces: new Set(namespaces),
-        request: async (options) => {
-            const message = encodeMessage({
-                namespace: options.namespace,
-                method: options.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: options.payload,
-                uuid: UUID
-            });
-            requests.push(message);
-            return encodeMessage({
-                namespace: options.namespace,
-                method: 'SETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
-                payload: {}
-            });
-        },
+        request,
         emitChange: (values) => endpoint.emit('change', { trait: 'climate', values: { ...values } })
     };
     return { endpoint, trait: new ClimateTrait(bind), requests };
@@ -312,18 +275,25 @@ describe('ClimateTrait board ModeC generation', () => {
         assert.deepEqual(system?.wire, { R: 2, Rh: 2, Rc: 1, C: 1, E: 2, WAux: 1 });
     });
 
-    it('setSystem SETs when advertised and getSystem is a no-op without Ability', async () => {
-        const missing = createBoardHarness('modeC');
-        assert.equal(missing.trait.getSystem(), undefined);
-        assert.deepEqual(await missing.trait.setSystem({ compTemp: 2 }), { compTemp: 2 });
-        assert.equal(missing.requests.length, 0);
+    it('does not send Thermostat.System when the namespace is not advertised', async () => {
+        const { trait, requests } = createBoardHarness('modeC');
 
+        const result = await trait.setSystem({ compTemp: 2 });
+
+        assert.deepEqual(result, { compTemp: 2 });
+        assert.equal(requests.length, 0);
+        assert.equal(trait.getSystem(), undefined);
+    });
+
+    it('SETs Thermostat.System in device units when advertised', async () => {
         const { trait, requests } = createBoardHarness('modeC', [THERMOSTAT_SYSTEM_NAMESPACE]);
+
         const result = await trait.setSystem({
             compTempEnable: true,
             compTemp: 1.5,
             wire: { R: 2, WAux: 1 }
         });
+
         assert.equal(requests[0]?.header.namespace, THERMOSTAT_SYSTEM_NAMESPACE);
         assert.equal(requests[0]?.header.method, 'SET');
         const payload = requests[0]?.payload as {
@@ -382,24 +352,29 @@ describe('ClimateTrait hub valve', () => {
         assert.equal(change.values.on, true);
     });
 
-    it('handlePush applies Hub.Exception and Hub.SubDevice.Version for matching id', () => {
-        const { endpoint, trait } = createHubHarness([
-            HUB_EXCEPTION_NAMESPACE,
-            HUB_SUBDEVICE_VERSION_NAMESPACE
-        ]);
+    it('applies Hub.Exception PUSH for the bound subdevice', () => {
+        const { endpoint, trait } = createHubHarness([HUB_EXCEPTION_NAMESPACE]);
         const changes: Array<{ values: Record<string, unknown> }> = [];
         endpoint.on('change', (c) => changes.push(c));
 
         trait.handlePush(push(HUB_EXCEPTION_NAMESPACE, {
             exception: [{ id: SUB_DEVICE_ID, code: 5061 }]
         }));
+
+        assert.equal(changes[0].values.fault, 5061);
+    });
+
+    it('applies Hub.SubDevice.Version PUSH for the bound subdevice', () => {
+        const { endpoint, trait } = createHubHarness([HUB_SUBDEVICE_VERSION_NAMESPACE]);
+        const changes: Array<{ values: Record<string, unknown> }> = [];
+        endpoint.on('change', (c) => changes.push(c));
+
         trait.handlePush(push(HUB_SUBDEVICE_VERSION_NAMESPACE, {
             version: [{ id: SUB_DEVICE_ID, hardware: '1.1.5', firmware: '5.1.8' }]
         }));
 
-        assert.equal(changes[0].values.fault, 5061);
-        assert.equal(changes[1].values.firmwareVersion, '5.1.8');
-        assert.equal(changes[1].values.hardwareVersion, '1.1.5');
+        assert.equal(changes[0].values.firmwareVersion, '5.1.8');
+        assert.equal(changes[0].values.hardwareVersion, '1.1.5');
     });
 
     it('handlePush applies Hub.Mts100.Temperature PUSH', () => {
@@ -681,25 +656,12 @@ describe('ClimateTrait board sensor readings', () => {
         requests: MerossMessage[];
         changes: Record<string, unknown>[];
     } {
-        const requests: MerossMessage[] = [];
         const changes: Record<string, unknown>[] = [];
         const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['climate'] });
-        const bind: ClimateTraitBind = {
-            kind: 'board',
+        const { requests, request } = createRequestRecorder({
             uuid: UUID,
-            channel: CHANNEL,
-            generation: 'mode',
-            namespaces: new Set(namespaces),
-            request: async (options) => {
-                const message = encodeMessage({
-                    namespace: options.namespace,
-                    method: options.method,
-                    key: KEY,
-                    from: '/app/test/subscribe',
-                    payload: options.payload,
-                    uuid: UUID
-                });
-                requests.push(message);
+            key: KEY,
+            ack: (options, sent) => {
                 let replyPayload: MerossMessage['payload'] = {};
                 if (options.namespace === THERMOSTAT_MODE_NAMESPACE) {
                     replyPayload = { mode: [{ channel: CHANNEL, onoff: 1, mode: 1, targetTemp: 210, currentTemp: 205 }] };
@@ -710,16 +672,16 @@ describe('ClimateTrait board sensor readings', () => {
                 } else if (options.namespace === SENSOR_HISTORYX_NAMESPACE) {
                     replyPayload = HISTORYX_ACK;
                 }
-                return encodeMessage({
-                    namespace: options.namespace,
-                    method: 'GETACK',
-                    key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    messageId: message.header.messageId,
-                    uuid: UUID,
-                    payload: replyPayload
-                });
-            },
+                return traitAck(sent, { key: KEY, method: 'GETACK', payload: replyPayload });
+            }
+        });
+        const bind: ClimateTraitBind = {
+            kind: 'board',
+            uuid: UUID,
+            channel: CHANNEL,
+            generation: 'mode',
+            namespaces: new Set(namespaces),
+            request,
             emitChange: (values) => {
                 changes.push({ ...values });
                 endpoint.emit('change', { trait: 'climate', values: { ...values } });
@@ -831,20 +793,18 @@ describe('ClimateTrait alert config and sensor association', () => {
         }]);
     });
 
-    it('applies AlertConfig PUSH and dedupes repeats', () => {
+    it('applies AlertConfig PUSH for the bound channel', () => {
         const { endpoint, trait } = createBoardHarness('modeC', namespaces);
         const changes: unknown[] = [];
         endpoint.on('change', (change) => changes.push(change));
 
-        const message = push(CONTROL_ALERT_CONFIG_NAMESPACE, {
+        trait.handlePush(push(CONTROL_ALERT_CONFIG_NAMESPACE, {
             config: [{
                 channel: CHANNEL,
                 type: 5,
                 value: { mts300: { hcMal: 1 } }
             }]
-        });
-        trait.handlePush(message);
-        trait.handlePush(message);
+        }));
 
         assert.deepEqual(changes, [{
             trait: 'climate',
@@ -852,42 +812,85 @@ describe('ClimateTrait alert config and sensor association', () => {
         }]);
     });
 
-    it('applies AlertReport PUSH without throwing on empty alert', () => {
+    it('does not emit change when AlertConfig PUSH repeats', () => {
+        const { endpoint, trait } = createBoardHarness('modeC', namespaces);
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+        const message = push(CONTROL_ALERT_CONFIG_NAMESPACE, {
+            config: [{
+                channel: CHANNEL,
+                type: 5,
+                value: { mts300: { hcMal: 1 } }
+            }]
+        });
+
+        trait.handlePush(message);
+        trait.handlePush(message);
+
+        assert.equal(changes.length, 1);
+    });
+
+    it('ignores empty AlertReport PUSH', () => {
         const { endpoint, trait } = createBoardHarness('modeC', namespaces);
         const changes: unknown[] = [];
         endpoint.on('change', (change) => changes.push(change));
 
         trait.handlePush(push(CONTROL_ALERT_REPORT_NAMESPACE, {}));
+
         assert.deepEqual(changes, []);
+    });
+
+    it('applies AlertReport PUSH for the bound channel', () => {
+        const { endpoint, trait } = createBoardHarness('modeC', namespaces);
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
 
         trait.handlePush(push(CONTROL_ALERT_REPORT_NAMESPACE, {
             alert: [{ channel: CHANNEL, code: 9 }]
         }));
+
         assert.deepEqual(changes, [{
             trait: 'climate',
             values: { alertReport: { code: 9 } }
         }]);
     });
 
-    it('SETs temp association and applies Association PUSH', async () => {
-        const { endpoint, trait, requests } = createBoardHarness('modeC', namespaces);
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
+    it('SETs temp association for the bound channel', async () => {
+        const { trait, requests } = createBoardHarness('modeC', namespaces);
 
         await trait.setTempAssociation(2);
+
         assert.deepEqual(requests[0]?.payload, {
             config: [{ channel: CHANNEL, temp: { association: 2 } }]
         });
+    });
 
-        const message = push(CONFIG_SENSOR_ASSOCIATION_NAMESPACE, {
+    it('applies Association PUSH for the bound channel', () => {
+        const { endpoint, trait } = createBoardHarness('modeC', namespaces);
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        trait.handlePush(push(CONFIG_SENSOR_ASSOCIATION_NAMESPACE, {
             config: [{ channel: CHANNEL, temp: { association: 2 } }]
-        });
-        trait.handlePush(message);
-        trait.handlePush(message);
+        }));
 
         assert.deepEqual(changes, [
             { trait: 'climate', values: { tempAssociation: 2 } }
         ]);
+    });
+
+    it('does not emit change when Association PUSH repeats', () => {
+        const { endpoint, trait } = createBoardHarness('modeC', namespaces);
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+        const message = push(CONFIG_SENSOR_ASSOCIATION_NAMESPACE, {
+            config: [{ channel: CHANNEL, temp: { association: 2 } }]
+        });
+
+        trait.handlePush(message);
+        trait.handlePush(message);
+
+        assert.equal(changes.length, 1);
     });
 
     it('ignores AlertConfig PUSH when uuid does not match', () => {

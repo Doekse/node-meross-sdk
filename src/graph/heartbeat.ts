@@ -21,6 +21,7 @@ export class Heartbeat {
     private readonly onSilenceOffline: () => void;
     private readonly now: () => number;
 
+    /** Wall time of the last inbound sample. `null` until the first one; `0` is a valid clock origin. */
     private lastResponseTime: number | null = null;
     private timer: ReturnType<typeof setTimeout> | undefined;
     private running = false;
@@ -63,7 +64,7 @@ export class Heartbeat {
     }
 
     private shouldBeOffline(): boolean {
-        if (!this.lastResponseTime || !this.isOnline()) {
+        if (this.lastResponseTime === null || !this.isOnline()) {
             return false;
         }
         return this.now() - this.lastResponseTime >= this.intervalMs;
@@ -85,7 +86,7 @@ export class Heartbeat {
             return;
         }
 
-        if (this.lastResponseTime) {
+        if (this.lastResponseTime !== null) {
             const elapsed = this.now() - this.lastResponseTime;
             if (elapsed < this.intervalMs) {
                 this.schedule();

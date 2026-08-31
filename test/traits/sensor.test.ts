@@ -22,6 +22,7 @@ import {
 } from '../../src/protocol';
 import { SENSOR_FAMILY_MAP, SensorTrait } from '../../src/traits/sensor';
 import type { SensorFamily, SensorTraitBind } from '../../src/traits/sensor';
+import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
 const UUID = '2206138957096651080248e1e99705a4';
@@ -54,34 +55,19 @@ function createHarness(
     requests: MerossMessage[];
     changes: Record<string, unknown>[];
 } {
-    const requests: MerossMessage[] = [];
     const changes: Record<string, unknown>[] = [];
     const endpoint = new Endpoint({ id: `${UUID}#${SUB_DEVICE_ID}`, traits: ['sensor'] });
+    const { requests, request } = createRequestRecorder({
+        uuid: UUID,
+        key: KEY,
+        ack: (_options, sent) => traitAck(sent, { key: KEY, method: 'GETACK', payload: getAckPayload })
+    });
     const bind: SensorTraitBind = {
         uuid: UUID,
         subDeviceId: SUB_DEVICE_ID,
         family,
         namespaces,
-        request: async (options) => {
-            const message = encodeMessage({
-                namespace: options.namespace,
-                method: options.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: options.payload,
-                uuid: UUID
-            });
-            requests.push(message);
-            return encodeMessage({
-                namespace: options.namespace,
-                method: 'GETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
-                payload: getAckPayload
-            });
-        },
+        request,
         emitChange: (values) => {
             changes.push({ ...values });
             endpoint.emit('change', { trait: 'sensor', values: { ...values } });
@@ -652,7 +638,28 @@ describe('SensorTrait — extras', () => {
         assert.equal(changes.length, 0);
     });
 
-    it('applies Config.Sensor.Association PUSH for matching subId and dedupes', () => {
+    it('applies Config.Sensor.Association PUSH for matching subId', () => {
+        const { trait, changes } = createHarness('tempHum');
+
+        trait.handlePush(encodeMessage({
+            namespace: CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                config: [{
+                    channel: 0,
+                    subId: SUB_DEVICE_ID,
+                    temp: { association: 2 }
+                }]
+            }
+        }));
+
+        assert.deepEqual(changes, [{ tempAssociation: 2 }]);
+    });
+
+    it('does not emit change when Association PUSH repeats', () => {
         const { trait, changes } = createHarness('tempHum');
         const message = encodeMessage({
             namespace: CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
@@ -668,9 +675,11 @@ describe('SensorTrait — extras', () => {
                 }]
             }
         });
+
         trait.handlePush(message);
         trait.handlePush(message);
-        assert.deepEqual(changes, [{ tempAssociation: 2 }]);
+
+        assert.equal(changes.length, 1);
     });
 
     it('SETs temp association when Association is advertised', async () => {

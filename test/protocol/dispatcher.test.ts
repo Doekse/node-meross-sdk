@@ -10,25 +10,10 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol/message';
+import { FakeTransport } from '../helpers/dispatcher';
 
 const KEY = 'test-key';
 const FROM_APP = '/app/1/subscribe';
-
-/**
- * In-memory stand-in for MQTT/LAN: register before "send", then inject
- * inbound envelopes the way a broker would.
- */
-class FakeTransport {
-    constructor(private readonly dispatcher: ProtocolDispatcher) {}
-
-    request(message: MerossMessage, timeoutMs?: number): Promise<MerossMessage> {
-        return this.dispatcher.pending.register(message.header.messageId, timeoutMs);
-    }
-
-    deliver(message: MerossMessage) {
-        return this.dispatcher.handle(message);
-    }
-}
 
 function requestMessage(messageId: string): MerossMessage {
     return encodeMessage({
@@ -155,7 +140,7 @@ describe('ProtocolDispatcher with fake transport', () => {
         assert.equal(transport.deliver(replyFor(requestMessage('no-pending'), 'GETACK')), 'ignored');
     });
 
-    it('applies firmware ToggleX PUSH in timestamp order and drops stale ones', () => {
+    it('applies the first PUSH and drops an older one for the same appliance', () => {
         const applied: MerossMessage[] = [];
         const dispatcher = new ProtocolDispatcher((message) => {
             applied.push(message);
@@ -175,6 +160,22 @@ describe('ProtocolDispatcher with fake transport', () => {
             })),
             'stale'
         );
+        assert.equal(applied.length, 1);
+    });
+
+    it('applies PUSH at the same timestamp or newer', () => {
+        const applied: MerossMessage[] = [];
+        const dispatcher = new ProtocolDispatcher((message) => {
+            applied.push(message);
+        });
+        const transport = new FakeTransport(dispatcher);
+        const fixture = decodeMessage(
+            JSON.parse(readFileSync(join(process.cwd(), 'test/fixtures/togglex-push.json'), 'utf8'))
+        );
+        const from = fixture.header.from;
+        const ts = fixture.header.timestamp;
+
+        assert.equal(transport.deliver(fixture), 'push');
         assert.equal(
             transport.deliver(pushMessage(ts, from, { timestampMs: fixture.header.timestampMs })),
             'push'

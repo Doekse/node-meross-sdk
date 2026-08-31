@@ -40,8 +40,11 @@ describe('Control.Spray codec', () => {
         ]);
     });
 
-    it('rejects an unknown mode and a missing spray key', () => {
+    it('rejects an unknown spray mode', () => {
         assert.throws(() => decodeSprayGetAck({ spray: { channel: 0, mode: 9 } }), ProtocolError);
+    });
+
+    it('rejects a payload missing spray', () => {
         assert.throws(() => decodeSprayGetAck({}), ProtocolError);
     });
 });

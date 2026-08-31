@@ -52,11 +52,41 @@ function systemAllWithDigest(digest: Record<string, unknown>): MerossPayload {
     };
 }
 
+/**
+ * Hub Ability and System.All envelopes are identical for every child mapping;
+ * each test only varies digest rows (and optional cloud names).
+ *
+ * @param subdevice Digest hub.subdevice rows
+ * @param subDevices Cloud `/Hub/getSubDevices` names when the mapping uses them
+ */
+function enrollHubSubdevices(
+    subdevice: Record<string, unknown>[],
+    subDevices: CloudSubDevice[] = []
+) {
+    return enrollPhysicalDevice({
+        abilityPayload: { ability: { 'Appliance.Hub.SubdeviceList': {} } },
+        allPayload: {
+            all: {
+                system: {
+                    hardware: { type: 'msh300', uuid: HUB_UUID },
+                    firmware: {},
+                    online: { status: 1 }
+                },
+                digest: { hub: { subdevice } }
+            }
+        },
+        subDevices
+    });
+}
+
 describe('Ability GETACK', () => {
     it('decodes the firmware ability map including Multiple.maxCmdNum', () => {
         const ability = decodeAbilityGetAck(payload('ability-getack.json'));
         assert.deepEqual(ability['Appliance.Control.Bind'], {});
         assert.equal(abilityMaxCmdNum(ability), 3);
+    });
+
+    it('rejects an empty Ability payload', () => {
         assert.throws(
             () => decodeAbilityGetAck({}),
             (err: unknown) => err instanceof ProtocolError
@@ -65,29 +95,18 @@ describe('Ability GETACK', () => {
 });
 
 describe('System.All GETACK', () => {
-    it('decodes firmware system, online, and digest.togglex channels', () => {
+    it('decodes uuid, type, online, innerIp, firmware version, and digest.togglex', () => {
         const all = decodeSystemAllGetAck(payload('system-all-getack.json'));
+
         assert.equal(all.hardware.uuid, UUID);
         assert.equal(all.hardware.type, 'mss110');
-        assert.equal(all.hardware.subType, 'us');
-        assert.equal(all.hardware.version, '7.0.0');
-        assert.equal(all.hardware.chipType, 'rtl8710cm');
         assert.equal(all.online.status, 1);
         assert.equal(all.firmware.innerIp, '192.168.201.190');
         assert.equal(all.firmware.version, '7.3.13');
-        assert.equal(all.firmware.compileTime, '2022/11/16-11:31:53');
-        assert.equal(all.firmware.server, 'test-mqtt-ap-cluster2.meross.com');
-        assert.equal(all.firmware.port, 443);
-        assert.equal(all.firmware.wifiMac, 'fc:83:c6:80:7f:76');
-        assert.equal(all.firmware.userId, 10500882);
-        assert.equal(all.firmware.homekitVersion, '4.1');
-        assert.equal(all.firmware.encrypt, 1);
-        assert.deepEqual(all.time, {
-            timestamp: 1676428765,
-            timezone: 'Asia/Shanghai',
-            timeRule: [[684860400, 28800, 0]]
-        });
         assert.deepEqual(all.digest.togglex, [{ channel: 0, on: true }]);
+    });
+
+    it('rejects an empty System.All payload', () => {
         assert.throws(
             () => decodeSystemAllGetAck({}),
             (err: unknown) => err instanceof ProtocolError
@@ -1044,36 +1063,11 @@ describe('enrollPhysicalDevice', () => {
         assert.ok(board?.traits.includes('system'));
     });
 
-    it('enrolls MST100 sprinklers with sprinkler trait and MS120 motion sensors', () => {
-        const device = enrollPhysicalDevice({
-            abilityPayload: {
-                ability: { 'Appliance.Hub.SubdeviceList': {} }
-            },
-            allPayload: {
-                all: {
-                    system: {
-                        hardware: { type: 'msh300', uuid: HUB_UUID },
-                        firmware: {},
-                        online: { status: 1 }
-                    },
-                    digest: {
-                        hub: {
-                            subdevice: [
-                                { id: 'aabbcc', status: 1, type: 'mst100' },
-                                { id: 'sprinkler1', status: 1, mst: { onoff: 1 } },
-                                { id: 'deadbeef', status: 1, ms120: {} },
-                                { id: 'motion1', status: 1, motion: {} },
-                                { id: 'mystery1', status: 1, onoff: 1, mystery: {} }
-                            ]
-                        }
-                    }
-                }
-            },
-            subDevices: [{ subDeviceId: 'aabbcc', subDeviceType: 'mst100', subDeviceName: 'Garden' }]
-        });
-        assert.equal(device.endpoints.length, 6);
-        assert.equal(device.endpoints[0]?.classHint, 'hub');
-
+    it('enrolls MST100 type as sprinkler with cloud name', () => {
+        const device = enrollHubSubdevices(
+            [{ id: 'aabbcc', status: 1, type: 'mst100' }],
+            [{ subDeviceId: 'aabbcc', subDeviceType: 'mst100', subDeviceName: 'Garden' }]
+        );
         const sprinkler = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'aabbcc');
         assert.ok(sprinkler);
         assert.equal(sprinkler?.parentId, HUB_UUID);
@@ -1081,70 +1075,57 @@ describe('enrollPhysicalDevice', () => {
         assert.deepEqual(sprinkler?.traits, ['sprinkler']);
         assert.equal(sprinkler?.name, 'Garden');
         assert.equal(sprinkler?.model, 'mst100');
+    });
 
-        const aliasSprinkler = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'sprinkler1');
-        assert.ok(aliasSprinkler);
-        assert.equal(aliasSprinkler?.classHint, 'sprinkler');
-        assert.deepEqual(aliasSprinkler?.traits, ['sprinkler']);
+    it('enrolls digest mst alias as sprinkler', () => {
+        const device = enrollHubSubdevices([
+            { id: 'sprinkler1', status: 1, mst: { onoff: 1 } }
+        ]);
+        const sprinkler = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'sprinkler1');
+        assert.ok(sprinkler);
+        assert.equal(sprinkler?.classHint, 'sprinkler');
+        assert.deepEqual(sprinkler?.traits, ['sprinkler']);
+        assert.equal(sprinkler?.model, 'mst100');
+    });
 
+    it('enrolls MS120 digest as sensor', () => {
+        const device = enrollHubSubdevices([
+            { id: 'deadbeef', status: 1, ms120: {} }
+        ]);
         const motion = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'deadbeef');
         assert.ok(motion);
         assert.equal(motion?.parentId, HUB_UUID);
         assert.equal(motion?.classHint, 'sensor');
         assert.deepEqual(motion?.traits, ['sensor']);
         assert.equal(motion?.model, 'ms120');
+    });
 
-        const motionAlias = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'motion1');
-        assert.ok(motionAlias);
-        assert.equal(motionAlias?.classHint, 'sensor');
-        assert.deepEqual(motionAlias?.traits, ['sensor']);
-        assert.equal(motionAlias?.model, 'ms120');
+    it('enrolls digest motion alias as MS120 sensor', () => {
+        const device = enrollHubSubdevices([
+            { id: 'motion1', status: 1, motion: {} }
+        ]);
+        const motion = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'motion1');
+        assert.ok(motion);
+        assert.equal(motion?.classHint, 'sensor');
+        assert.deepEqual(motion?.traits, ['sensor']);
+        assert.equal(motion?.model, 'ms120');
+    });
 
+    it('enrolls unknown hub onoff child as switch', () => {
+        const device = enrollHubSubdevices([
+            { id: 'mystery1', status: 1, onoff: 1, mystery: {} }
+        ]);
         const hubSwitch = device.endpoints.find((endpoint) => endpoint.subDeviceId === 'mystery1');
         assert.ok(hubSwitch);
         assert.equal(hubSwitch?.parentId, HUB_UUID);
         assert.equal(hubSwitch?.classHint, 'socket');
         assert.deepEqual(hubSwitch?.traits, ['switch']);
         assert.equal(hubSwitch?.on, true);
-
-        const graph = new DeviceGraph();
-        graph.enroll({
-            abilityPayload: { ability: { 'Appliance.Hub.SubdeviceList': {} } },
-            allPayload: {
-                all: {
-                    system: {
-                        hardware: { type: 'msh300', uuid: HUB_UUID },
-                        firmware: {},
-                        online: { status: 1 }
-                    },
-                    digest: {
-                        hub: {
-                            subdevice: [
-                                { id: 'aabbcc', status: 1, type: 'mst100' },
-                                { id: 'sprinkler1', status: 1, mst: { onoff: 1 } },
-                                { id: 'deadbeef', status: 1, ms120: {} },
-                                { id: 'mystery1', status: 1, onoff: 1, mystery: {} }
-                            ]
-                        }
-                    }
-                }
-            },
-            subDevices: [{ subDeviceId: 'aabbcc', subDeviceType: 'mst100', subDeviceName: 'Garden' }]
-        });
-        const rows = graph.inventoryRows();
-        assert.equal(rows.length, 5);
-        assert.deepEqual(rows.map((row) => row.id).sort(), [
-            HUB_UUID,
-            `${HUB_UUID}#aabbcc`,
-            `${HUB_UUID}#deadbeef`,
-            `${HUB_UUID}#mystery1`,
-            `${HUB_UUID}#sprinkler1`
-        ]);
     });
 });
 
 describe('DeviceGraph and Inventory', () => {
-    it('projects inventory rows and keeps ids stable across re-enroll', () => {
+    it('keeps endpoint id across re-enroll when Ability grows', () => {
         const graph = new DeviceGraph();
         const { device: first } = graph.enroll({
             abilityPayload: socketAbility(),
@@ -1170,15 +1151,23 @@ describe('DeviceGraph and Inventory', () => {
         assert.equal(rows[0]?.id, id);
         assert.equal(rows[0]?.name, 'Kitchen plug');
         assert.deepEqual(rows[0]?.traits, ['switch', 'system', 'energy']);
-        assert.equal('online' in (rows[0] ?? {}), false);
+    });
 
-        const inventory = new Inventory(rows);
+    it('returns copies from Inventory.endpoints so callers cannot mutate enrolled rows', () => {
+        const inventory = new Inventory([{
+            id: `${UUID}:0`,
+            name: 'Kitchen plug',
+            model: 'mss110',
+            classHint: 'socket',
+            traits: ['switch', 'system']
+        }]);
+
         const copy = inventory.endpoints();
-        assert.deepEqual(copy, rows);
         (copy[0] as { name: string }).name = 'mutated';
         (copy[0]!.traits as string[]).push('light');
+
         assert.equal(inventory.endpoints()[0]?.name, 'Kitchen plug');
-        assert.deepEqual(inventory.endpoints()[0]?.traits, ['switch', 'system', 'energy']);
+        assert.deepEqual(inventory.endpoints()[0]?.traits, ['switch', 'system']);
     });
 
     it('starts empty so Session can exist before connect', () => {

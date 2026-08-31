@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
 import { describe, it } from 'node:test';
 
 import { CommandError, ProtocolError, TransportError } from '../../src/errors';
@@ -21,9 +20,10 @@ import {
     PublishRateLimiter,
     RATE_LIMIT_BACKGROUND_MAX,
     TransportRouter,
-    type MqttBrokerClient,
     type MqttTransportOptions
 } from '../../src/transport';
+import { jsonResponse } from '../helpers/http';
+import { FakeMqttClient } from '../helpers/mqtt';
 
 const USER_ID = '42';
 const KEY = 'stub-key';
@@ -34,48 +34,9 @@ const IP = '192.168.1.50';
 const ELECTRICITY = 'Appliance.Control.Electricity';
 const CONSUMPTIONX = 'Appliance.Control.ConsumptionX';
 
-class FakeMqttClient extends EventEmitter implements MqttBrokerClient {
-    readonly published: Array<{ topic: string; payload: string }> = [];
-    reconnects = 0;
-
-    subscribe(_topic: string, callback: (error?: Error | null) => void): void {
-        callback();
-    }
-
-    publish(topic: string, payload: string, callback: (error?: Error | null) => void): void {
-        this.published.push({ topic, payload });
-        callback();
-    }
-
-    end(_force: boolean, callback: () => void): void {
-        this.emit('close');
-        callback();
-    }
-
-    reconnect(): void {
-        this.reconnects += 1;
-    }
-
-    deliver(message: MerossMessage): void {
-        this.emit('message', '/app/42/subscribe', Buffer.from(JSON.stringify(message)));
-    }
-}
-
 interface FetchCall {
     url: string;
     init: RequestInit;
-}
-
-function jsonResponse(body: unknown, status = 200, statusText = 'OK'): Response {
-    const text = typeof body === 'string' ? body : JSON.stringify(body);
-    return {
-        status,
-        statusText,
-        ok: status === 200,
-        async text() {
-            return text;
-        }
-    } as Response;
 }
 
 function ackFor(

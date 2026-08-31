@@ -66,6 +66,12 @@ describe('protocol sign', () => {
             verifySignature({ messageId, timestamp, sign: sign.toUpperCase() }, 'k'),
             true
         );
+    });
+
+    it('rejects a signature produced with a different key', () => {
+        const messageId = 'e41c0fd0cb56bf9e1004f58718290c4a';
+        const timestamp = 1673925168;
+        const sign = signMessage(messageId, 'k', timestamp);
         assert.equal(
             verifySignature({ messageId, timestamp, sign }, 'wrong'),
             false
@@ -150,7 +156,7 @@ describe('protocol message envelope', () => {
         assert.equal(verifySignature(encoded.header, 'k'), true);
     });
 
-    it('includes uuid only when the caller supplies one', () => {
+    it('omits uuid when the caller does not supply one', () => {
         const without = encodeMessage({
             namespace: 'Appliance.Control.ToggleX',
             method: 'GET',
@@ -158,7 +164,9 @@ describe('protocol message envelope', () => {
             from: '/app/1/subscribe'
         });
         assert.equal(without.header.uuid, undefined);
+    });
 
+    it('includes uuid when the caller supplies one', () => {
         const withUuid = encodeMessage({
             namespace: 'Appliance.Control.ToggleX',
             method: 'GET',
@@ -228,15 +236,21 @@ describe('protocol message envelope', () => {
         );
     });
 
-    it('rejects envelopes missing header or payload', () => {
+    it('rejects an envelope missing header', () => {
         assert.throws(
             () => decodeMessage({ payload: {} }),
             (err: unknown) => err instanceof ProtocolError
         );
+    });
+
+    it('rejects an envelope missing payload', () => {
         assert.throws(
             () => decodeMessage({ header: { messageId: 'x' } }),
             (err: unknown) => err instanceof ProtocolError
         );
+    });
+
+    it('rejects a non-JSON string', () => {
         assert.throws(
             () => decodeMessage('not-json'),
             (err: unknown) => err instanceof ProtocolError

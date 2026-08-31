@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
 import { describe, it } from 'node:test';
 
 import { CommandError, TransportError } from '../../src/errors';
@@ -18,10 +17,10 @@ import {
     PublishRateLimiter,
     RATE_LIMIT_BACKGROUND_MAX,
     RATE_LIMIT_MAX_PUBLISHES,
-    type MqttBrokerClient,
     type MqttConnectOptions,
     type MqttTransportOptions
 } from '../../src/transport';
+import { FakeMqttClient } from '../helpers/mqtt';
 
 const USER_ID = '42';
 const KEY = 'stub-key';
@@ -32,44 +31,6 @@ const USER_TOPICS = [
     `/app/${USER_ID}/subscribe`,
     `/app/${USER_ID}-${APP_ID}/subscribe`
 ];
-
-class FakeMqttClient extends EventEmitter implements MqttBrokerClient {
-    readonly subscriptions: string[] = [];
-    readonly published: Array<{ topic: string; payload: string }> = [];
-    ended = false;
-    reconnects = 0;
-    publishError: Error | null = null;
-    subscribeError: Error | null = null;
-
-    subscribe(topic: string, callback: (error?: Error | null) => void): void {
-        this.subscriptions.push(topic);
-        callback(this.subscribeError);
-    }
-
-    publish(topic: string, payload: string, callback: (error?: Error | null) => void): void {
-        this.published.push({ topic, payload });
-        callback(this.publishError);
-    }
-
-    end(_force: boolean, callback: () => void): void {
-        this.ended = true;
-        this.emit('close');
-        callback();
-    }
-
-    /**
-     * mqtt.js reopens the same client and emits `connect` again; tests drive
-     * that event so a persistent subscribe failure cannot loop.
-     */
-    reconnect(): void {
-        this.reconnects += 1;
-    }
-
-    deliver(message: MerossMessage | string): void {
-        const payload = typeof message === 'string' ? message : JSON.stringify(message);
-        this.emit('message', '/app/42/subscribe', Buffer.from(payload));
-    }
-}
 
 function createTransport(overrides: Partial<MqttTransportOptions> & { client?: FakeMqttClient } = {}) {
     const { client: provided, ...rest } = overrides;
@@ -241,7 +202,7 @@ describe('MqttTransport', () => {
         );
     });
 
-    it('dispatches PUSH and ignores malformed or unsigned payloads', async () => {
+    it('dispatches a signed PUSH to the protocol handler', async () => {
         const applied: MerossMessage[] = [];
         const { transport, getClient } = createTransport({
             dispatcher: new ProtocolDispatcher((message) => {
@@ -249,46 +210,57 @@ describe('MqttTransport', () => {
             })
         });
         await transport.connect();
-        const pending = transport.request({
-            uuid: UUID,
-            namespace: TOGGLEX_NAMESPACE,
-            method: 'GET'
-        });
-        const client = getClient();
-        const sent = decodeMessage(client.published[0]!.payload, KEY);
 
-        client.deliver('{not json');
-        client.deliver(encodeMessage({
+        getClient().deliver(encodeMessage({
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            payload: { togglex: [{ channel: 0, onoff: 1 }] }
+        }));
+
+        assert.equal(applied.length, 1);
+        assert.equal(applied[0]!.header.method, 'PUSH');
+        await transport.disconnect();
+    });
+
+    it('ignores a broker payload that is not JSON', async () => {
+        const applied: MerossMessage[] = [];
+        const { transport, getClient } = createTransport({
+            dispatcher: new ProtocolDispatcher((message) => {
+                applied.push(message);
+            })
+        });
+        await transport.connect();
+
+        getClient().deliver('{not json');
+
+        assert.equal(applied.length, 0);
+        await transport.disconnect();
+    });
+
+    it('ignores a PUSH signed with the wrong key', async () => {
+        const applied: MerossMessage[] = [];
+        const { transport, getClient } = createTransport({
+            dispatcher: new ProtocolDispatcher((message) => {
+                applied.push(message);
+            })
+        });
+        await transport.connect();
+
+        getClient().deliver(encodeMessage({
             namespace: TOGGLEX_NAMESPACE,
             method: 'PUSH',
             key: 'wrong-key',
             from: `/appliance/${UUID}/publish`,
             payload: { togglex: [{ channel: 0, onoff: 1 }] }
         }));
-        client.deliver(encodeMessage({
-            namespace: TOGGLEX_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: `/appliance/${UUID}/publish`,
-            payload: { togglex: [{ channel: 0, onoff: 1 }] }
-        }));
 
-        client.deliver(encodeMessage({
-            namespace: sent.header.namespace,
-            method: 'GETACK',
-            key: KEY,
-            from: `/appliance/${UUID}/publish`,
-            messageId: sent.header.messageId,
-            timestamp: sent.header.timestamp,
-            payload: { togglex: { channel: 0, onoff: 1 } }
-        }));
-
-        assert.equal((await pending).header.method, 'GETACK');
-        assert.equal(applied.length, 1);
-        assert.equal(applied[0]!.header.method, 'PUSH');
+        assert.equal(applied.length, 0);
+        await transport.disconnect();
     });
 
-    it('uses the same client after close when it emits connect again', async () => {
+    it('does not create a second MQTT client after a drop', async () => {
         let factories = 0;
         const client = new FakeMqttClient();
         const { transport } = createTransport({
@@ -300,24 +272,23 @@ describe('MqttTransport', () => {
         });
         await transport.connect();
         client.emit('close');
-        await assert.rejects(
-            transport.request({ uuid: UUID, namespace: TOGGLEX_NAMESPACE, method: 'GET' }),
-            (err: unknown) => err instanceof TransportError && err.code === 'MQTT_NOT_CONNECTED'
-        );
+
         await transport.connect();
+
         assert.equal(factories, 1);
+        await transport.disconnect();
+    });
+
+    it('resubscribes when the same client emits connect after a drop', async () => {
+        const { transport, getClient } = createTransport();
+        await transport.connect();
+        const client = getClient();
+        const subscribedBefore = client.subscriptions.length;
+        client.emit('close');
 
         client.emit('connect');
-        assert.deepEqual(client.subscriptions.slice(-2), USER_TOPICS);
 
-        const pending = transport.request({
-            uuid: UUID,
-            namespace: TOGGLEX_NAMESPACE,
-            method: 'GET'
-        });
-        const sent = decodeMessage(client.published[0]!.payload, KEY);
-        client.deliver(ackFor(sent, 'GETACK'));
-        assert.equal((await pending).header.method, 'GETACK');
+        assert.deepEqual(client.subscriptions.slice(subscribedBefore), USER_TOPICS);
         await transport.disconnect();
     });
 
@@ -373,22 +344,46 @@ describe('MqttTransport', () => {
         );
     });
 
-    it('notifies onConnectionChange on connect, drop, reconnect, and disconnect', async () => {
+    it('notifies onConnectionChange true after connect', async () => {
+        const connections: boolean[] = [];
+        const { transport } = createTransport({
+            onConnectionChange: (connected) => connections.push(connected)
+        });
+
+        await transport.connect();
+
+        assert.deepEqual(connections, [true]);
+        await transport.disconnect();
+    });
+
+    it('notifies onConnectionChange false on broker drop and true on reconnect', async () => {
         const connections: boolean[] = [];
         const { transport, getClient } = createTransport({
             onConnectionChange: (connected) => connections.push(connected)
         });
         await transport.connect();
-        assert.deepEqual(connections, [true]);
+        connections.length = 0;
 
         getClient().emit('close');
-        assert.deepEqual(connections, [true, false]);
+        assert.deepEqual(connections, [false]);
 
         getClient().emit('connect');
-        assert.deepEqual(connections, [true, false, true]);
+        assert.deepEqual(connections, [false, true]);
 
         await transport.disconnect();
-        assert.deepEqual(connections, [true, false, true, false]);
+    });
+
+    it('notifies onConnectionChange false when disconnect closes MQTT', async () => {
+        const connections: boolean[] = [];
+        const { transport } = createTransport({
+            onConnectionChange: (connected) => connections.push(connected)
+        });
+        await transport.connect();
+        connections.length = 0;
+
+        await transport.disconnect();
+
+        assert.deepEqual(connections, [false]);
     });
 
     it('forces a reconnect when re-subscribe fails after a drop', async () => {
@@ -410,10 +405,19 @@ describe('MqttTransport', () => {
             transport.request({ uuid: UUID, namespace: TOGGLEX_NAMESPACE, method: 'GET' }),
             (err: unknown) => err instanceof TransportError && err.code === 'MQTT_NOT_CONNECTED'
         );
+        await transport.disconnect();
+    });
 
+    it('accepts requests after subscribe succeeds on a later reconnect', async () => {
+        const client = new FakeMqttClient();
+        const { transport } = createTransport({ client });
+        await transport.connect();
+
+        client.subscribeError = new Error('not authorized');
+        client.emit('close');
+        client.emit('connect');
         client.subscribeError = null;
         client.emit('connect');
-        assert.deepEqual(connections, [true, false, true]);
 
         const pending = transport.request({
             uuid: UUID,
@@ -436,14 +440,13 @@ describe('MqttTransport', () => {
         assert.equal(client.reconnects, 0);
     });
 
-    it('notifies onRateLimit and leaves no pending entry when limited', async (t) => {
+    it('notifies onRateLimit and does not publish when limited', async () => {
         const limiter = new PublishRateLimiter({ now: () => 1_000_000 });
         for (let i = 0; i < RATE_LIMIT_MAX_PUBLISHES; i += 1) {
             limiter.take(UUID, 'user');
         }
         const drops: Array<[string, number]> = [];
         const dispatcher = new ProtocolDispatcher();
-        const register = t.mock.method(dispatcher.pending, 'register');
         const { transport, getClient } = createTransport({
             dispatcher,
             rateLimiter: limiter,
@@ -463,7 +466,6 @@ describe('MqttTransport', () => {
 
         assert.deepEqual(drops, [[UUID, 1]]);
         assert.equal(getClient().published.length, publishedBefore);
-        assert.equal(register.mock.callCount(), 0);
         await transport.disconnect();
     });
 

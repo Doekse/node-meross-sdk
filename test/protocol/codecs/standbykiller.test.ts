@@ -10,10 +10,13 @@ import {
 } from '../../../src/protocol/codecs/standbykiller';
 
 describe('Config.StandbyKiller codec', () => {
-    it('encodes GET and SET', () => {
+    it('encodes GET for a channel', () => {
         assert.deepEqual(encodeStandbyKillerGet(0), {
             config: [{ channel: 0 }]
         });
+    });
+
+    it('encodes SET converting watts to milliwatts and enable 1/2', () => {
         assert.deepEqual(
             encodeStandbyKillerSet({
                 channel: 0,
@@ -32,13 +35,16 @@ describe('Config.StandbyKiller codec', () => {
                 }]
             }
         );
+    });
+
+    it('encodes SET with only the fields the caller supplies', () => {
         assert.deepEqual(
             encodeStandbyKillerSet({ channel: 1, enabled: false }),
             { config: [{ channel: 1, enable: 2 }] }
         );
     });
 
-    it('decodes MSS305 GETACK/PUSH and empty config', () => {
+    it('decodes a firmware GETACK row', () => {
         const payload = {
             config: [{
                 channel: 0,
@@ -48,6 +54,7 @@ describe('Config.StandbyKiller codec', () => {
                 alert: 2
             }]
         };
+
         assert.deepEqual(decodeStandbyKillerGetAck(payload), [{
             channel: 0,
             power: 0,
@@ -55,7 +62,23 @@ describe('Config.StandbyKiller codec', () => {
             enabled: false,
             alert: false
         }]);
+    });
+
+    it('decodes PUSH with the same shape as GETACK', () => {
+        const payload = {
+            config: [{
+                channel: 0,
+                power: 0,
+                time: 300,
+                enable: 2,
+                alert: 2
+            }]
+        };
+
         assert.deepEqual(decodeStandbyKillerPush(payload), decodeStandbyKillerGetAck(payload));
+    });
+
+    it('decodes an empty config as no rows', () => {
         assert.deepEqual(decodeStandbyKillerGetAck({ config: [] }), []);
         assert.deepEqual(decodeStandbyKillerGetAck({}), []);
     });
@@ -67,17 +90,23 @@ describe('Config.StandbyKiller codec', () => {
         );
     });
 
-    it('rejects a non-array config or invalid enable/alert', () => {
+    it('rejects a non-array config', () => {
         assert.throws(
             () => decodeStandbyKillerGetAck({ config: { channel: 0 } }),
             (err: unknown) => err instanceof ProtocolError
         );
+    });
+
+    it('rejects an invalid enable flag', () => {
         assert.throws(
             () => decodeStandbyKillerGetAck({
                 config: [{ channel: 0, enable: 3 }]
             }),
             (err: unknown) => err instanceof ProtocolError
         );
+    });
+
+    it('rejects an invalid alert flag', () => {
         assert.throws(
             () => decodeStandbyKillerGetAck({
                 config: [{ channel: 0, alert: 0 }]

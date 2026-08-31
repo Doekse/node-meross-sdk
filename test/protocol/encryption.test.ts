@@ -74,11 +74,16 @@ describe('mrskey AES-256-CBC', () => {
 });
 
 describe('Encrypt.Suite codec', () => {
-    it('GET is empty and GETACK uses ka/se/ds from the firmware examples', () => {
+    it('GET payload is empty in the firmware example', () => {
         const get = loadFixture('encrypt-suite-get.json');
-        const getack = loadFixture('encrypt-suite-getack.json');
+
         assert.equal(get.header.namespace, ENCRYPT_SUITE_NAMESPACE);
         assert.deepEqual(get.payload, {});
+    });
+
+    it('decodes GETACK ka/se/ds from the firmware example', () => {
+        const getack = loadFixture('encrypt-suite-getack.json');
+
         assert.deepEqual(decodeEncryptSuiteGetAck(getack.payload), {
             ka: 'ecdhe256',
             se: 'mrskey',
@@ -95,13 +100,18 @@ describe('Encrypt.Suite codec', () => {
 });
 
 describe('Encrypt.ECDHE codec and handshake', () => {
-    it('encodes SET step 1 and decodes SETACK step 2 from firmware examples', () => {
+    it('encodes SET step 1 from the firmware example', () => {
         const pubkey = '273A6A98B87C9CD123456789AF273A6A98B87C9CD123456789AF273ABCD1234';
         const set = loadFixture('encrypt-ecdhe-set.json');
-        const setack = loadFixture('encrypt-ecdhe-setack.json');
 
         assert.equal(set.header.namespace, ENCRYPT_ECDHE_NAMESPACE);
         assert.deepEqual(encodeEncryptEcdheSet(pubkey), set.payload);
+    });
+
+    it('decodes SETACK step 2 from the firmware example', () => {
+        const pubkey = '273A6A98B87C9CD123456789AF273A6A98B87C9CD123456789AF273ABCD1234';
+        const setack = loadFixture('encrypt-ecdhe-setack.json');
+
         assert.deepEqual(decodeEncryptEcdheSetAck(setack.payload), { step: 2, pubkey });
     });
 
@@ -122,8 +132,11 @@ describe('Encrypt.ECDHE codec and handshake', () => {
 });
 
 describe('LAN encryption ability', () => {
-    it('is advertised by Appliance.Encrypt.ECDHE, not Suite alone', () => {
+    it('is advertised by Appliance.Encrypt.ECDHE', () => {
         assert.equal(supportsLanEncryption({ [ENCRYPT_ECDHE_NAMESPACE]: {} }), true);
+    });
+
+    it('is not advertised by Encrypt.Suite alone', () => {
         assert.equal(supportsLanEncryption({ [ENCRYPT_SUITE_NAMESPACE]: {} }), false);
         assert.equal(supportsLanEncryption({}), false);
     });

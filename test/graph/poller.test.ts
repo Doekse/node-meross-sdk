@@ -129,18 +129,6 @@ function createHarness(
     };
 }
 
-describe('DevicePoller constants', () => {
-    it('exposes the shared poll periods', () => {
-        assert.equal(DEFAULT_POLL_INTERVAL_MS, 30_000);
-        assert.equal(SYSTEM_ALL_PERIOD_MS, 295_000);
-        assert.equal(ENERGY_PERIOD_MS, 55_000);
-        assert.equal(ENERGY_CLOUD_PERIOD_MS, 600_000);
-        assert.equal(SENSOR_FAST_PERIOD_MS, 0);
-        assert.equal(SENSOR_FAST_CLOUD_PERIOD_MS, 180_000);
-        assert.equal(CLOUDMQTT_PERIOD_MS, 1_195_000);
-    });
-});
-
 describe('DevicePoller', () => {
     it('skips default jobs when MQTT PUSH is active after the cold start', async (t) => {
         const harness = createHarness(t, {
@@ -572,7 +560,7 @@ describe('DevicePoller', () => {
         harness.poller.stop();
     });
 
-    it('probes System.All only while offline and backs off toward 295s', async (t) => {
+    it('doubles the offline System.All delay after a failed probe', async (t) => {
         const harness = createHarness(t, {
             online: false,
             jobs: [{

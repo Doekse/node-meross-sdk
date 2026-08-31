@@ -58,7 +58,7 @@ describe('Control.TimerX codec', () => {
         });
     });
 
-    it('decodes GETACK object and PUSH array payloads', () => {
+    it('decodes a GETACK object as a one-entry list', () => {
         assert.deepEqual(decodeTimerXGetAck({ timerx: SAMPLE }), [{
             id: '14z2y0cwdi5d64vf',
             channel: 0,
@@ -72,6 +72,9 @@ describe('Control.TimerX codec', () => {
             createTime: 1673168351,
             on: false
         }]);
+    });
+
+    it('decodes a PUSH array of timer rows', () => {
         const [entry] = decodeTimerXPush({
             timerx: [{
                 ...SAMPLE,

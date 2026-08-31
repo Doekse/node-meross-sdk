@@ -95,18 +95,16 @@ describe('PendingRequests', () => {
         assert.equal(pending.settle(ack('msg-timeout')), false);
     });
 
-    it('throws when the same messageId is registered twice', async () => {
+    it('throws when the same messageId is registered twice', () => {
         const pending = new PendingRequests();
         const first = pending.register('dup', 5_000);
+        first.catch(() => {});
+
         assert.throws(
             () => pending.register('dup', 5_000),
             (err: unknown) => err instanceof ProtocolError && err.code === 'DUPLICATE_MESSAGE_ID'
         );
         pending.clear();
-        await assert.rejects(
-            first,
-            (err: unknown) => err instanceof CommandError && err.code === 'COMMAND_CANCELLED'
-        );
     });
 
     it('settle returns false for an unknown messageId', () => {

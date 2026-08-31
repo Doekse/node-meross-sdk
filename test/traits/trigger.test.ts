@@ -12,6 +12,7 @@ import {
 } from '../../src/protocol';
 import { TriggerTrait } from '../../src/traits/trigger';
 import type { TriggerGeneration, TriggerTraitBind } from '../../src/traits/trigger';
+import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
 const UUID = '2201201075575151809248e1e988531b';
@@ -49,7 +50,6 @@ function createHarness(options: {
     requests: MerossMessage[];
     changes: Record<string, unknown>[];
 } {
-    const requests: MerossMessage[] = [];
     const changes: Record<string, unknown>[] = [];
     const generation = options.generation ?? 'x';
     const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['trigger'] });
@@ -58,55 +58,35 @@ function createHarness(options: {
             ? [CONTROL_TRIGGER_NAMESPACE]
             : [TRIGGERX_NAMESPACE, DIGEST_TRIGGERX_NAMESPACE]
     );
-    const bind: TriggerTraitBind = {
+    const { requests, request } = createRequestRecorder({
         uuid: UUID,
-        channel: CHANNEL,
-        generation,
-        namespaces,
-        request: async (requestOptions) => {
-            const message = encodeMessage({
-                namespace: requestOptions.namespace,
-                method: requestOptions.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: requestOptions.payload,
-                uuid: UUID
-            });
-            requests.push(message);
+        key: KEY,
+        ack: (requestOptions, sent) => {
             if (requestOptions.namespace === DIGEST_TRIGGERX_NAMESPACE) {
-                return encodeMessage({
-                    namespace: requestOptions.namespace,
-                    method: 'GETACK',
+                return traitAck(sent, {
                     key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    messageId: message.header.messageId,
-                    uuid: UUID,
+                    method: 'GETACK',
                     payload: {
                         digest: [{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]
                     }
                 });
             }
             if (requestOptions.method === 'GET') {
-                return encodeMessage({
-                    namespace: requestOptions.namespace,
-                    method: 'GETACK',
+                return traitAck(sent, {
                     key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    messageId: message.header.messageId,
-                    uuid: UUID,
+                    method: 'GETACK',
                     payload: options.getAck ?? { triggerx: WIRE_ENTRY }
                 });
             }
-            return encodeMessage({
-                namespace: requestOptions.namespace,
-                method: `${requestOptions.method}ACK`,
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
-                payload: {}
-            });
-        },
+            return traitAck(sent, { key: KEY });
+        }
+    });
+    const bind: TriggerTraitBind = {
+        uuid: UUID,
+        channel: CHANNEL,
+        generation,
+        namespaces,
+        request,
         emitChange: (values) => {
             changes.push({ ...values });
             endpoint.emit('change', { trait: 'trigger', values: { ...values } });
@@ -170,35 +150,25 @@ describe('TriggerTrait', () => {
     });
 
     it('each channel resolves its own Digest ids after a shared Digest GETACK', async () => {
-        const requests: MerossMessage[] = [];
         const namespaces = new Set([TRIGGERX_NAMESPACE, DIGEST_TRIGGERX_NAMESPACE]);
-        const request: TriggerTraitBind['request'] = async (requestOptions) => {
-            const message = encodeMessage({
-                namespace: requestOptions.namespace,
-                method: requestOptions.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: requestOptions.payload,
-                uuid: UUID
-            });
-            requests.push(message);
-            const raw = requestOptions.payload?.triggerx;
-            const id = typeof raw === 'object' && raw !== null && typeof (raw as { id?: unknown }).id === 'string'
-                ? (raw as { id: string }).id
-                : WIRE_ENTRY.id;
-            const channel = id === 'trigger-ch1' ? 1 : 0;
-            return encodeMessage({
-                namespace: requestOptions.namespace,
-                method: 'GETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
-                payload: {
-                    triggerx: { ...WIRE_ENTRY, id, channel }
-                }
-            });
-        };
+        const { requests, request } = createRequestRecorder({
+            uuid: UUID,
+            key: KEY,
+            ack: (requestOptions, sent) => {
+                const raw = requestOptions.payload?.triggerx;
+                const id = typeof raw === 'object' && raw !== null && typeof (raw as { id?: unknown }).id === 'string'
+                    ? (raw as { id: string }).id
+                    : WIRE_ENTRY.id;
+                const channel = id === 'trigger-ch1' ? 1 : 0;
+                return traitAck(sent, {
+                    key: KEY,
+                    method: 'GETACK',
+                    payload: {
+                        triggerx: { ...WIRE_ENTRY, id, channel }
+                    }
+                });
+            }
+        });
         const trait0 = new TriggerTrait({
             uuid: UUID,
             channel: 0,
@@ -348,8 +318,9 @@ describe('TriggerTrait legacy Control.Trigger', () => {
         }
     };
 
-    it('applies Control.Trigger GETACK with flattened rule and filters uuid', () => {
+    it('applies Control.Trigger GETACK with a flattened rule', () => {
         const { trait, changes } = createHarness({ generation: 'legacy' });
+
         trait.handlePush(encodeMessage({
             namespace: CONTROL_TRIGGER_NAMESPACE,
             method: 'GETACK',
@@ -358,10 +329,14 @@ describe('TriggerTrait legacy Control.Trigger', () => {
             uuid: UUID,
             payload: { trigger: [LEGACY_WIRE] }
         }));
+
         assert.deepEqual(trait.list()[0]?.rule, { duration: 69300, week: 129 });
         assert.equal(changes.length, 1);
+    });
 
-        changes.length = 0;
+    it('ignores Control.Trigger PUSH from another device', () => {
+        const { trait, changes } = createHarness({ generation: 'legacy' });
+
         trait.handlePush(encodeMessage({
             namespace: CONTROL_TRIGGER_NAMESPACE,
             method: 'PUSH',
@@ -370,10 +345,11 @@ describe('TriggerTrait legacy Control.Trigger', () => {
             uuid: 'other',
             payload: { trigger: [{ ...LEGACY_WIRE, id: 'other' }] }
         }));
+
         assert.equal(changes.length, 0);
     });
 
-    it('set SETs expanded legacy rules and remove SETs the remaining list', async () => {
+    it('set SETs expanded legacy rules including the new entry', async () => {
         const { trait, requests } = createHarness({ generation: 'legacy' });
         trait.handlePush(encodeMessage({
             namespace: CONTROL_TRIGGER_NAMESPACE,
@@ -391,6 +367,7 @@ describe('TriggerTrait legacy Control.Trigger', () => {
             rule: { duration: 900, week: 255 },
             createTime: 1673168351
         });
+
         assert.equal(requests[0]?.header.namespace, CONTROL_TRIGGER_NAMESPACE);
         const setList = requests[0]?.payload.trigger as Array<{
             id: string;
@@ -399,9 +376,27 @@ describe('TriggerTrait legacy Control.Trigger', () => {
         assert.equal(setList.length, 2);
         const created = setList.find((entry) => entry.id === 'newtrig1');
         assert.equal(created?.rule._then_.delay.duration, 900);
+    });
 
+    it('remove SETs Control.Trigger without the deleted id', async () => {
+        const { trait, requests } = createHarness({ generation: 'legacy' });
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_TRIGGER_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                trigger: [
+                    LEGACY_WIRE,
+                    { ...LEGACY_WIRE, id: 'newtrig1', alias: 'auto off' }
+                ]
+            }
+        }));
         requests.length = 0;
+
         await trait.remove(LEGACY_WIRE.id);
+
         assert.deepEqual(
             (requests[0]?.payload.trigger as Array<{ id: string }>).map((entry) => entry.id),
             ['newtrig1']

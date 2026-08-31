@@ -2,24 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { ProtocolDispatcher } from '../../src/protocol/dispatcher';
-import { encodeMessage, type MerossMessage } from '../../src/protocol';
+import { encodeMessage } from '../../src/protocol';
+import { FakeTransport } from '../helpers/dispatcher';
 
 const KEY = 'stub-key';
 
-class FakeTransport {
-    constructor(private readonly dispatcher: ProtocolDispatcher) {}
-
-    request(message: MerossMessage): Promise<MerossMessage> {
-        return this.dispatcher.pending.register(message.header.messageId);
-    }
-
-    deliver(message: MerossMessage) {
-        return this.dispatcher.handle(message);
-    }
-}
-
 describe('ProtocolDispatcher.onInbound', () => {
-    it('notifies onInbound for replies and push', async () => {
+    it('notifies onInbound for a matching GETACK', async () => {
         const inbound: string[] = [];
         const dispatcher = new ProtocolDispatcher({
             onInbound: (message) => {
@@ -51,7 +40,20 @@ describe('ProtocolDispatcher.onInbound', () => {
         });
         assert.equal(transport.deliver(reply), 'reply');
         await pending;
+
         assert.deepEqual(inbound, ['GETACK:Appliance.System.Online']);
+    });
+
+    it('notifies onInbound then onPush for PUSH', () => {
+        const inbound: string[] = [];
+        const dispatcher = new ProtocolDispatcher({
+            onInbound: (message) => {
+                inbound.push(`${message.header.method}:${message.header.namespace}`);
+            },
+            onPush: (message) => {
+                inbound.push(`push-handler:${message.header.namespace}`);
+            }
+        });
 
         const push = encodeMessage({
             namespace: 'Appliance.System.Online',
@@ -61,9 +63,9 @@ describe('ProtocolDispatcher.onInbound', () => {
             uuid: 'uuid-1',
             payload: { online: { status: 2 } }
         });
-        assert.equal(transport.deliver(push), 'push');
+        assert.equal(dispatcher.handle(push), 'push');
+
         assert.deepEqual(inbound, [
-            'GETACK:Appliance.System.Online',
             'PUSH:Appliance.System.Online',
             'push-handler:Appliance.System.Online'
         ]);

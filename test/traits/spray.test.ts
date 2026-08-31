@@ -9,6 +9,7 @@ import {
 } from '../../src/protocol';
 import { SprayTrait } from '../../src/traits/spray';
 import type { SprayTraitBind } from '../../src/traits/spray';
+import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
 const UUID = '2206138957096651080248e1e99705a4';
@@ -19,32 +20,21 @@ function createHarness(): {
     requests: MerossMessage[];
     changes: Record<string, unknown>[];
 } {
-    const requests: MerossMessage[] = [];
     const changes: Record<string, unknown>[] = [];
     const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['spray'] });
+    const { requests, request } = createRequestRecorder({
+        uuid: UUID,
+        key: KEY,
+        ack: (_options, sent) => traitAck(sent, {
+            key: KEY,
+            method: 'GETACK',
+            payload: { spray: { channel: CHANNEL, mode: 1 } }
+        })
+    });
     const bind: SprayTraitBind = {
         uuid: UUID,
         channel: CHANNEL,
-        request: async (options) => {
-            const message = encodeMessage({
-                namespace: options.namespace,
-                method: options.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: options.payload,
-                uuid: UUID
-            });
-            requests.push(message);
-            return encodeMessage({
-                namespace: options.namespace,
-                method: 'GETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
-                payload: { spray: { channel: CHANNEL, mode: 1 } }
-            });
-        },
+        request,
         emitChange: (values) => {
             changes.push({ ...values });
             endpoint.emit('change', { trait: 'spray', values: { ...values } });

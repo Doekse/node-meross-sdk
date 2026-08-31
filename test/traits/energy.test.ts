@@ -32,6 +32,7 @@ import {
     type EnergyValues,
     EnergyTrait
 } from '../../src/traits/energy';
+import { createRequestRecorder, recordedCalls, traitAck } from '../helpers/request';
 
 const fixturesDir = join(process.cwd(), 'test/fixtures');
 const KEY = 'stub-key';
@@ -121,27 +122,16 @@ function createEnergyHarness(options: {
 } = {}): {
     endpoint: Endpoint;
     trait: EnergyTrait;
-    requests: Array<{ namespace: string; method: string; payload: MerossMessage['payload'] }>;
+    requests: MerossMessage[];
 } {
-    const requests: Array<{ namespace: string; method: string; payload: MerossMessage['payload'] }> = [];
     const endpoint = new Endpoint({
         id: `${UUID}:${CHANNEL}`,
         traits: ['energy']
     });
-    const trait = new EnergyTrait({
+    const { requests, request } = createRequestRecorder({
         uuid: UUID,
-        channel: CHANNEL,
-        hasElectricity: options.hasElectricity ?? true,
-        hasElectricityX: options.hasElectricityX ?? false,
-        hasConsumptionX: options.hasConsumptionX ?? true,
-        hasConsumptionH: options.hasConsumptionH ?? false,
-        namespaces: options.namespaces ?? new Set(),
-        request: async (opts) => {
-            requests.push({
-                namespace: opts.namespace,
-                method: opts.method,
-                payload: opts.payload ?? {}
-            });
+        key: KEY,
+        ack: (opts, sent) => {
             if (opts.namespace === ELECTRICITY_NAMESPACE) {
                 return electricityAck();
             }
@@ -150,14 +140,7 @@ function createEnergyHarness(options: {
             }
             if (opts.namespace === CONSUMPTIONX_NAMESPACE) {
                 if (opts.method === 'DELETE') {
-                    return encodeMessage({
-                        namespace: CONSUMPTIONX_NAMESPACE,
-                        method: 'DELETEACK',
-                        key: KEY,
-                        from: `/appliance/${UUID}/publish`,
-                        uuid: UUID,
-                        payload: {}
-                    });
+                    return traitAck(sent, { key: KEY, method: 'DELETEACK' });
                 }
                 return consumptionAck();
             }
@@ -165,12 +148,8 @@ function createEnergyHarness(options: {
                 return consumptionHAck();
             }
             if (opts.namespace === CONSUMPTION_CONFIG_NAMESPACE) {
-                return encodeMessage({
-                    namespace: CONSUMPTION_CONFIG_NAMESPACE,
-                    method: opts.method === 'SET' ? 'SETACK' : 'GETACK',
+                return traitAck(sent, {
                     key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    uuid: UUID,
                     payload: {
                         config: {
                             voltageRatio: 186,
@@ -180,38 +159,23 @@ function createEnergyHarness(options: {
                     }
                 });
             }
-            if (opts.namespace === CONFIG_OVERTEMP_NAMESPACE) {
-                return encodeMessage({
-                    namespace: CONFIG_OVERTEMP_NAMESPACE,
-                    method: opts.method === 'SET' ? 'SETACK' : 'GETACK',
-                    key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    uuid: UUID,
-                    payload: {}
-                });
-            }
-            if (opts.namespace === CONTROL_ALERT_CONFIG_NAMESPACE) {
-                return encodeMessage({
-                    namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
-                    method: opts.method === 'SET' ? 'SETACK' : 'GETACK',
-                    key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    uuid: UUID,
-                    payload: {}
-                });
-            }
-            if (opts.namespace === CONFIG_STANDBY_KILLER_NAMESPACE) {
-                return encodeMessage({
-                    namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
-                    method: opts.method === 'SET' ? 'SETACK' : 'GETACK',
-                    key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    uuid: UUID,
-                    payload: {}
-                });
+            if (opts.namespace === CONFIG_OVERTEMP_NAMESPACE
+                || opts.namespace === CONTROL_ALERT_CONFIG_NAMESPACE
+                || opts.namespace === CONFIG_STANDBY_KILLER_NAMESPACE) {
+                return traitAck(sent, { key: KEY });
             }
             throw new Error(`unexpected namespace ${opts.namespace}`);
-        },
+        }
+    });
+    const trait = new EnergyTrait({
+        uuid: UUID,
+        channel: CHANNEL,
+        hasElectricity: options.hasElectricity ?? true,
+        hasElectricityX: options.hasElectricityX ?? false,
+        hasConsumptionX: options.hasConsumptionX ?? true,
+        hasConsumptionH: options.hasConsumptionH ?? false,
+        namespaces: options.namespaces ?? new Set(),
+        request,
         emitChange: (values) => endpoint.emit('change', { trait: 'energy', values: { ...values } })
     });
     return { endpoint, trait, requests };
@@ -223,7 +187,7 @@ describe('EnergyTrait.poll', () => {
 
         const snapshot = await trait.poll();
 
-        assert.deepEqual(requests, [
+        assert.deepEqual(recordedCalls(requests), [
             {
                 namespace: ELECTRICITY_NAMESPACE,
                 method: 'GET',
@@ -291,7 +255,7 @@ describe('EnergyTrait.poll', () => {
         await trait.poll();
 
         assert.equal(requests.length, 1);
-        assert.equal(requests[0]?.namespace, ELECTRICITY_NAMESPACE);
+        assert.equal(requests[0]?.header.namespace, ELECTRICITY_NAMESPACE);
     });
 
     it('GETs ElectricityX when classic Electricity is absent', async () => {
@@ -303,7 +267,7 @@ describe('EnergyTrait.poll', () => {
 
         const snapshot = await trait.poll();
 
-        assert.deepEqual(requests, [{
+        assert.deepEqual(recordedCalls(requests), [{
             namespace: ELECTRICITYX_NAMESPACE,
             method: 'GET',
             payload: encodeElectricityXGet()
@@ -325,7 +289,7 @@ describe('EnergyTrait.poll', () => {
 
         const snapshot = await trait.poll();
 
-        assert.deepEqual(requests[1], {
+        assert.deepEqual(recordedCalls(requests)[1], {
             namespace: CONSUMPTIONH_NAMESPACE,
             method: 'GET',
             payload: encodeConsumptionHGet(CHANNEL)
@@ -346,7 +310,7 @@ describe('EnergyTrait.poll', () => {
 
         const hourly = await trait.getHourlyConsumption();
 
-        assert.deepEqual(requests, [{
+        assert.deepEqual(recordedCalls(requests), [{
             namespace: CONSUMPTIONH_NAMESPACE,
             method: 'GET',
             payload: encodeConsumptionHGet(CHANNEL)
@@ -420,7 +384,7 @@ describe('EnergyTrait calibration', () => {
 
         const calibration = await trait.getCalibration();
 
-        assert.deepEqual(requests, [{
+        assert.deepEqual(recordedCalls(requests), [{
             namespace: CONSUMPTION_CONFIG_NAMESPACE,
             method: 'GET',
             payload: encodeConsumptionConfigGet()
@@ -487,7 +451,7 @@ describe('EnergyTrait over-temp', () => {
 
         await trait.setOverTemp(false, 2);
 
-        assert.deepEqual(requests, [{
+        assert.deepEqual(recordedCalls(requests), [{
             namespace: CONFIG_OVERTEMP_NAMESPACE,
             method: 'SET',
             payload: encodeConfigOverTempSet({ enabled: false, type: 2 })
@@ -506,7 +470,7 @@ describe('EnergyTrait over-temp', () => {
         assert.equal(requests.length, 0);
     });
 
-    it('applies Config.OverTemp GETACK/PUSH and dedupes repeats', () => {
+    it('does not emit change when Config.OverTemp PUSH repeats the same values', () => {
         const { endpoint, trait } = createEnergyHarness({
             hasConsumptionX: false,
             namespaces: overTempNamespaces
@@ -531,7 +495,7 @@ describe('EnergyTrait over-temp', () => {
         }]);
     });
 
-    it('applies Control.OverTemp PUSH for the bound channel only', () => {
+    it('ignores Control.OverTemp PUSH for other channels', () => {
         const { endpoint, trait } = createEnergyHarness({
             hasConsumptionX: false,
             namespaces: overTempNamespaces
@@ -554,7 +518,17 @@ describe('EnergyTrait over-temp', () => {
                 }]
             }
         }));
+
         assert.deepEqual(changes, []);
+    });
+
+    it('applies Control.OverTemp SET for the bound device', () => {
+        const { endpoint, trait } = createEnergyHarness({
+            hasConsumptionX: false,
+            namespaces: overTempNamespaces
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
 
         trait.handlePush(encodeMessage({
             namespace: CONTROL_OVERTEMP_NAMESPACE,
@@ -570,6 +544,7 @@ describe('EnergyTrait over-temp', () => {
                 }
             }
         }));
+
         assert.deepEqual(changes, [{
             trait: 'energy',
             values: { overTempActive: true, overTempTimestamp: 42 }
@@ -614,7 +589,7 @@ describe('EnergyTrait alert config', () => {
         const value = { em06: { threshold: 10 } };
         await trait.setAlertConfig({ type: 1, value });
 
-        assert.deepEqual(requests, [{
+        assert.deepEqual(recordedCalls(requests), [{
             namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
             method: 'SET',
             payload: encodeAlertConfigSet({ channel: CHANNEL, type: 1, value })
@@ -631,7 +606,7 @@ describe('EnergyTrait alert config', () => {
         assert.equal(requests.length, 0);
     });
 
-    it('applies AlertConfig PUSH for the bound channel and dedupes', () => {
+    it('applies AlertConfig PUSH for the bound channel', () => {
         const { endpoint, trait } = createEnergyHarness({
             hasConsumptionX: false,
             namespaces: alertNamespaces
@@ -639,6 +614,30 @@ describe('EnergyTrait alert config', () => {
         const changes: unknown[] = [];
         endpoint.on('change', (change) => changes.push(change));
 
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                config: [{ channel: CHANNEL, type: 3, value: { em06: { a: 1 } } }]
+            }
+        }));
+
+        assert.deepEqual(changes, [{
+            trait: 'energy',
+            values: { alertConfigType: 3, alertConfig: { em06: { a: 1 } } }
+        }]);
+    });
+
+    it('does not emit change when AlertConfig PUSH repeats', () => {
+        const { endpoint, trait } = createEnergyHarness({
+            hasConsumptionX: false,
+            namespaces: alertNamespaces
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
         const push = encodeMessage({
             namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
             method: 'PUSH',
@@ -649,16 +648,14 @@ describe('EnergyTrait alert config', () => {
                 config: [{ channel: CHANNEL, type: 3, value: { em06: { a: 1 } } }]
             }
         });
+
         trait.handlePush(push);
         trait.handlePush(push);
 
-        assert.deepEqual(changes, [{
-            trait: 'energy',
-            values: { alertConfigType: 3, alertConfig: { em06: { a: 1 } } }
-        }]);
+        assert.equal(changes.length, 1);
     });
 
-    it('applies AlertReport PUSH and ignores malformed payloads', () => {
+    it('ignores malformed AlertReport PUSH', () => {
         const { endpoint, trait } = createEnergyHarness({
             hasConsumptionX: false,
             namespaces: alertNamespaces
@@ -674,7 +671,17 @@ describe('EnergyTrait alert config', () => {
             uuid: UUID,
             payload: { alert: { not: 'a list' } }
         }));
+
         assert.deepEqual(changes, []);
+    });
+
+    it('applies AlertReport PUSH for the bound channel', () => {
+        const { endpoint, trait } = createEnergyHarness({
+            hasConsumptionX: false,
+            namespaces: alertNamespaces
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
 
         trait.handlePush(encodeMessage({
             namespace: CONTROL_ALERT_REPORT_NAMESPACE,
@@ -684,6 +691,7 @@ describe('EnergyTrait alert config', () => {
             uuid: UUID,
             payload: { alert: [{ channel: CHANNEL, code: 4 }] }
         }));
+
         assert.deepEqual(changes, [{
             trait: 'energy',
             values: { alertReport: { code: 4 } }
@@ -702,7 +710,7 @@ describe('EnergyTrait consumption delete', () => {
 
         await trait.deleteConsumption();
 
-        assert.deepEqual(requests, [{
+        assert.deepEqual(recordedCalls(requests), [{
             namespace: CONSUMPTIONX_NAMESPACE,
             method: 'DELETE',
             payload: encodeConsumptionXDelete()
@@ -743,7 +751,7 @@ describe('EnergyTrait standby killer', () => {
             alert: false
         });
 
-        assert.deepEqual(requests, [{
+        assert.deepEqual(recordedCalls(requests), [{
             namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
             method: 'SET',
             payload: encodeStandbyKillerSet({
@@ -771,7 +779,7 @@ describe('EnergyTrait standby killer', () => {
         assert.equal(requests.length, 0);
     });
 
-    it('applies StandbyKiller PUSH for the bound channel and dedupes', () => {
+    it('applies StandbyKiller PUSH for the bound channel', () => {
         const { endpoint, trait } = createEnergyHarness({
             hasConsumptionX: false,
             namespaces
@@ -779,6 +787,41 @@ describe('EnergyTrait standby killer', () => {
         const changes: unknown[] = [];
         endpoint.on('change', (change) => changes.push(change));
 
+        trait.handlePush(encodeMessage({
+            namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                config: [{
+                    channel: CHANNEL,
+                    power: 0,
+                    time: 300,
+                    enable: 2,
+                    alert: 2
+                }]
+            }
+        }));
+
+        assert.deepEqual(changes, [{
+            trait: 'energy',
+            values: {
+                standbyKillerEnabled: false,
+                standbyKillerPower: 0,
+                standbyKillerTime: 300,
+                standbyKillerAlert: false
+            }
+        }]);
+    });
+
+    it('does not emit change when StandbyKiller PUSH repeats', () => {
+        const { endpoint, trait } = createEnergyHarness({
+            hasConsumptionX: false,
+            namespaces
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
         const push = encodeMessage({
             namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
             method: 'PUSH',
@@ -795,18 +838,11 @@ describe('EnergyTrait standby killer', () => {
                 }]
             }
         });
+
         trait.handlePush(push);
         trait.handlePush(push);
 
-        assert.deepEqual(changes, [{
-            trait: 'energy',
-            values: {
-                standbyKillerEnabled: false,
-                standbyKillerPower: 0,
-                standbyKillerTime: 300,
-                standbyKillerAlert: false
-            }
-        }]);
+        assert.equal(changes.length, 1);
     });
 
     it('applies StandbyKiller PUSH for the bound channel only', () => {

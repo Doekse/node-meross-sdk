@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import { CloudClient, encodeCloudParams, signCloudRequest } from '../../src/cloud/client';
 import { AuthError, CloudError } from '../../src/errors';
 import type { TokenData } from '../../src/session';
+import { jsonResponse, ok } from '../helpers/http';
 
 const EMAIL = 'you@example.com';
 const PASSWORD = 'plain-secret';
@@ -33,26 +34,13 @@ const DEVICE_ROW = {
     region: 'eu'
 };
 
-function jsonResponse(body: unknown, status = 200, statusText = 'OK'): Response {
-    const text = typeof body === 'string' ? body : JSON.stringify(body);
-    return {
-        status,
-        statusText,
-        ok: status === 200,
-        async text() {
-            return text;
-        }
-    } as Response;
-}
-
-function ok(data: unknown): Response {
-    return jsonResponse({ apiStatus: 0, data });
-}
-
 describe('cloud request signing', () => {
-    it('pins MD5(secret + timestamp + nonce + base64 params)', () => {
+    it('encodes params as URL-safe base64 JSON', () => {
+        assert.equal(encodeCloudParams({ email: 'a@b.c' }), 'eyJlbWFpbCI6ImFAYi5jIn0=');
+    });
+
+    it('signs timestamp, nonce, and params as lowercase MD5 hex', () => {
         const encoded = encodeCloudParams({ email: 'a@b.c' });
-        assert.equal(encoded, 'eyJlbWFpbCI6ImFAYi5jIn0=');
         assert.equal(signCloudRequest(NOW, NONCE, encoded), 'a1a92c7ffa12d2e2c9b0f1ca14c64e98');
     });
 });
@@ -60,7 +48,7 @@ describe('cloud request signing', () => {
 describe('CloudClient.login', () => {
     it('POSTs a signed signIn body with an MD5 password and optional MFA', async () => {
         const calls: Array<{ url: string; init: RequestInit }> = [];
-        const client = await CloudClient.login(
+        await CloudClient.login(
             { email: EMAIL, password: PASSWORD, mfaCode: '123456' },
             {
                 now: () => NOW,
@@ -99,6 +87,17 @@ describe('CloudClient.login', () => {
         assert.equal(params.password, createHash('md5').update(PASSWORD).digest('hex'));
         assert.equal(params.encryption, 1);
         assert.equal(params.mfaCode, '123456');
+    });
+
+    it('maps signIn data onto persistable TokenData', async () => {
+        const client = await CloudClient.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                now: () => NOW,
+                nonce: () => NONCE,
+                fetch: async () => ok(LOGIN_DATA)
+            }
+        );
 
         assert.deepEqual(client.getToken(), {
             token: 'stub-token',
@@ -178,7 +177,7 @@ describe('CloudClient.login', () => {
         assert.equal(hits, 4);
     });
 
-    it('maps MFA and credential apiStatus codes to AuthError', async () => {
+    it('maps MFA required apiStatus to AuthError', async () => {
         await assert.rejects(
             () => CloudClient.login(
                 { email: EMAIL, password: PASSWORD },
@@ -186,6 +185,9 @@ describe('CloudClient.login', () => {
             ),
             (err: unknown) => err instanceof AuthError && err.code === 'MFA_REQUIRED' && err.apiStatus === 1033
         );
+    });
+
+    it('maps a wrong MFA code to AuthError', async () => {
         await assert.rejects(
             () => CloudClient.login(
                 { email: EMAIL, password: PASSWORD, mfaCode: '000000' },
@@ -193,6 +195,9 @@ describe('CloudClient.login', () => {
             ),
             (err: unknown) => err instanceof AuthError && err.code === 'MFA_WRONG'
         );
+    });
+
+    it('maps bad credentials to AuthError', async () => {
         await assert.rejects(
             () => CloudClient.login(
                 { email: EMAIL, password: 'nope' },
@@ -202,14 +207,22 @@ describe('CloudClient.login', () => {
         );
     });
 
-    it('rejects missing email or password before fetch', async () => {
+    it('rejects a missing email before fetch', async () => {
         const fetchImpl = async (): Promise<Response> => {
             throw new Error('fetch must not be called');
         };
+
         await assert.rejects(
             () => CloudClient.login({ email: '', password: PASSWORD }, { fetch: fetchImpl }),
             (err: unknown) => err instanceof AuthError && err.code === 'AUTHENTICATION'
         );
+    });
+
+    it('rejects a missing password before fetch', async () => {
+        const fetchImpl = async (): Promise<Response> => {
+            throw new Error('fetch must not be called');
+        };
+
         await assert.rejects(
             () => CloudClient.login({ email: EMAIL, password: '' }, { fetch: fetchImpl }),
             (err: unknown) => err instanceof AuthError && err.code === 'AUTHENTICATION'
@@ -303,15 +316,18 @@ describe('CloudClient.restore and device list', () => {
         );
     });
 
-    it('maps HTTP failures and timeouts', async (t) => {
+    it('maps HTTP failures to CloudError', async () => {
         const httpClient = CloudClient.restore(saved, {
             fetch: async () => jsonResponse('nope', 503, 'Service Unavailable')
         });
+
         await assert.rejects(
             () => httpClient.listDevices(),
             (err: unknown) => err instanceof CloudError && err.code === 'HTTP_ERROR' && err.httpStatus === 503
         );
+    });
 
+    it('maps a hanging request to NETWORK_TIMEOUT', async (t) => {
         t.mock.timers.enable({ apis: ['setTimeout'] });
         const hanging = CloudClient.restore(saved, {
             timeoutMs: 1_000,
@@ -327,6 +343,7 @@ describe('CloudClient.restore and device list', () => {
         const pending = hanging.listDevices();
         await Promise.resolve();
         t.mock.timers.tick(1_000);
+
         await assert.rejects(
             pending,
             (err: unknown) => err instanceof CloudError && err.code === 'NETWORK_TIMEOUT'

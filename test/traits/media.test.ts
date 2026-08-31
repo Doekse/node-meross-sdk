@@ -9,6 +9,7 @@ import {
 } from '../../src/protocol';
 import { MediaTrait } from '../../src/traits/media';
 import type { MediaTraitBind } from '../../src/traits/media';
+import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
 const UUID = '2206138957096651080248e1e99705a4';
@@ -19,34 +20,22 @@ function createHarness(): {
     requests: MerossMessage[];
     changes: Record<string, unknown>[];
 } {
-    const requests: MerossMessage[] = [];
     const changes: Record<string, unknown>[] = [];
     const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['media'] });
+    const { requests, request } = createRequestRecorder({
+        uuid: UUID,
+        key: KEY,
+        ack: (options, sent) => traitAck(sent, {
+            key: KEY,
+            payload: options.method === 'GET'
+                ? { mp3: { channel: CHANNEL, song: 9, mute: 1, volume: 8 } }
+                : {}
+        })
+    });
     const bind: MediaTraitBind = {
         uuid: UUID,
         channel: CHANNEL,
-        request: async (options) => {
-            const message = encodeMessage({
-                namespace: options.namespace,
-                method: options.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: options.payload,
-                uuid: UUID
-            });
-            requests.push(message);
-            return encodeMessage({
-                namespace: options.namespace,
-                method: options.method === 'GET' ? 'GETACK' : 'SETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
-                payload: options.method === 'GET'
-                    ? { mp3: { channel: CHANNEL, song: 9, mute: 1, volume: 8 } }
-                    : {}
-            });
-        },
+        request,
         emitChange: (values) => {
             changes.push({ ...values });
             endpoint.emit('change', { trait: 'media', values: { ...values } });

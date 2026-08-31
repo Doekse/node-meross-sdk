@@ -98,11 +98,14 @@ describe('Control.Light.Effect codec', () => {
         assert.equal(decoded[0].enable, 0);
     });
 
-    it('rejects malformed Light.Effect payloads', () => {
+    it('rejects a missing Light.Effect catalog', () => {
         assert.throws(
             () => decodeLightEffectGetAck({ effect: null }),
             (err: unknown) => err instanceof Error
         );
+    });
+
+    it('rejects Light.Effect catalog entries missing effectName', () => {
         assert.throws(
             () => decodeLightEffectGetAck({ effect: [{ Id: '1' }] }),
             (err: unknown) => err instanceof Error

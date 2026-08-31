@@ -13,6 +13,7 @@ import {
 } from '../../src/protocol';
 import { FanTrait } from '../../src/traits/fan';
 import type { FanTraitBind } from '../../src/traits/fan';
+import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
 const UUID = '2206138957096651080248e1e99705a4';
@@ -31,45 +32,24 @@ function createHarness(options: {
     requests: MerossMessage[];
     changes: Record<string, unknown>[];
 } {
-    const requests: MerossMessage[] = [];
     const changes: Record<string, unknown>[] = [];
     const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['fan'] });
     const namespaces = options.namespaces ?? new Set<string>();
-    const bind: FanTraitBind = {
+    const { requests, request } = createRequestRecorder({
         uuid: UUID,
-        channel: CHANNEL,
-        namespaces,
-        hasToggleX: options.hasToggleX ?? true,
-        hasToggle: options.hasToggle ?? false,
-        request: async (requestOptions) => {
-            const message = encodeMessage({
-                namespace: requestOptions.namespace,
-                method: requestOptions.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: requestOptions.payload,
-                uuid: UUID
-            });
-            requests.push(message);
+        key: KEY,
+        ack: (requestOptions, sent) => {
             if (requestOptions.namespace === FAN_NAMESPACE && requestOptions.method === 'GET') {
-                return encodeMessage({
-                    namespace: FAN_NAMESPACE,
-                    method: 'GETACK',
+                return traitAck(sent, {
                     key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    messageId: message.header.messageId,
-                    uuid: UUID,
+                    method: 'GETACK',
                     payload: options.fanGetAck ?? { fan: [{ channel: CHANNEL, speed: 3, maxSpeed: 4 }] }
                 });
             }
             if (requestOptions.namespace === FAN_CONFIG_NAMESPACE && requestOptions.method === 'GET') {
-                return encodeMessage({
-                    namespace: FAN_CONFIG_NAMESPACE,
-                    method: 'GETACK',
+                return traitAck(sent, {
                     key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    messageId: message.header.messageId,
-                    uuid: UUID,
+                    method: 'GETACK',
                     payload: options.configGetAck ?? { config: [{ channel: CHANNEL, maxSpeed: 0 }] }
                 });
             }
@@ -77,13 +57,9 @@ function createHarness(options: {
                 requestOptions.namespace === FILTER_MAINTENANCE_NAMESPACE
                 && requestOptions.method === 'PUSH'
             ) {
-                return encodeMessage({
-                    namespace: FILTER_MAINTENANCE_NAMESPACE,
-                    method: 'PUSH',
+                return traitAck(sent, {
                     key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    messageId: message.header.messageId,
-                    uuid: UUID,
+                    method: 'PUSH',
                     payload: options.filterPush
                         ?? { filter: [{ channel: CHANNEL, life: 80, lmTime: 1 }] }
                 });
@@ -92,13 +68,9 @@ function createHarness(options: {
                 requestOptions.namespace === FAN_BTN_CONFIG_NAMESPACE
                 && requestOptions.method === 'PUSH'
             ) {
-                return encodeMessage({
-                    namespace: FAN_BTN_CONFIG_NAMESPACE,
-                    method: 'PUSH',
+                return traitAck(sent, {
                     key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    messageId: message.header.messageId,
-                    uuid: UUID,
+                    method: 'PUSH',
                     payload: options.btnPush ?? {
                         config: [
                             { channel: CHANNEL, powerBtn: { type: 1 } },
@@ -108,26 +80,22 @@ function createHarness(options: {
                 });
             }
             if (requestOptions.namespace === TOGGLEX_NAMESPACE && requestOptions.method === 'GET') {
-                return encodeMessage({
-                    namespace: TOGGLEX_NAMESPACE,
-                    method: 'GETACK',
+                return traitAck(sent, {
                     key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    messageId: message.header.messageId,
-                    uuid: UUID,
+                    method: 'GETACK',
                     payload: { togglex: { channel: CHANNEL, onoff: 1, entity: 1, lmTime: 1 } }
                 });
             }
-            return encodeMessage({
-                namespace: requestOptions.namespace,
-                method: 'SETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
-                payload: {}
-            });
-        },
+            return traitAck(sent, { key: KEY, method: 'SETACK' });
+        }
+    });
+    const bind: FanTraitBind = {
+        uuid: UUID,
+        channel: CHANNEL,
+        namespaces,
+        hasToggleX: options.hasToggleX ?? true,
+        hasToggle: options.hasToggle ?? false,
+        request,
         emitChange: (values) => {
             changes.push({ ...values });
             endpoint.emit('change', { trait: 'fan', values: { ...values } });
@@ -287,20 +255,26 @@ describe('FanTrait', () => {
         assert.deepEqual(config, { channel: CHANNEL, powerBtn: { type: 1 } });
     });
 
-    it('setButtonConfig SETs and no-ops without Ability', async () => {
-        const withNs = createHarness({
+    it('setButtonConfig SETs when advertised', async () => {
+        const { trait, requests } = createHarness({
             namespaces: new Set([FAN_BTN_CONFIG_NAMESPACE])
         });
-        await withNs.trait.setButtonConfig({ powerBtn: { type: 2 } });
-        assert.equal(withNs.requests[0]?.header.namespace, FAN_BTN_CONFIG_NAMESPACE);
-        assert.equal(withNs.requests[0]?.header.method, 'SET');
-        assert.deepEqual(withNs.requests[0]?.payload, {
+
+        await trait.setButtonConfig({ powerBtn: { type: 2 } });
+
+        assert.equal(requests[0]?.header.namespace, FAN_BTN_CONFIG_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(requests[0]?.payload, {
             config: [{ channel: CHANNEL, powerBtn: { type: 2 } }]
         });
+    });
 
-        const without = createHarness();
-        await without.trait.setButtonConfig({ powerBtn: { type: 1 } });
-        assert.equal(without.requests.length, 0);
-        assert.equal(await without.trait.getButtonConfig(), undefined);
+    it('setButtonConfig is a no-op when Fan.BtnConfig is not advertised', async () => {
+        const { trait, requests } = createHarness();
+
+        await trait.setButtonConfig({ powerBtn: { type: 1 } });
+
+        assert.equal(requests.length, 0);
+        assert.equal(await trait.getButtonConfig(), undefined);
     });
 });

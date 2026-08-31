@@ -18,10 +18,13 @@ import {
 } from '../../../src/protocol/codecs/sensor';
 
 describe('Control.AlertConfig codec', () => {
-    it('encodes GET and SET', () => {
+    it('encodes GET for a channel', () => {
         assert.deepEqual(encodeAlertConfigGet(0), {
             config: [{ channel: 0 }]
         });
+    });
+
+    it('encodes SET with type and value', () => {
         assert.deepEqual(
             encodeAlertConfigSet({
                 channel: 0,
@@ -91,16 +94,22 @@ describe('Control.AlertReport codec', () => {
 });
 
 describe('Config.Sensor.Association codec', () => {
-    it('encodes GET and SET', () => {
+    it('encodes GET for a channel', () => {
         assert.deepEqual(encodeSensorAssociationGet({ channel: 0 }), {
             config: [{ channel: 0 }]
         });
+    });
+
+    it('encodes SET with temp association', () => {
         assert.deepEqual(
             encodeSensorAssociationSet({ channel: 0, tempAssociation: 2 }),
             {
                 config: [{ channel: 0, temp: { association: 2 } }]
             }
         );
+    });
+
+    it('encodes SET with a hub subdevice id', () => {
         assert.deepEqual(
             encodeSensorAssociationSet({
                 channel: 0,
@@ -129,11 +138,14 @@ describe('Config.Sensor.Association codec', () => {
         assert.deepEqual(decodeSensorAssociationGetAck({ config: [] }), []);
     });
 
-    it('rejects a missing or non-array config payload', () => {
+    it('rejects a missing config payload', () => {
         assert.throws(
             () => decodeSensorAssociationGetAck({}),
             /Association/
         );
+    });
+
+    it('rejects a non-array config payload', () => {
         assert.throws(
             () => decodeSensorAssociationGetAck({ config: { channel: 0 } }),
             /Association/

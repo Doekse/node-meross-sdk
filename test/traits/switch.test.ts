@@ -17,6 +17,7 @@ import {
     type MerossMessage
 } from '../../src/protocol';
 import { SwitchTrait } from '../../src/traits/switch';
+import { createRequestRecorder } from '../helpers/request';
 
 const fixturesDir = join(process.cwd(), 'test/fixtures');
 const KEY = 'stub-key';
@@ -33,36 +34,17 @@ function createSwitchHarness(channel = CHANNEL): {
     trait: SwitchTrait;
     requests: MerossMessage[];
 } {
-    const requests: MerossMessage[] = [];
     const endpoint = new Endpoint({
         id: `${UUID}:${channel}`,
         traits: ['switch']
     });
+    const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
     const trait = new SwitchTrait({
         kind: 'board',
         uuid: UUID,
         channel,
         namespace: TOGGLEX_NAMESPACE,
-        request: async (options) => {
-            const message = encodeMessage({
-                namespace: options.namespace,
-                method: options.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: options.payload,
-                uuid: UUID
-            });
-            requests.push(message);
-            return encodeMessage({
-                namespace: options.namespace,
-                method: 'SETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
-                payload: {}
-            });
-        },
+        request,
         emitChange: (values) => endpoint.emit('change', { trait: 'switch', values: { ...values } })
     });
     return { endpoint, trait, requests };
@@ -73,33 +55,14 @@ function createHubSwitchHarness(): {
     trait: SwitchTrait;
     requests: MerossMessage[];
 } {
-    const requests: MerossMessage[] = [];
     const endpoint = new Endpoint({ id: `${UUID}#${SUB_DEVICE_ID}`, traits: ['switch'] });
+    const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
     const trait = new SwitchTrait({
         kind: 'hub',
         uuid: UUID,
         subDeviceId: SUB_DEVICE_ID,
         namespaces: new Set([HUB_EXCEPTION_NAMESPACE, HUB_SUBDEVICE_VERSION_NAMESPACE]),
-        request: async (options) => {
-            const message = encodeMessage({
-                namespace: options.namespace,
-                method: options.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: options.payload,
-                uuid: UUID
-            });
-            requests.push(message);
-            return encodeMessage({
-                namespace: options.namespace,
-                method: 'SETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
-                payload: {}
-            });
-        },
+        request,
         emitChange: (values) => endpoint.emit('change', { trait: 'switch', values: { ...values } })
     });
     return { endpoint, trait, requests };
@@ -152,14 +115,19 @@ describe('SwitchTrait.setOn', () => {
 
     it('throws CommandError when the device replies with ERROR', async () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'] });
+        const { request } = createRequestRecorder({
+            uuid: UUID,
+            key: KEY,
+            ack: () => {
+                throw new CommandError('Device returned error: {}', 'COMMAND_FAILED');
+            }
+        });
         const trait = new SwitchTrait({
             kind: 'board',
             uuid: UUID,
             channel: 0,
             namespace: TOGGLEX_NAMESPACE,
-            request: async () => {
-                throw new CommandError('Device returned error: {}', 'COMMAND_FAILED');
-            },
+            request,
             emitChange: (values) => endpoint.emit('change', { trait: 'switch', values: { ...values } })
         });
 
@@ -199,7 +167,7 @@ describe('SwitchTrait PUSH', () => {
         assert.deepEqual(changes, []);
     });
 
-    it('ignores PUSH when uuid or namespace does not match the bind', () => {
+    it('ignores ToggleX PUSH from another device', () => {
         const { endpoint, trait } = createSwitchHarness();
         const changes: unknown[] = [];
         endpoint.on('change', (change) => changes.push(change));
@@ -211,25 +179,36 @@ describe('SwitchTrait PUSH', () => {
 
         assert.deepEqual(changes, []);
     });
+
+    it('ignores PUSH on a namespace the switch is not bound to', () => {
+        const { endpoint, trait } = createSwitchHarness();
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        trait.handlePush(encodeMessage({
+            namespace: 'Appliance.Control.Toggle',
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { toggle: { onoff: 1 } }
+        }));
+
+        assert.deepEqual(changes, []);
+    });
 });
 
 describe('SwitchTrait initial state', () => {
     it('exposes digest onoff without emitting change', () => {
-        const { endpoint } = createSwitchHarness();
+        const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['switch'] });
+        const { request } = createRequestRecorder({ uuid: UUID, key: KEY });
         const withDigest = new SwitchTrait({
             kind: 'board',
             uuid: UUID,
             channel: CHANNEL,
             namespace: TOGGLEX_NAMESPACE,
             initialOn: true,
-            request: async () => encodeMessage({
-                namespace: TOGGLEX_NAMESPACE,
-                method: 'GETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                uuid: UUID,
-                payload: {}
-            }),
+            request,
             emitChange: (values) => endpoint.emit('change', { trait: 'switch', values: { ...values } })
         });
         const changes: unknown[] = [];
@@ -275,7 +254,7 @@ describe('SwitchTrait hub bind', () => {
         assert.deepEqual(changes, []);
     });
 
-    it('applies fault and firmware/hardware versions from hub diagnostics PUSH', () => {
+    it('applies fault from Hub.Exception PUSH for the bound subdevice', () => {
         const { endpoint, trait } = createHubSwitchHarness();
         const changes: Array<{ values: Record<string, unknown> }> = [];
         endpoint.on('change', (change) => changes.push(change));
@@ -288,6 +267,15 @@ describe('SwitchTrait hub bind', () => {
             uuid: UUID,
             payload: { exception: [{ id: SUB_DEVICE_ID, code: 5061 }] }
         }));
+
+        assert.deepEqual(changes, [{ trait: 'switch', values: { fault: 5061 } }]);
+    });
+
+    it('applies firmware and hardware versions from Hub.SubDevice.Version PUSH', () => {
+        const { endpoint, trait } = createHubSwitchHarness();
+        const changes: Array<{ values: Record<string, unknown> }> = [];
+        endpoint.on('change', (change) => changes.push(change));
+
         trait.handlePush(encodeMessage({
             namespace: HUB_SUBDEVICE_VERSION_NAMESPACE,
             method: 'PUSH',
@@ -297,8 +285,9 @@ describe('SwitchTrait hub bind', () => {
             payload: { version: [{ id: SUB_DEVICE_ID, hardware: '1.1.5', firmware: '5.1.8' }] }
         }));
 
-        assert.equal(changes[0].values.fault, 5061);
-        assert.equal(changes[1].values.firmwareVersion, '5.1.8');
-        assert.equal(changes[1].values.hardwareVersion, '1.1.5');
+        assert.deepEqual(changes, [{
+            trait: 'switch',
+            values: { firmwareVersion: '5.1.8', hardwareVersion: '1.1.5' }
+        }]);
     });
 });

@@ -41,24 +41,32 @@ describe('ToggleX codec', () => {
         );
     });
 
-    it('encodes GET as an object and defaults channel to 0xffff', () => {
+    it('encodes GET as an object defaulting channel to 0xffff', () => {
         const all = encodeToggleXGet();
+
         assert.equal(Array.isArray(all.togglex), false);
         assert.deepEqual(all, { togglex: { channel: TOGGLEX_ALL_CHANNELS } });
+    });
+
+    it('encodes GET for an explicit channel from the firmware example', () => {
         assert.deepEqual(
             encodeToggleXGet({ channel: 0, entity: 1 }),
             loadFixture('togglex-get.json').payload
         );
     });
 
-    it('decodes GETACK object (one channel) and array (0xffff) from firmware examples', () => {
+    it('decodes a single-channel GETACK object from firmware', () => {
         const one = loadFixture('togglex-getack-one.json');
+
         assert.equal(Array.isArray(one.payload.togglex), false);
         assert.deepEqual(decodeToggleXGetAck(one.payload), [
             { channel: 0, on: true, entity: 1, lmTime: 1673911325 }
         ]);
+    });
 
+    it('decodes a 0xffff GETACK array from firmware', () => {
         const all = loadFixture('togglex-getack-all.json');
+
         assert.ok(Array.isArray(all.payload.togglex));
         assert.equal(all.payload.channel, TOGGLEX_ALL_CHANNELS);
         assert.deepEqual(decodeToggleXGetAck(all.payload), [

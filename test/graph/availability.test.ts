@@ -5,7 +5,7 @@ import { describe, it, type TestContext } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
 import { DeviceAvailability } from '../../src/graph/availability';
-import { Heartbeat, DEFAULT_HEARTBEAT_INTERVAL_MS } from '../../src/graph/heartbeat';
+import { Heartbeat } from '../../src/graph/heartbeat';
 import { decodeMessage, encodeMessage, type MerossMessage } from '../../src/protocol';
 
 const fixturesDir = join(process.cwd(), 'test/fixtures');
@@ -64,8 +64,62 @@ describe('Heartbeat silence detection', () => {
         heartbeat.stop();
     });
 
-    it('uses the default Meross heartbeat interval', () => {
-        assert.equal(DEFAULT_HEARTBEAT_INTERVAL_MS, 295_000);
+    it('marks offline after silence when the liveness probe fails', async (t: TestContext) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let clock = 0;
+        let offline = false;
+        const pollOnline = t.mock.fn(async () => {
+            throw new Error('unreachable');
+        });
+
+        const heartbeat = new Heartbeat({
+            intervalMs: INTERVAL_MS,
+            isOnline: () => !offline,
+            pollOnline,
+            onSilenceOffline: () => {
+                offline = true;
+            },
+            now: () => clock
+        });
+
+        heartbeat.start();
+        heartbeat.recordResponse();
+        clock = INTERVAL_MS + 1;
+        t.mock.timers.tick(INTERVAL_MS + 1);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.equal(offline, true);
+        assert.equal(pollOnline.mock.callCount(), 1);
+        heartbeat.stop();
+    });
+
+    it('marks offline after silence even when the liveness probe succeeds', async (t: TestContext) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let clock = 0;
+        let offline = false;
+        const pollOnline = t.mock.fn(async () => {});
+
+        const heartbeat = new Heartbeat({
+            intervalMs: INTERVAL_MS,
+            isOnline: () => !offline,
+            pollOnline,
+            onSilenceOffline: () => {
+                offline = true;
+            },
+            now: () => clock
+        });
+
+        heartbeat.start();
+        heartbeat.recordResponse();
+        clock = INTERVAL_MS + 1;
+        t.mock.timers.tick(INTERVAL_MS + 1);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.equal(offline, true);
+        assert.equal(pollOnline.mock.callCount(), 1);
+        heartbeat.stop();
     });
 });
 
@@ -224,6 +278,69 @@ describe('DeviceAvailability', () => {
         monitor.stop();
     });
 
+    it('marks offline after heartbeat silence when the liveness probe fails', async (t: TestContext) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let clock = 0;
+        const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
+        const seen: boolean[] = [];
+        endpoint.on('availability', (online) => seen.push(online));
+
+        const monitor = new DeviceAvailability({
+            uuid: UUID,
+            initialOnline: true,
+            endpoints: [endpoint],
+            heartbeatIntervalMs: INTERVAL_MS,
+            now: () => clock,
+            request: async () => {
+                throw new Error('unreachable');
+            }
+        });
+
+        monitor.start();
+        monitor.handleMessage(loadFixture('online-getack.json'));
+        seen.length = 0;
+        clock = INTERVAL_MS + 1;
+
+        t.mock.timers.tick(INTERVAL_MS + 1);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.deepEqual(seen, [false]);
+        monitor.stop();
+    });
+
+    it('recovers online when the silence probe System.All reports online', async (t: TestContext) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let clock = 0;
+        const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
+        const seen: boolean[] = [];
+        endpoint.on('availability', (online) => seen.push(online));
+
+        const monitor = new DeviceAvailability({
+            uuid: UUID,
+            initialOnline: true,
+            endpoints: [endpoint],
+            heartbeatIntervalMs: INTERVAL_MS,
+            now: () => clock,
+            request: async () => loadFixture('system-all-getack.json')
+        });
+
+        monitor.start();
+        monitor.handleMessage(loadFixture('online-getack.json'));
+        seen.length = 0;
+        clock = INTERVAL_MS + 1;
+
+        t.mock.timers.tick(INTERVAL_MS + 1);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.deepEqual(seen, [false, true]);
+        assert.equal(endpoint.isOnline(), true);
+        monitor.stop();
+    });
+
     it('records inbound GETACK replies for heartbeat liveness', async (t: TestContext) => {
         t.mock.timers.enable({ apis: ['setTimeout'] });
         let clock = 0;
@@ -250,9 +367,11 @@ describe('DeviceAvailability', () => {
         monitor.start();
         seen.length = 0;
         monitor.handleMessage(loadFixture('online-getack.json'));
-        clock = INTERVAL_MS + 1;
+        clock = INTERVAL_MS / 2;
+        monitor.handleMessage(loadFixture('online-getack.json'));
+        clock = INTERVAL_MS;
 
-        t.mock.timers.tick(INTERVAL_MS + 1);
+        t.mock.timers.tick(INTERVAL_MS);
         await Promise.resolve();
         await Promise.resolve();
 
@@ -409,10 +528,26 @@ describe('DeviceAvailability hub children', () => {
 
         assert.equal(hub.isOnline(), true);
         assert.deepEqual(sensorSeen, []);
+        monitor.stop();
+    });
 
+    it('marks a child online from Hub.Online after the hub board is up', () => {
+        const hub = new Endpoint({ id: HUB_UUID, traits: ['dnd'], initialOnline: false });
+        const sensor = new Endpoint({
+            id: `${HUB_UUID}#${SENSOR_ID}`,
+            traits: ['sensor'],
+            initialOnline: false
+        });
+        const sensorSeen: boolean[] = [];
+        sensor.on('availability', (online) => sensorSeen.push(online));
+
+        const monitor = hubMonitor(hub, sensor);
+        sensorSeen.length = 0;
+        monitor.handleMessage(fromHub('Appliance.System.Online', { online: { status: 1 } }));
         monitor.handleMessage(fromHub('Appliance.Hub.Online', {
             online: [{ id: SENSOR_ID, status: 1 }]
         }));
+
         assert.deepEqual(sensorSeen, [true]);
         monitor.stop();
     });

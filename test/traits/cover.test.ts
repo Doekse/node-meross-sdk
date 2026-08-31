@@ -18,6 +18,7 @@ import {
     type MerossMessage
 } from '../../src/protocol';
 import { CoverTrait } from '../../src/traits/cover';
+import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
 const UUID = '2206138957096651080248e1e99705a4';
@@ -32,41 +33,28 @@ function createCoverHarness(
     trait: CoverTrait;
     requests: MerossMessage[];
 } {
-    const requests: MerossMessage[] = [];
     const endpoint = new Endpoint({
         id: `${UUID}:${CHANNEL}`,
         traits: ['cover']
+    });
+    const { requests, request } = createRequestRecorder({
+        uuid: UUID,
+        key: KEY,
+        ack: (options, sent) => {
+            const ackPayload = getAckPayloads[options.namespace] ?? (
+                options.method === 'SET' && options.namespace === GARAGE_STATE_NAMESPACE
+                    ? { state: { ...((options.payload?.state ?? {}) as object), execute: 1 } }
+                    : {}
+            );
+            return traitAck(sent, { key: KEY, payload: ackPayload });
+        }
     });
     const trait = new CoverTrait({
         uuid: UUID,
         channel: CHANNEL,
         kind,
         namespaces,
-        request: async (options) => {
-            const message = encodeMessage({
-                namespace: options.namespace,
-                method: options.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: options.payload,
-                uuid: UUID
-            });
-            requests.push(message);
-            const ackPayload = getAckPayloads[options.namespace] ?? (
-                options.method === 'SET' && options.namespace === GARAGE_STATE_NAMESPACE
-                    ? { state: { ...((options.payload?.state ?? {}) as object), execute: 1 } }
-                    : {}
-            );
-            return encodeMessage({
-                namespace: options.namespace,
-                method: options.method === 'GET' ? 'GETACK' : 'SETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
-                payload: ackPayload
-            });
-        },
+        request,
         emitChange: (values) => endpoint.emit('change', { trait: 'cover', values: { ...values } })
     });
     return { endpoint, trait, requests };

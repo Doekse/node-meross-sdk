@@ -23,13 +23,19 @@ describe('System.DNDMode codec', () => {
         });
     });
 
-    it('decodes GETACK and PUSH payloads', () => {
+    it('decodes GETACK mode 1 as on', () => {
         assert.deepEqual(decodeDndGetAck({ DNDMode: { mode: 1 } }), { on: true });
+    });
+
+    it('decodes PUSH mode 0 as off', () => {
         assert.deepEqual(decodeDndPush({ DNDMode: { mode: 0 } }), { on: false });
     });
 
-    it('rejects missing DNDMode and unknown mode values', () => {
+    it('rejects a missing DNDMode object', () => {
         assert.throws(() => decodeDndGetAck({}), ProtocolError);
+    });
+
+    it('rejects an unknown DND mode value', () => {
         assert.throws(() => decodeDndGetAck({ DNDMode: { mode: 2 } }), ProtocolError);
     });
 });

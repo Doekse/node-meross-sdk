@@ -6,12 +6,22 @@ const { describe, it } = require('node:test');
 const sdk = require('../dist/index.js');
 
 describe('CJS public surface', () => {
-    it('exports Session, SwitchTrait, and NotImplementedError', () => {
+    it('exports Session, Endpoint, Inventory, traits, and public errors', () => {
         assert.equal(typeof sdk.Session, 'function');
+        assert.equal(typeof sdk.Session.login, 'function');
+        assert.equal(typeof sdk.Session.restore, 'function');
+        assert.equal(typeof sdk.Session.prototype.connect, 'function');
+        assert.equal(typeof sdk.Session.prototype.disconnect, 'function');
+        assert.equal(typeof sdk.Session.prototype.endpoint, 'function');
+        assert.equal(typeof sdk.Session.prototype.getToken, 'function');
+        assert.equal(typeof sdk.Session.prototype.sync, 'function');
+        assert.equal(typeof sdk.Endpoint, 'function');
+        assert.equal(typeof sdk.Inventory, 'function');
         assert.equal(typeof sdk.SwitchTrait, 'function');
         assert.equal(typeof sdk.NotImplementedError, 'function');
         assert.equal(typeof sdk.AuthError, 'function');
         assert.equal(typeof sdk.CloudError, 'function');
+        assert.equal(typeof sdk.MerossError, 'function');
     });
 
     it('does not export protocol or transport internals', () => {

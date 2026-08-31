@@ -12,6 +12,7 @@ import {
 } from '../../src/protocol';
 import { SystemTrait } from '../../src/traits/system';
 import type { SystemTraitBind, SystemValues } from '../../src/traits/system';
+import { createRequestRecorder } from '../helpers/request';
 
 const KEY = 'stub-key';
 const UUID = '2206138957096651080248e1e99705a4';
@@ -24,35 +25,16 @@ function createHarness(options: {
     requests: MerossMessage[];
     changes: SystemValues[];
 } {
-    const requests: MerossMessage[] = [];
     const changes: SystemValues[] = [];
     const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['system'] });
+    const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
     const bind: SystemTraitBind = {
         uuid: UUID,
         initialFirmware: { version: '7.3.13' },
         initialHardware: { type: 'mss110', uuid: UUID },
         initialTime: options.initialTime,
         now: () => NOW_MS,
-        request: async (opts) => {
-            const message = encodeMessage({
-                namespace: opts.namespace,
-                method: opts.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: opts.payload,
-                uuid: UUID
-            });
-            requests.push(message);
-            return encodeMessage({
-                namespace: opts.namespace,
-                method: 'SETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
-                payload: {}
-            });
-        },
+        request,
         emitChange: (values) => {
             changes.push(values);
             endpoint.emit('change', { trait: 'system', values: { ...values } });
@@ -177,14 +159,20 @@ describe('SystemTrait', () => {
         assert.equal(trait.clockSkewSeconds(), 1_676_428_950 - Math.floor(NOW_MS / 1000));
     });
 
-    it('ignores duplicate values and foreign uuid PUSH', () => {
+    it('does not emit change when firmware PUSH repeats the same version', () => {
         const { trait, changes } = createHarness();
-        const payload = {
-            firmware: { version: '7.4.0' }
-        };
+        const payload = { firmware: { version: '7.4.0' } };
+
         trait.handlePush(pushMessage(SYSTEM_FIRMWARE_NAMESPACE, payload));
         trait.handlePush(pushMessage(SYSTEM_FIRMWARE_NAMESPACE, payload));
+
         assert.equal(changes.length, 1);
+        assert.equal(trait.getFirmware()?.version, '7.4.0');
+    });
+
+    it('ignores firmware PUSH from another device', () => {
+        const { trait, changes } = createHarness();
+
         trait.handlePush(encodeMessage({
             namespace: SYSTEM_FIRMWARE_NAMESPACE,
             method: 'PUSH',
@@ -193,7 +181,8 @@ describe('SystemTrait', () => {
             uuid: 'other',
             payload: { firmware: { version: '9.0.0' } }
         }));
-        assert.equal(changes.length, 1);
-        assert.equal(trait.getFirmware()?.version, '7.4.0');
+
+        assert.equal(changes.length, 0);
+        assert.equal(trait.getFirmware()?.version, '7.3.13');
     });
 });

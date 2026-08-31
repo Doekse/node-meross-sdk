@@ -53,7 +53,7 @@ describe('Control.TriggerX codec', () => {
         });
     });
 
-    it('decodes GETACK object and PUSH array payloads', () => {
+    it('decodes a GETACK object as a one-entry list', () => {
         assert.deepEqual(decodeTriggerXGetAck({ triggerx: SAMPLE }), [{
             id: 'qm7n5caqxjapjfh5',
             channel: 1,
@@ -63,6 +63,9 @@ describe('Control.TriggerX codec', () => {
             createTime: 1614716670,
             rule: { duration: 46800, week: 255 }
         }]);
+    });
+
+    it('decodes a PUSH array of trigger rows', () => {
         const [entry] = decodeTriggerXPush({
             triggerx: [{
                 type: 0,

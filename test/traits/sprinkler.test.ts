@@ -16,6 +16,7 @@ import {
 } from '../../src/protocol';
 import { SprinklerTrait } from '../../src/traits/sprinkler';
 import type { SprinklerTraitBind } from '../../src/traits/sprinkler';
+import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
 const UUID = '2206138957096651080248e1e99705a4';
@@ -39,37 +40,28 @@ function createHarness(
     requests: MerossMessage[];
     changes: Record<string, unknown>[];
 } {
-    const requests: MerossMessage[] = [];
     const changes: Record<string, unknown>[] = [];
     const endpoint = new Endpoint({ id: `${UUID}#${SUB_DEVICE_ID}`, traits: ['sprinkler'] });
-    const bind: SprinklerTraitBind = {
+    const { requests, request } = createRequestRecorder({
         uuid: UUID,
-        subDeviceId: SUB_DEVICE_ID,
-        namespaces,
-        request: async (requestOptions) => {
-            const message = encodeMessage({
-                namespace: requestOptions.namespace,
-                method: requestOptions.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: requestOptions.payload,
-                uuid: UUID
-            });
-            requests.push(message);
+        key: KEY,
+        ack: (requestOptions, sent) => {
             const error = harnessOptions.errorByNamespace?.[requestOptions.namespace];
             if (error) {
                 throw error;
             }
-            return encodeMessage({
-                namespace: requestOptions.namespace,
-                method: 'GETACK',
+            return traitAck(sent, {
                 key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
+                method: 'GETACK',
                 payload: getAckByNamespace[requestOptions.namespace] ?? {}
             });
-        },
+        }
+    });
+    const bind: SprinklerTraitBind = {
+        uuid: UUID,
+        subDeviceId: SUB_DEVICE_ID,
+        namespaces,
+        request,
         emitChange: (values) => {
             changes.push({ ...values });
             endpoint.emit('change', { trait: 'sprinkler', values: { ...values } });
@@ -191,17 +183,19 @@ describe('SprinklerTrait', () => {
         assert.equal(await trait.getSchedule(), undefined);
     });
 
-    it('setSchedule writes Config.WaterPlan and no-ops without Ability', async () => {
+    it('setSchedule writes Config.WaterPlan when advertised', async () => {
         const entries = [{
             subId: SUB_DEVICE_ID,
             channel: 0,
             schedule: { enable: 1, week: 1, time: 0, dura: 600 }
         }];
-        const withAbility = createHarness();
-        assert.deepEqual(await withAbility.trait.setSchedule(entries), entries);
-        assert.equal(withAbility.requests[0]?.header.namespace, WATER_PLAN_NAMESPACE);
-        assert.equal(withAbility.requests[0]?.header.method, 'SET');
-        assert.deepEqual(withAbility.requests[0]?.payload, {
+        const { trait, requests } = createHarness();
+
+        assert.deepEqual(await trait.setSchedule(entries), entries);
+
+        assert.equal(requests[0]?.header.namespace, WATER_PLAN_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(requests[0]?.payload, {
             config: [{
                 subId: SUB_DEVICE_ID,
                 channel: 0,
@@ -211,27 +205,44 @@ describe('SprinklerTrait', () => {
                 dura: 600
             }]
         });
-
-        const without = createHarness({}, new Set([CONTROL_WATER_NAMESPACE]));
-        assert.equal(await without.trait.setSchedule(entries), undefined);
-        assert.equal(without.requests.length, 0);
     });
 
-    it('applies fault and firmware/hardware versions from hub diagnostics PUSH', () => {
+    it('setSchedule is a no-op when Config.WaterPlan is not advertised', async () => {
+        const { trait, requests } = createHarness({}, new Set([CONTROL_WATER_NAMESPACE]));
+
+        assert.equal(await trait.setSchedule([{
+            subId: SUB_DEVICE_ID,
+            channel: 0,
+            schedule: { enable: 1, week: 1, time: 0, dura: 600 }
+        }]), undefined);
+        assert.equal(requests.length, 0);
+    });
+
+    it('applies fault from Hub.Exception PUSH for the bound subdevice', () => {
         const { trait, changes } = createHarness({}, new Set([
             ...SPRINKLER_NAMESPACES,
-            HUB_EXCEPTION_NAMESPACE,
-            HUB_SUBDEVICE_VERSION_NAMESPACE
+            HUB_EXCEPTION_NAMESPACE
         ]));
+
         trait.handlePush(pushMessage(HUB_EXCEPTION_NAMESPACE, {
             exception: [{ id: SUB_DEVICE_ID, code: 5061 }]
         }));
+
+        assert.equal(changes[0].fault, 5061);
+    });
+
+    it('applies firmware and hardware versions from Hub.SubDevice.Version PUSH', () => {
+        const { trait, changes } = createHarness({}, new Set([
+            ...SPRINKLER_NAMESPACES,
+            HUB_SUBDEVICE_VERSION_NAMESPACE
+        ]));
+
         trait.handlePush(pushMessage(HUB_SUBDEVICE_VERSION_NAMESPACE, {
             version: [{ id: SUB_DEVICE_ID, hardware: '1.1.5', firmware: '5.1.8' }]
         }));
-        assert.equal(changes[0].fault, 5061);
-        assert.equal(changes[1].firmwareVersion, '5.1.8');
-        assert.equal(changes[1].hardwareVersion, '1.1.5');
+
+        assert.equal(changes[0].firmwareVersion, '5.1.8');
+        assert.equal(changes[0].hardwareVersion, '1.1.5');
     });
 
     it('handlePush emits lastCycle from Control.WaterEvent for this subId only', () => {

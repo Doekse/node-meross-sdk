@@ -12,6 +12,7 @@ import {
 } from '../../src/protocol';
 import { TimerTrait } from '../../src/traits/timer';
 import type { TimerGeneration, TimerTraitBind } from '../../src/traits/timer';
+import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
 const UUID = '2201201075575151809248e1e988531b';
@@ -54,7 +55,6 @@ function createHarness(options: {
     requests: MerossMessage[];
     changes: Record<string, unknown>[];
 } {
-    const requests: MerossMessage[] = [];
     const changes: Record<string, unknown>[] = [];
     const generation = options.generation ?? 'x';
     const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['timer'] });
@@ -63,55 +63,35 @@ function createHarness(options: {
             ? [CONTROL_TIMER_NAMESPACE]
             : [TIMERX_NAMESPACE, DIGEST_TIMERX_NAMESPACE]
     );
-    const bind: TimerTraitBind = {
+    const { requests, request } = createRequestRecorder({
         uuid: UUID,
-        channel: CHANNEL,
-        generation,
-        namespaces,
-        request: async (requestOptions) => {
-            const message = encodeMessage({
-                namespace: requestOptions.namespace,
-                method: requestOptions.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: requestOptions.payload,
-                uuid: UUID
-            });
-            requests.push(message);
+        key: KEY,
+        ack: (requestOptions, sent) => {
             if (requestOptions.namespace === DIGEST_TIMERX_NAMESPACE) {
-                return encodeMessage({
-                    namespace: requestOptions.namespace,
-                    method: 'GETACK',
+                return traitAck(sent, {
                     key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    messageId: message.header.messageId,
-                    uuid: UUID,
+                    method: 'GETACK',
                     payload: {
                         digest: [{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]
                     }
                 });
             }
             if (requestOptions.method === 'GET') {
-                return encodeMessage({
-                    namespace: requestOptions.namespace,
-                    method: 'GETACK',
+                return traitAck(sent, {
                     key: KEY,
-                    from: `/appliance/${UUID}/publish`,
-                    messageId: message.header.messageId,
-                    uuid: UUID,
+                    method: 'GETACK',
                     payload: options.getAck ?? { timerx: WIRE_ENTRY }
                 });
             }
-            return encodeMessage({
-                namespace: requestOptions.namespace,
-                method: `${requestOptions.method}ACK`,
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
-                payload: {}
-            });
-        },
+            return traitAck(sent, { key: KEY });
+        }
+    });
+    const bind: TimerTraitBind = {
+        uuid: UUID,
+        channel: CHANNEL,
+        generation,
+        namespaces,
+        request,
         emitChange: (values) => {
             changes.push({ ...values });
             endpoint.emit('change', { trait: 'timer', values: { ...values } });
@@ -175,35 +155,25 @@ describe('TimerTrait', () => {
     });
 
     it('each channel resolves its own Digest ids after a shared Digest GETACK', async () => {
-        const requests: MerossMessage[] = [];
         const namespaces = new Set([TIMERX_NAMESPACE, DIGEST_TIMERX_NAMESPACE]);
-        const request: TimerTraitBind['request'] = async (requestOptions) => {
-            const message = encodeMessage({
-                namespace: requestOptions.namespace,
-                method: requestOptions.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: requestOptions.payload,
-                uuid: UUID
-            });
-            requests.push(message);
-            const raw = requestOptions.payload?.timerx;
-            const id = typeof raw === 'object' && raw !== null && typeof (raw as { id?: unknown }).id === 'string'
-                ? (raw as { id: string }).id
-                : WIRE_ENTRY.id;
-            const channel = id === 'timer-ch1' ? 1 : 0;
-            return encodeMessage({
-                namespace: requestOptions.namespace,
-                method: 'GETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
-                payload: {
-                    timerx: { ...WIRE_ENTRY, id, channel }
-                }
-            });
-        };
+        const { requests, request } = createRequestRecorder({
+            uuid: UUID,
+            key: KEY,
+            ack: (requestOptions, sent) => {
+                const raw = requestOptions.payload?.timerx;
+                const id = typeof raw === 'object' && raw !== null && typeof (raw as { id?: unknown }).id === 'string'
+                    ? (raw as { id: string }).id
+                    : WIRE_ENTRY.id;
+                const channel = id === 'timer-ch1' ? 1 : 0;
+                return traitAck(sent, {
+                    key: KEY,
+                    method: 'GETACK',
+                    payload: {
+                        timerx: { ...WIRE_ENTRY, id, channel }
+                    }
+                });
+            }
+        });
         const trait0 = new TimerTrait({
             uuid: UUID,
             channel: 0,
@@ -360,8 +330,9 @@ describe('TimerTrait legacy Control.Timer', () => {
         extend: { toggle: { onoff: 1, lmTime: 0 } }
     };
 
-    it('applies Control.Timer GETACK and ignores mismatched uuid', () => {
+    it('applies Control.Timer GETACK for this device', () => {
         const { trait, changes } = createHarness({ generation: 'legacy' });
+
         trait.handlePush(encodeMessage({
             namespace: CONTROL_TIMER_NAMESPACE,
             method: 'GETACK',
@@ -370,12 +341,16 @@ describe('TimerTrait legacy Control.Timer', () => {
             uuid: UUID,
             payload: { timer: [LEGACY_WIRE] }
         }));
+
         assert.equal(trait.list().length, 1);
         assert.equal(trait.list()[0]?.id, LEGACY_WIRE.id);
         assert.equal(trait.list()[0]?.on, true);
         assert.equal(changes.length, 1);
+    });
 
-        changes.length = 0;
+    it('ignores Control.Timer GETACK from another device', () => {
+        const { trait, changes } = createHarness({ generation: 'legacy' });
+
         trait.handlePush(encodeMessage({
             namespace: CONTROL_TIMER_NAMESPACE,
             method: 'GETACK',
@@ -384,12 +359,13 @@ describe('TimerTrait legacy Control.Timer', () => {
             uuid: 'other',
             payload: { timer: [{ ...LEGACY_WIRE, id: 'other' }] }
         }));
+
         assert.equal(changes.length, 0);
-        assert.equal(trait.list()[0]?.id, LEGACY_WIRE.id);
+        assert.deepEqual(trait.list(), []);
     });
 
-    it('set SETs the full Control.Timer list and remove SETs without the id', async () => {
-        const { trait, requests, changes } = createHarness({ generation: 'legacy' });
+    it('set SETs the full Control.Timer list including the new entry', async () => {
+        const { trait, requests } = createHarness({ generation: 'legacy' });
         trait.handlePush(encodeMessage({
             namespace: CONTROL_TIMER_NAMESPACE,
             method: 'GETACK',
@@ -398,7 +374,6 @@ describe('TimerTrait legacy Control.Timer', () => {
             uuid: UUID,
             payload: { timer: [LEGACY_WIRE] }
         }));
-        changes.length = 0;
         requests.length = 0;
 
         await trait.set({
@@ -409,15 +384,34 @@ describe('TimerTrait legacy Control.Timer', () => {
             on: false,
             createTime: 1673168351
         });
+
         assert.equal(requests[0]?.header.namespace, CONTROL_TIMER_NAMESPACE);
         assert.equal(requests[0]?.header.method, 'SET');
         const setList = requests[0]?.payload.timer as Array<{ id: string }>;
         assert.equal(setList.length, 2);
         assert.ok(setList.some((entry) => entry.id === LEGACY_WIRE.id));
         assert.ok(setList.some((entry) => entry.id === 'newtimer1'));
+    });
 
+    it('remove SETs Control.Timer without the deleted id', async () => {
+        const { trait, requests } = createHarness({ generation: 'legacy' });
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_TIMER_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                timer: [
+                    LEGACY_WIRE,
+                    { ...LEGACY_WIRE, id: 'newtimer1', alias: 'Fan off', time: 720, week: 255 }
+                ]
+            }
+        }));
         requests.length = 0;
+
         await trait.remove(LEGACY_WIRE.id);
+
         assert.equal(requests[0]?.header.method, 'SET');
         assert.deepEqual(
             (requests[0]?.payload.timer as Array<{ id: string }>).map((entry) => entry.id),

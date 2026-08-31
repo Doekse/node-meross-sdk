@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -15,7 +14,9 @@ import {
     type MerossMessage
 } from '../src/protocol';
 import { Session } from '../src/session';
-import { RATE_LIMIT_MAX_PUBLISHES, type MqttBrokerClient } from '../src/transport';
+import { RATE_LIMIT_MAX_PUBLISHES } from '../src/transport';
+import { jsonResponse, ok } from './helpers/http';
+import { FakeMqttClient } from './helpers/mqtt';
 
 const fixturesDir = join(process.cwd(), 'test/fixtures');
 const EMAIL = 'you@example.com';
@@ -44,20 +45,18 @@ const DEVICE_ROW = {
     channels: [{ channel: 0, devName: 'Kitchen plug' }]
 };
 
-function jsonResponse(body: unknown, status = 200, statusText = 'OK'): Response {
-    const text = typeof body === 'string' ? body : JSON.stringify(body);
-    return {
-        status,
-        statusText,
-        ok: status === 200,
-        async text() {
-            return text;
-        }
-    } as Response;
-}
+const LAMP_UUID = '3306138957096651080248e1e99705b7';
+const LAMP_ROW = {
+    uuid: LAMP_UUID,
+    devName: 'Lamp',
+    deviceType: 'mss110',
+    onlineStatus: 1,
+    channels: [{ channel: 0, devName: 'Lamp' }]
+};
 
-function ok(data: unknown): Response {
-    return jsonResponse({ apiStatus: 0, data });
+interface EnrollmentAckOptions {
+    innerIp?: boolean;
+    encrypt?: boolean;
 }
 
 function loadFixture(name: string): MerossMessage['payload'] {
@@ -67,31 +66,41 @@ function loadFixture(name: string): MerossMessage['payload'] {
     return raw.payload;
 }
 
-class FakeMqttClient extends EventEmitter implements MqttBrokerClient {
-    readonly published: Array<{ topic: string; payload: string }> = [];
-    reconnects = 0;
+/**
+ * Answers Ability, System.All, and poller GETs as they are published so
+ * Session.connect/sync can settle. Host commands (ToggleX SET) stay unanswered.
+ */
+class EnrollingMqttClient extends FakeMqttClient {
+    ackOptions: EnrollmentAckOptions = {};
+    failUuid: string | undefined;
 
-    subscribe(_topic: string, callback: (error?: Error | null) => void): void {
-        callback();
+    constructor() {
+        super({ userId: USER_ID });
+        this.autoAck = (payload) => this.enrollmentReply(payload);
     }
 
-    publish(topic: string, payload: string, callback: (error?: Error | null) => void): void {
-        this.published.push({ topic, payload });
-        callback();
+    private enrollmentReply(payload: string): MerossMessage | undefined {
+        let sent: MerossMessage;
+        try {
+            sent = JSON.parse(payload) as MerossMessage;
+        } catch {
+            return undefined;
+        }
+        if (!shouldAutoAck(sent)) {
+            return undefined;
+        }
+        return sent.header.uuid === this.failUuid
+            ? ackFor(sent, 'ERROR', { error: { code: 5000, detail: 'boom' } })
+            : enrollmentAck(sent, this.ackOptions);
     }
+}
 
-    end(_force: boolean, callback: () => void): void {
-        this.emit('close');
-        callback();
-    }
-
-    reconnect(): void {
-        this.reconnects += 1;
-    }
-
-    deliver(message: MerossMessage): void {
-        this.emit('message', `/app/${USER_ID}/subscribe`, Buffer.from(JSON.stringify(message)));
-    }
+function shouldAutoAck(sent: MerossMessage): boolean {
+    return sent.header.method === 'GET'
+        || (
+            sent.header.method === 'SET'
+            && sent.header.namespace === 'Appliance.Control.Multiple'
+        );
 }
 
 function ackFor(
@@ -112,7 +121,7 @@ function ackFor(
     });
 }
 
-function enrollmentAck(sent: MerossMessage, options: { innerIp?: boolean; encrypt?: boolean } = {}): MerossMessage {
+function enrollmentAck(sent: MerossMessage, options: EnrollmentAckOptions = {}): MerossMessage {
     const uuid = sent.header.uuid ?? UUID;
     if (sent.header.namespace === ABILITY_NAMESPACE) {
         return ackFor(sent, 'GETACK', {
@@ -207,83 +216,63 @@ function createCloudFetch(
     return { fetchImpl, calls, devices };
 }
 
-function createMqttConnect(clientRef: { current?: FakeMqttClient }) {
+function createMqttConnect(
+    clientRef: { current?: EnrollingMqttClient },
+    ackOptions: EnrollmentAckOptions = {}
+) {
     return () => {
-        const client = new FakeMqttClient();
+        const client = new EnrollingMqttClient();
+        client.ackOptions = ackOptions;
         clientRef.current = client;
         queueMicrotask(() => client.emit('connect'));
         return client;
     };
 }
 
+/**
+ * Poller schedule(0) is a macrotask; one tick lets the cold-start Multiple
+ * publish and auto-ack after connect returns.
+ */
 async function waitMacrotask(): Promise<void> {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
-function isPendingGet(sent: MerossMessage, alreadyAcked: Set<string>): boolean {
-    if (alreadyAcked.has(sent.header.messageId)) {
-        return false;
-    }
-    return sent.header.method === 'GET'
-        || (
-            sent.header.method === 'SET'
-            && sent.header.namespace === 'Appliance.Control.Multiple'
-        );
-}
-
 /**
- * Acks every outstanding GET / Multiple until a short quiet window — covers
- * Ability + System.All enrollment and the poller's cold-start batch.
- * `failUuid` answers one device with an ERROR instead.
+ * Logs in, connects MQTT, enrolls the cloud list (Ability + System.All),
+ * and waits out the first poller tick. Tests that care about later sync
+ * mutate `devices` or `client.ackOptions` / `client.failUuid`.
  */
-async function drainPendingGets(
-    client: FakeMqttClient,
-    alreadyAcked: Set<string>,
-    options?: { innerIp?: boolean; encrypt?: boolean; failUuid?: string }
-): Promise<void> {
-    for (let quiet = 0; quiet < 5; ) {
-        let ackedOne = false;
-        for (const entry of client.published) {
-            const sent = JSON.parse(entry.payload) as MerossMessage;
-            if (!isPendingGet(sent, alreadyAcked)) {
-                continue;
-            }
-            alreadyAcked.add(sent.header.messageId);
-            client.deliver(sent.header.uuid === options?.failUuid
-                ? ackFor(sent, 'ERROR', { error: { code: 5000, detail: 'boom' } })
-                : enrollmentAck(sent, options));
-            ackedOne = true;
-            break;
+async function loginConnected(options: {
+    devices?: unknown[];
+    login?: () => unknown;
+    lanFetch?: typeof fetch;
+    ack?: EnrollmentAckOptions;
+    /** Attach listeners before MQTT comes up so connect emits are not missed. */
+    beforeConnect?: (session: Session) => void;
+} = {}): Promise<{
+    session: Session;
+    client: EnrollingMqttClient;
+    clientRef: { current?: EnrollingMqttClient };
+    calls: Array<{ url: string; init: RequestInit }>;
+    devices: unknown[];
+}> {
+    const devices = options.devices ?? [DEVICE_ROW];
+    const { fetchImpl, calls } = createCloudFetch(devices, options.login);
+    const clientRef: { current?: EnrollingMqttClient } = {};
+    const session = await Session.login(
+        { email: EMAIL, password: PASSWORD },
+        {
+            cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+            mqttConnect: createMqttConnect(clientRef, options.ack ?? {}),
+            lanFetch: options.lanFetch
         }
-        if (ackedOne) {
-            quiet = 0;
-            await Promise.resolve();
-            continue;
-        }
-        await waitMacrotask();
-        quiet++;
-    }
-}
-
-/**
- * Ability + System.All enrollment, then DevicePoller schedule(0) cold-start GETs.
- * Returns the settled message ids so a follow-up `sync` can keep draining
- * without re-delivering acks for requests that already resolved.
- */
-async function connectSession(
-    session: Session,
-    clientRef: { current?: FakeMqttClient }
-): Promise<Set<string>> {
-    const connectPromise = session.connect();
-    await Promise.resolve();
-    const client = clientRef.current!;
+    );
+    options.beforeConnect?.(session);
+    await session.connect();
+    await waitMacrotask();
+    const client = clientRef.current;
     assert.ok(client, 'MQTT client was not created');
-
-    const acked = new Set<string>();
-    await drainPendingGets(client, acked);
-    await connectPromise;
-    await drainPendingGets(client, acked);
-    return acked;
+    return { session, client, clientRef, calls, devices };
 }
 
 describe('Session.login and restore', () => {
@@ -321,17 +310,7 @@ describe('Session.login and restore', () => {
 
 describe('Session.connect', () => {
     it('enrolls devices over MQTT and projects inventory rows', async () => {
-        const { fetchImpl } = createCloudFetch();
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
-
-        await connectSession(session, clientRef);
+        const { session } = await loginConnected();
 
         const rows = session.inventory.endpoints();
         assert.equal(rows.length, 1);
@@ -339,22 +318,12 @@ describe('Session.connect', () => {
         assert.equal(rows[0]?.name, 'Kitchen plug');
         assert.equal(rows[0]?.classHint, 'socket');
         assert.deepEqual(rows[0]?.traits, ['switch', 'system', 'energy']);
-        assert.equal('online' in (rows[0] ?? {}), false);
+        assert.equal(rows[0]?.online, undefined);
         await session.disconnect();
     });
 
     it('endpoint returns a trait-bearing Endpoint after connect', async () => {
-        const { fetchImpl } = createCloudFetch();
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
-
-        await connectSession(session, clientRef);
+        const { session } = await loginConnected();
 
         const endpoint = session.endpoint(`${UUID}:0`);
         assert.equal(endpoint.id, `${UUID}:0`);
@@ -363,6 +332,12 @@ describe('Session.connect', () => {
         assert.ok(endpoint.system);
         assert.equal(endpoint.switch.isOn(), true);
         assert.equal(endpoint.system.getFirmware()?.version, '7.3.13');
+        await session.disconnect();
+    });
+
+    it('throws ENDPOINT_NOT_FOUND for an unknown id', async () => {
+        const { session } = await loginConnected();
+
         assert.throws(
             () => session.endpoint('missing'),
             (err: unknown) => err instanceof MerossError && err.code === 'ENDPOINT_NOT_FOUND'
@@ -371,23 +346,12 @@ describe('Session.connect', () => {
     });
 
     it('updates endpoint availability from System.Online PUSH', async () => {
-        const { fetchImpl } = createCloudFetch();
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
-
-        await connectSession(session, clientRef);
+        const { session, client } = await loginConnected();
 
         const endpoint = session.endpoint(`${UUID}:0`);
         const availability: boolean[] = [];
         endpoint.on('availability', (online) => availability.push(online));
 
-        const client = clientRef.current!;
         client.deliver(encodeMessage({
             namespace: 'Appliance.System.Online',
             method: 'PUSH',
@@ -399,30 +363,28 @@ describe('Session.connect', () => {
 
         assert.deepEqual(availability, [false]);
         assert.equal(endpoint.isOnline(), false);
-        assert.equal('online' in (session.inventory.endpoints()[0] ?? {}), false);
+        assert.equal(session.inventory.endpoints()[0]?.online, undefined);
         await session.disconnect();
     });
 
-    it('disconnect closes MQTT and connect is idempotent', async () => {
-        const { fetchImpl } = createCloudFetch();
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
+    it('connect is a no-op while already connected', async () => {
+        const { session, client } = await loginConnected();
 
-        await connectSession(session, clientRef);
-
-        const client = clientRef.current!;
         const publishedBefore = client.published.length;
         await session.connect();
         assert.equal(client.published.length, publishedBefore);
 
         await session.disconnect();
+    });
+
+    it('disconnect closes MQTT and is idempotent', async () => {
+        const { session, client } = await loginConnected();
+
         await session.disconnect();
+        assert.equal(client.ended, true);
+
+        await session.disconnect();
+        assert.equal(client.ended, true);
     });
 
     it('skips offline cloud devices until they answer Ability and System.All', async () => {
@@ -433,17 +395,7 @@ describe('Session.connect', () => {
             onlineStatus: 2,
             channels: [{ channel: 0, devName: 'Shed plug' }]
         };
-        const { fetchImpl } = createCloudFetch([DEVICE_ROW, shed]);
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
-
-        await connectSession(session, clientRef);
+        const { session } = await loginConnected({ devices: [DEVICE_ROW, shed] });
 
         const rows = session.inventory.endpoints();
         assert.equal(rows.length, 1);
@@ -456,39 +408,22 @@ describe('Session.connect', () => {
     });
 
     it('sync enrolls devices added to the account after connect', async () => {
-        const devices: unknown[] = [DEVICE_ROW];
-        const { fetchImpl } = createCloudFetch(devices);
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
+        const { session, devices } = await loginConnected();
 
-        await connectSession(session, clientRef);
-
-        const added = {
+        devices.push({
             uuid: 'added0000000000000000000000000001',
             devName: 'Porch plug',
             deviceType: 'mss110',
             onlineStatus: 1,
             channels: [{ channel: 0, devName: 'Porch plug' }]
-        };
-        devices.push(added);
-
-        const client = clientRef.current!;
-        const acked = new Set(client.published.map((entry) => (
-            JSON.parse(entry.payload) as MerossMessage
-        ).header.messageId));
-        const syncPromise = session.sync();
-        await drainPendingGets(client, acked);
-        await syncPromise;
-        await drainPendingGets(client, acked);
+        });
+        await session.sync();
 
         assert.equal(session.inventory.endpoints().length, 2);
-        assert.equal(session.endpoint(`${added.uuid}:0`).id, `${added.uuid}:0`);
+        assert.equal(
+            session.endpoint('added0000000000000000000000000001:0').id,
+            'added0000000000000000000000000001:0'
+        );
         await session.disconnect();
     });
 
@@ -511,24 +446,10 @@ describe('Session.connect', () => {
             } as Response;
         };
 
-        const { fetchImpl } = createCloudFetch();
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef),
-                lanFetch
-            }
-        );
-
-        const connectPromise = session.connect();
-        await Promise.resolve();
-        const client = clientRef.current!;
-        const acked = new Set<string>();
-        await drainPendingGets(client, acked, { encrypt: true, innerIp: true });
-        await connectPromise;
-        await drainPendingGets(client, acked, { encrypt: true, innerIp: true });
+        const { session } = await loginConnected({
+            lanFetch,
+            ack: { encrypt: true, innerIp: true }
+        });
 
         assert.ok(lanCalls.length >= 1);
         const headers = lanCalls[0]!.headers as Record<string, string>;
@@ -553,24 +474,10 @@ describe('Session.connect', () => {
             } as Response;
         };
 
-        const { fetchImpl } = createCloudFetch();
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef),
-                lanFetch
-            }
-        );
-
-        const connectPromise = session.connect();
-        await Promise.resolve();
-        const client = clientRef.current!;
-        const acked = new Set<string>();
-        await drainPendingGets(client, acked, { innerIp: true });
-        await connectPromise;
-        await drainPendingGets(client, acked, { innerIp: true });
+        const { session, client } = await loginConnected({
+            lanFetch,
+            ack: { innerIp: true }
+        });
 
         assert.ok(lanUrls.length >= 1);
 
@@ -593,49 +500,46 @@ describe('Session.connect', () => {
         await session.disconnect();
     });
 
-    it('emits connection on connect, drop, reconnect, and disconnect', async () => {
-        const { fetchImpl } = createCloudFetch();
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
+    it('emits connection true after connect', async () => {
+        const connections: boolean[] = [];
+        const { session } = await loginConnected({
+            beforeConnect: (next) => {
+                next.on('connection', (connected) => connections.push(connected));
             }
-        );
+        });
 
+        assert.deepEqual(connections, [true]);
+        await session.disconnect();
+    });
+
+    it('emits connection false on broker drop and true on reconnect', async () => {
+        const { session, client } = await loginConnected();
         const connections: boolean[] = [];
         session.on('connection', (connected) => connections.push(connected));
 
-        await connectSession(session, clientRef);
-        assert.deepEqual(connections, [true]);
+        client.emit('close');
+        assert.deepEqual(connections, [false]);
 
-        clientRef.current!.emit('close');
-        assert.deepEqual(connections, [true, false]);
-
-        clientRef.current!.emit('connect');
-        assert.deepEqual(connections, [true, false, true]);
+        client.emit('connect');
+        assert.deepEqual(connections, [false, true]);
 
         await session.disconnect();
-        assert.deepEqual(connections, [true, false, true, false]);
+    });
+
+    it('emits connection false when disconnect closes MQTT', async () => {
+        const { session } = await loginConnected();
+        const connections: boolean[] = [];
+        session.on('connection', (connected) => connections.push(connected));
+
+        await session.disconnect();
+
+        assert.deepEqual(connections, [false]);
     });
 
     it('emits ratelimit when the MQTT publish window is exhausted', async () => {
-        const { fetchImpl } = createCloudFetch();
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
-
+        const { session, client } = await loginConnected();
         const drops: Array<[string, number]> = [];
         session.on('ratelimit', (uuid, dropped) => drops.push([uuid, dropped]));
-
-        await connectSession(session, clientRef);
-        const client = clientRef.current!;
         const endpoint = session.endpoint(`${UUID}:0`);
 
         for (let i = 0; i < RATE_LIMIT_MAX_PUBLISHES + 2; i += 1) {
@@ -673,7 +577,7 @@ describe('Session.connect', () => {
             }
             return jsonResponse({ apiStatus: 999, info: 'unexpected' }, 500);
         };
-        const clientRef: { current?: FakeMqttClient } = {};
+        const clientRef: { current?: EnrollingMqttClient } = {};
         const session = await Session.login(
             { email: EMAIL, password: PASSWORD },
             {
@@ -690,42 +594,23 @@ describe('Session.connect', () => {
             (error: unknown) => error instanceof AuthError && error.code === 'TOKEN_EXPIRED'
         );
         assert.deepEqual(connections, [true, false]);
+        assert.equal(clientRef.current?.ended, true);
         await session.disconnect();
     });
 });
 
-const LAMP_UUID = '3306138957096651080248e1e99705b7';
-const LAMP_ROW = {
-    uuid: LAMP_UUID,
-    devName: 'Lamp',
-    deviceType: 'mss110',
-    onlineStatus: 1,
-    channels: [{ channel: 0, devName: 'Lamp' }]
-};
-
 describe('Session.sync', () => {
     it('drops devices that left the cloud account', async () => {
-        const devices: unknown[] = [DEVICE_ROW, LAMP_ROW];
-        const { fetchImpl } = createCloudFetch(devices);
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
-
-        const acked = await connectSession(session, clientRef);
+        const { session, devices } = await loginConnected({
+            devices: [DEVICE_ROW, LAMP_ROW]
+        });
         assert.deepEqual(
             session.inventory.endpoints().map((row) => row.id).sort(),
             [`${LAMP_UUID}:0`, `${UUID}:0`].sort()
         );
 
         devices.splice(1, 1);
-        const syncing = session.sync();
-        await drainPendingGets(clientRef.current!, acked);
-        await syncing;
+        await session.sync();
 
         assert.deepEqual(
             session.inventory.endpoints().map((row) => row.id),
@@ -739,45 +624,20 @@ describe('Session.sync', () => {
     });
 
     it('keeps the same Endpoint when a re-read finds the same shape', async () => {
-        const { fetchImpl } = createCloudFetch();
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
-
-        const acked = await connectSession(session, clientRef);
+        const { session } = await loginConnected();
         const before = session.endpoint(`${UUID}:0`);
 
-        const syncing = session.sync();
-        await drainPendingGets(clientRef.current!, acked);
-        await syncing;
+        await session.sync();
 
         assert.equal(session.endpoint(`${UUID}:0`), before);
         await session.disconnect();
     });
 
     it('joins overlapping callers to the run already in flight', async () => {
-        const { fetchImpl, calls } = createCloudFetch();
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
-
-        const acked = await connectSession(session, clientRef);
+        const { session, calls } = await loginConnected();
         const listedAfterConnect = calls.filter((call) => call.url.endsWith('/v1/Device/devList')).length;
 
-        const first = session.sync();
-        const second = session.sync();
-        await drainPendingGets(clientRef.current!, acked);
-        await Promise.all([first, second]);
+        await Promise.all([session.sync(), session.sync()]);
 
         // A second pass would re-list and could drop a device the first just enrolled.
         assert.equal(
@@ -792,24 +652,11 @@ describe('Session.sync', () => {
     });
 
     it('runs a later sync normally once the first has settled', async () => {
-        const { fetchImpl, calls } = createCloudFetch();
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
-
-        const acked = await connectSession(session, clientRef);
+        const { session, calls } = await loginConnected();
         const listedAfterConnect = calls.filter((call) => call.url.endsWith('/v1/Device/devList')).length;
 
-        for (let i = 0; i < 2; i += 1) {
-            const syncing = session.sync();
-            await drainPendingGets(clientRef.current!, acked);
-            await syncing;
-        }
+        await session.sync();
+        await session.sync();
 
         assert.equal(
             calls.filter((call) => call.url.endsWith('/v1/Device/devList')).length,
@@ -819,23 +666,11 @@ describe('Session.sync', () => {
     });
 
     it('rebuilds an Endpoint when the device reports new abilities', async () => {
-        const { fetchImpl } = createCloudFetch();
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
-
-        const acked = await connectSession(session, clientRef);
+        const { session, client } = await loginConnected();
         const before = session.endpoint(`${UUID}:0`);
 
-        // Encrypt.ECDHE appears after a firmware update, changing the ability set.
-        const syncing = session.sync();
-        await drainPendingGets(clientRef.current!, acked, { encrypt: true });
-        await syncing;
+        client.ackOptions = { encrypt: true };
+        await session.sync();
 
         const after = session.endpoint(`${UUID}:0`);
         assert.notEqual(after, before);
@@ -847,25 +682,13 @@ describe('Session.sync', () => {
     });
 
     it('emits error and keeps the rest when one device fails to enroll', async () => {
-        const devices: unknown[] = [DEVICE_ROW];
-        const { fetchImpl } = createCloudFetch(devices);
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
-
-        const acked = await connectSession(session, clientRef);
+        const { session, client, devices } = await loginConnected();
         const errors: Error[] = [];
         session.on('warning', (error) => errors.push(error));
 
         devices.push(LAMP_ROW);
-        const syncing = session.sync();
-        await drainPendingGets(clientRef.current!, acked, { failUuid: LAMP_UUID });
-        await syncing;
+        client.failUuid = LAMP_UUID;
+        await session.sync();
 
         assert.equal(errors.length, 1);
         assert.deepEqual(
@@ -879,18 +702,9 @@ describe('Session.sync', () => {
 describe('Session.reauthenticate', () => {
     it('swaps the token in place and leaves transports alone', async () => {
         let loginData: unknown = LOGIN_DATA;
-        const { fetchImpl } = createCloudFetch([DEVICE_ROW], () => loginData);
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
-
-        await connectSession(session, clientRef);
-        const client = clientRef.current;
+        const { session, client, clientRef } = await loginConnected({
+            login: () => loginData
+        });
         const before = session.endpoint(`${UUID}:0`);
 
         loginData = { ...LOGIN_DATA, token: 'fresh-token' };
@@ -905,18 +719,9 @@ describe('Session.reauthenticate', () => {
 
     it('rebuilds transports when the device key rotated but keeps endpoints', async () => {
         let loginData: unknown = LOGIN_DATA;
-        const { fetchImpl } = createCloudFetch([DEVICE_ROW], () => loginData);
-        const clientRef: { current?: FakeMqttClient } = {};
-        const session = await Session.login(
-            { email: EMAIL, password: PASSWORD },
-            {
-                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
-                mqttConnect: createMqttConnect(clientRef)
-            }
-        );
-
-        await connectSession(session, clientRef);
-        const client = clientRef.current;
+        const { session, client, clientRef } = await loginConnected({
+            login: () => loginData
+        });
         const before = session.endpoint(`${UUID}:0`);
 
         loginData = { ...LOGIN_DATA, key: 'rotated-key' };

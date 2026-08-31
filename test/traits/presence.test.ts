@@ -11,6 +11,7 @@ import {
 } from '../../src/protocol';
 import { PresenceTrait } from '../../src/traits/presence';
 import type { PresenceTraitBind } from '../../src/traits/presence';
+import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
 const UUID = '2206138957096651080248e1e99705a4';
@@ -32,23 +33,12 @@ function createHarness(namespaces: readonly string[] = [PRESENCE_CONFIG_NAMESPAC
     requests: MerossMessage[];
     changes: Record<string, unknown>[];
 } {
-    const requests: MerossMessage[] = [];
     const changes: Record<string, unknown>[] = [];
     const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['presence'] });
-    const bind: PresenceTraitBind = {
+    const { requests, request } = createRequestRecorder({
         uuid: UUID,
-        channel: CHANNEL,
-        namespaces: new Set(namespaces),
-        request: async (options) => {
-            const message = encodeMessage({
-                namespace: options.namespace,
-                method: options.method,
-                key: KEY,
-                from: '/app/test/subscribe',
-                payload: options.payload,
-                uuid: UUID
-            });
-            requests.push(message);
+        key: KEY,
+        ack: (options, sent) => {
             const replyPayload = options.namespace === PRESENCE_CONFIG_NAMESPACE
                 ? CONFIG_ACK_PAYLOAD
                 : {
@@ -60,16 +50,18 @@ function createHarness(namespaces: readonly string[] = [PRESENCE_CONFIG_NAMESPAC
                         }
                     }]
                 };
-            return encodeMessage({
-                namespace: options.namespace,
-                method: options.namespace === PRESENCE_STUDY_NAMESPACE ? 'SETACK' : 'GETACK',
+            return traitAck(sent, {
                 key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                messageId: message.header.messageId,
-                uuid: UUID,
+                method: options.namespace === PRESENCE_STUDY_NAMESPACE ? 'SETACK' : 'GETACK',
                 payload: replyPayload
             });
-        },
+        }
+    });
+    const bind: PresenceTraitBind = {
+        uuid: UUID,
+        channel: CHANNEL,
+        namespaces: new Set(namespaces),
+        request,
         emitChange: (values) => {
             changes.push({ ...values });
             endpoint.emit('change', { trait: 'presence', values: { ...values } });

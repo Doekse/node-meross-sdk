@@ -19,6 +19,7 @@ import {
     LanHttpTransport,
     type LanHttpTransportOptions
 } from '../../src/transport';
+import { jsonResponse } from '../helpers/http';
 
 const KEY = 'stub-key';
 const UUID = '00000000-0000-4000-8000-000000000001';
@@ -33,18 +34,6 @@ const ENCRYPTION_KEY = deriveEncryptionKey(
 interface FetchCall {
     url: string;
     init: RequestInit;
-}
-
-function jsonResponse(body: unknown, status = 200, statusText = 'OK'): Response {
-    const text = typeof body === 'string' ? body : JSON.stringify(body);
-    return {
-        status,
-        statusText,
-        ok: status === 200,
-        async text() {
-            return text;
-        }
-    } as Response;
 }
 
 function ackFor(request: ReturnType<typeof decodeMessage>, method: 'GETACK' | 'SETACK' | 'ERROR') {
@@ -192,21 +181,25 @@ describe('LanHttpTransport', () => {
         assert.equal(dispatcher.pending.has(messageId), false);
     });
 
-    it('throws ProtocolError on invalid JSON or a bad signature', async () => {
-        const { transport: badJson } = createTransport(async () => jsonResponse('{not json'));
+    it('throws ProtocolError on invalid JSON', async () => {
+        const { transport } = createTransport(async () => jsonResponse('{not json'));
+
         await assert.rejects(
-            badJson.request({ uuid: UUID, ip: IP, namespace: TOGGLEX_NAMESPACE, method: 'GET' }),
+            transport.request({ uuid: UUID, ip: IP, namespace: TOGGLEX_NAMESPACE, method: 'GET' }),
             (err: unknown) => err instanceof ProtocolError
         );
+    });
 
-        const { transport: badSign } = createTransport(async (_url, init) => {
+    it('throws SIGNATURE_ERROR when GETACK is signed incorrectly', async () => {
+        const { transport } = createTransport(async (_url, init) => {
             const sent = decodeMessage(String(init.body), KEY);
             const ack = ackFor(sent, 'GETACK');
             ack.header.sign = '0'.repeat(32);
             return jsonResponse(ack);
         });
+
         await assert.rejects(
-            badSign.request({ uuid: UUID, ip: IP, namespace: TOGGLEX_NAMESPACE, method: 'GET' }),
+            transport.request({ uuid: UUID, ip: IP, namespace: TOGGLEX_NAMESPACE, method: 'GET' }),
             (err: unknown) => err instanceof ProtocolError && err.code === 'SIGNATURE_ERROR'
         );
     });
