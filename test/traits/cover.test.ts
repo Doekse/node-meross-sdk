@@ -250,7 +250,7 @@ describe('CoverTrait PUSH', () => {
         assert.deepEqual(changes, [{ trait: 'cover', values: { open: false } }]);
     });
 
-    it('ignores PUSH entries for other channels on the same board', () => {
+    it('ignores PUSH entries for other channels on the same device', () => {
         const { endpoint, trait } = createCoverHarness('garage');
         const changes: unknown[] = [];
         endpoint.on('change', (change) => changes.push(change));

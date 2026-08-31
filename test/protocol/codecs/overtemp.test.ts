@@ -41,7 +41,7 @@ describe('Config.OverTemp codec', () => {
         );
     });
 
-    it('tolerates boards that report type -1', () => {
+    it('tolerates devices that report type -1', () => {
         assert.deepEqual(
             decodeConfigOverTempGetAck({
                 overTemp: { enable: 1, type: -1 }

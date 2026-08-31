@@ -111,7 +111,7 @@ describe('System.All GETACK', () => {
 });
 
 describe('enrollPhysicalDevice', () => {
-    it('binds a single-channel ToggleX board as one socket endpoint', () => {
+    it('binds a single-channel ToggleX device as one socket endpoint', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: socketAbility({
                 'Appliance.Control.Electricity': {},
@@ -338,7 +338,7 @@ describe('enrollPhysicalDevice', () => {
         );
     });
 
-    it('appends timer to a light board when Control.TimerX is advertised', () => {
+    it('appends timer to a light device when Control.TimerX is advertised', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: {
                 ability: {
@@ -774,7 +774,7 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(device.endpoints[1]?.classHint, 'socket');
     });
 
-    it('appends media to a light board that also has Control.Mp3', () => {
+    it('appends media to a light device that also has Control.Mp3', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: {
                 ability: {
@@ -809,7 +809,7 @@ describe('enrollPhysicalDevice', () => {
         assert.deepEqual(device.endpoints[0]?.traits, ['media', 'system']);
     });
 
-    it('enrolls a presence board as classHint sensor with the presence trait', () => {
+    it('enrolls a presence device as classHint sensor with the presence trait', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: {
                 ability: {
@@ -846,7 +846,7 @@ describe('enrollPhysicalDevice', () => {
             }
         ];
         const graph = new DeviceGraph();
-        const device = graph.enroll({
+        const { device } = graph.enroll({
             abilityPayload: {
                 ability: {
                     'Appliance.Hub.SubdeviceList': {},
@@ -922,7 +922,7 @@ describe('enrollPhysicalDevice', () => {
 
     it('pairs the hub parent with dnd when System.DNDMode is advertised', () => {
         const graph = new DeviceGraph();
-        const device = graph.enroll({
+        const { device } = graph.enroll({
             abilityPayload: {
                 ability: {
                     'Appliance.Hub.SubdeviceList': {},
@@ -955,7 +955,7 @@ describe('enrollPhysicalDevice', () => {
 
     it('pairs the hub parent with alarm when Control.Alarm is advertised', () => {
         const graph = new DeviceGraph();
-        const device = graph.enroll({
+        const { device } = graph.enroll({
             abilityPayload: {
                 ability: {
                     'Appliance.Hub.SubdeviceList': {},
@@ -1146,7 +1146,7 @@ describe('enrollPhysicalDevice', () => {
 describe('DeviceGraph and Inventory', () => {
     it('projects inventory rows and keeps ids stable across re-enroll', () => {
         const graph = new DeviceGraph();
-        const first = graph.enroll({
+        const { device: first } = graph.enroll({
             abilityPayload: socketAbility(),
             allPayload: payload('system-all-getack.json')
         });

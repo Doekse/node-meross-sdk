@@ -5,7 +5,7 @@ import mqtt from 'mqtt';
 import { TransportError } from '../errors';
 import { ProtocolDispatcher, decodeMessage, encodeMessage } from '../protocol';
 import type { MerossMessage, MerossPayload } from '../protocol';
-import { PublishRateLimiter } from './rate-limit';
+import { PublishRateLimiter, type PublishPriority } from './rate-limit';
 
 /** Cloud brokers listen on 443; older firmware used 2001. */
 const MQTT_PORT = 443;
@@ -50,6 +50,8 @@ export interface MqttBrokerClient {
     subscribe(topic: string, callback: (error?: Error | null) => void): void;
     publish(topic: string, payload: string, callback: (error?: Error | null) => void): void;
     end(force: boolean, callback: () => void): void;
+    /** Drops the current connection and opens a new one with the same options. */
+    reconnect(): void;
 }
 
 export type MqttConnectFn = (options: MqttConnectOptions) => MqttBrokerClient;
@@ -79,6 +81,8 @@ export interface MqttRequestOptions {
     namespace: string;
     method: string;
     payload?: MerossPayload;
+    /** Defaults to `user` so an unannotated caller keeps the full publish window. */
+    priority?: PublishPriority;
 }
 
 /** First {@link MqttTransport.connect} must not settle on a later mqtt.js reconnect. */
@@ -173,7 +177,7 @@ export class MqttTransport {
             throw new TransportError('MQTT transport is not connected', 'MQTT_NOT_CONNECTED');
         }
         // Refuse before pending.register so a dropped publish leaves no orphan id.
-        if (!this.rateLimiter.take(options.uuid)) {
+        if (!this.rateLimiter.take(options.uuid, options.priority ?? 'user')) {
             this.onRateLimit?.(options.uuid, this.rateLimiter.droppedCount(options.uuid));
             throw new TransportError(
                 `MQTT publish rate limited for device ${options.uuid}`,
@@ -312,7 +316,15 @@ export class MqttTransport {
                 if (error) {
                     failed = true;
                     this.applyConnected(false);
-                    this.handshake?.reject(new TransportError(error.message, 'MQTT_SUBSCRIBE_FAILED'));
+                    const transportError = new TransportError(error.message, 'MQTT_SUBSCRIBE_FAILED');
+                    if (this.handshake) {
+                        this.handshake.reject(transportError);
+                        return;
+                    }
+                    // A subscribe that fails on reconnect leaves mqtt.js believing
+                    // the socket is healthy, so it never retries on its own and
+                    // every later request would fail with MQTT_NOT_CONNECTED.
+                    client.reconnect();
                     return;
                 }
                 remaining -= 1;

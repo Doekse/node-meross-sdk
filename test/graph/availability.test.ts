@@ -94,7 +94,7 @@ describe('DeviceAvailability', () => {
         monitor.stop();
     });
 
-    it('applies System.Online PUSH to all endpoints on the board', () => {
+    it('applies System.Online PUSH to all endpoints on the device', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
         const seen: boolean[] = [];
         endpoint.on('availability', (online) => seen.push(online));

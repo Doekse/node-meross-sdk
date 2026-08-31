@@ -7,7 +7,7 @@ import {
 import type { RoutedRequestOptions } from '../transport/router';
 
 /**
- * Transport bind for one System.DNDMode board. Session supplies this;
+ * Transport bind for one device's System.DNDMode surface. Session supplies this;
  * trait tests inject a fake request/emit pair.
  */
 export interface DndTraitBind {

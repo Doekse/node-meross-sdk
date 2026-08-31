@@ -121,14 +121,14 @@ function decodeDigestRow(item: unknown): DigestTimerXRow {
     return row;
 }
 
-/** GET `{ timer: [] }` returns every schedule on the board. */
+/** GET `{ timer: [] }` returns every schedule on the device. */
 export function encodeControlTimerGet(): MerossPayload {
     return { timer: [] };
 }
 
 /**
- * SET replaces the board's full timer list (no DELETE on this namespace).
- * Channel / sunOffset are omitted — pre-X boards are single-outlet.
+ * SET replaces the device's full timer list (no DELETE on this namespace).
+ * Channel / sunOffset are omitted — pre-X devices are single-outlet.
  */
 export function encodeControlTimerSet(entries: TimerXEntry[]): MerossPayload {
     return {

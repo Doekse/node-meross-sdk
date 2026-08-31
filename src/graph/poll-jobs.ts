@@ -127,7 +127,7 @@ export interface PollEndpoint {
     traits: readonly TraitName[];
 }
 
-interface PollCadence {
+interface PollPeriods {
     strategy: PollStrategy;
     periodMs: number;
     periodCloudMs: number;
@@ -150,75 +150,75 @@ type PayloadSpec =
         dataId?: string[];
     };
 
-interface PollSpec extends PollCadence {
+interface PollSpec extends PollPeriods {
     skipIf?: string;
     payload?: PayloadSpec;
     method?: 'GET' | 'PUSH';
 }
 
-const DEFAULT: PollCadence = {
+const DEFAULT: PollPeriods = {
     strategy: 'default',
     periodMs: 0,
     periodCloudMs: CLOUDMQTT_PERIOD_MS
 };
 
-const ONCE: PollCadence = {
+const ONCE: PollPeriods = {
     strategy: 'once',
     periodMs: 0,
     periodCloudMs: 0
 };
 
-const SMART_FAST: PollCadence = {
+const SMART_FAST: PollPeriods = {
     strategy: 'smart',
     periodMs: SENSOR_FAST_PERIOD_MS,
     periodCloudMs: SENSOR_FAST_CLOUD_PERIOD_MS
 };
 
-/** LatestX stays every LAN tick; over MQTT it uses the config cloud floor. */
-const SMART_FAST_MQTT: PollCadence = {
+/** LatestX stays every LAN tick; over MQTT it uses the config cloud period. */
+const SMART_FAST_MQTT: PollPeriods = {
     strategy: 'smart',
     periodMs: SENSOR_FAST_PERIOD_MS,
     periodCloudMs: CLOUDMQTT_PERIOD_MS
 };
 
 /** Latest is live on LAN; over MQTT it can wait with other slow sensors. */
-const SMART_FAST_SLOW_CLOUD: PollCadence = {
+const SMART_FAST_SLOW_CLOUD: PollPeriods = {
     strategy: 'smart',
     periodMs: SENSOR_FAST_PERIOD_MS,
     periodCloudMs: SENSOR_SLOW_CLOUD_PERIOD_MS
 };
 
-const SMART_SLOW: PollCadence = {
+const SMART_SLOW: PollPeriods = {
     strategy: 'smart',
     periodMs: SENSOR_SLOW_PERIOD_MS,
     periodCloudMs: SENSOR_SLOW_CLOUD_PERIOD_MS
 };
 
-const SMART_CONFIG: PollCadence = {
+const SMART_CONFIG: PollPeriods = {
     strategy: 'smart',
     periodMs: SENSOR_SLOW_PERIOD_MS,
     periodCloudMs: CLOUDMQTT_PERIOD_MS
 };
 
-const SMART_ENERGY: PollCadence = {
+const SMART_ENERGY: PollPeriods = {
     strategy: 'smart',
     periodMs: ENERGY_PERIOD_MS,
     periodCloudMs: ENERGY_CLOUD_PERIOD_MS
 };
 
-const SMART_CLOUDMQTT: PollCadence = {
+const SMART_CLOUDMQTT: PollPeriods = {
     strategy: 'smart',
     periodMs: CLOUDMQTT_PERIOD_MS,
     periodCloudMs: CLOUDMQTT_PERIOD_MS
 };
 
-const SMART_BATTERY: PollCadence = {
+const SMART_BATTERY: PollPeriods = {
     strategy: 'smart',
     periodMs: HUB_BATTERY_PERIOD_MS,
     periodCloudMs: CLOUDMQTT_PERIOD_MS
 };
 
-const SMART_ALL: PollCadence = {
+const SMART_ALL: PollPeriods = {
     strategy: 'smart',
     periodMs: SYSTEM_ALL_PERIOD_MS,
     periodCloudMs: CLOUDMQTT_PERIOD_MS
@@ -282,7 +282,7 @@ const POLL: Record<string, PollSpec> = {
         payload: channelList('config', 'energy')
     },
 
-    // Digest / board state
+    // Digest / device state
     [TOGGLEX_NAMESPACE]: {
         ...DEFAULT,
         payload: ALL_CHANNELS
@@ -581,7 +581,7 @@ const POLL: Record<string, PollSpec> = {
 };
 
 /**
- * Builds the board poll table from Ability. LIST payloads come from enrolled
+ * Builds the device poll table from Ability. LIST payloads come from enrolled
  * endpoints so a strip or hub issues one GET per namespace.
  */
 export function buildPollJobs(
@@ -650,8 +650,8 @@ function encodeList(
         }));
     }
 
-    const board = spec.data ? preferTrait(withChannel, 'presence') : withChannel;
-    return board.map((endpoint) => ({
+    const targets = spec.data ? preferTrait(withChannel, 'presence') : withChannel;
+    return targets.map((endpoint) => ({
         channel: endpoint.channel,
         ...(spec.data ? { data: spec.data } : {})
     }));

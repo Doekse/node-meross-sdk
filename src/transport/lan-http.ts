@@ -10,9 +10,9 @@ import {
 import type { MerossMessage, MerossPayload } from '../protocol';
 
 /**
- * First-attempt LAN HTTP budget. Device HTTP times out with no apparent cause,
+ * First-attempt LAN HTTP timeout. Device HTTP times out with no apparent cause,
  * so attempts escalate from here (1s → 2s → 4s) the way meross_lan escalates
- * its connect timeout, rather than burning the router's error budget on one abort.
+ * its connect timeout, rather than spending the router's error budget on one abort.
  * Raising this shortens the escalation, since the total must still fit inside
  * {@link DEFAULT_COMMAND_TIMEOUT_MS}.
  */
@@ -32,7 +32,7 @@ export interface LanHttpTransportOptions {
     from: string;
     dispatcher?: ProtocolDispatcher;
     fetch?: typeof globalThis.fetch;
-    /** First-attempt abort budget; each retry doubles it while the total still fits. */
+    /** First-attempt abort timeout; each retry doubles it while the total still fits. */
     timeoutMs?: number;
 }
 
@@ -78,7 +78,7 @@ export class LanHttpTransport {
     }
 
     /**
-     * Escalates the abort budget across attempts, stopping while the total
+     * Escalates the abort timeout across attempts, stopping while the total
      * still fits inside {@link DEFAULT_COMMAND_TIMEOUT_MS}: letting the pending
      * timer fire first would raise CommandError, which TransportRouter treats
      * as a delivered command and does not fail over to MQTT. Every exit settles

@@ -15,7 +15,7 @@ export interface InventoryRow {
 
 /**
  * Cloud/LAN device list projected into user-visible endpoints (one row per
- * endpoint, not per physical board). Availability is omitted so hosts cannot
+ * endpoint, not per physical device). Availability is omitted so hosts cannot
  * read a snapshot frozen at enroll.
  */
 export class Inventory {

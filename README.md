@@ -48,7 +48,8 @@ The first published release is `0.1.0-alpha`.
 - Ability-based enrollment: traits attach from firmware `Ability` + `System.All`, not a hardcoded model list
 - One `Endpoint` per user-visible device (strip outlets and hub children included)
 - LAN HTTP preferred automatically, with MQTT failover
-- PUSH updates plus background polling; hosts listen on endpoint `availability` and `change`, and session `connection` and `ratelimit`
+- PUSH updates plus background polling; hosts listen on endpoint `availability` and `change`, and session `connection`, `ratelimit`, and `warning`
+- The cloud publish window is respected per device: one publish per poll cycle, packed into `Appliance.Control.Multiple`, with publishes held back so polling cannot starve a user command
 - TypeScript types shipped next to CommonJS `dist/` so `require()` hosts (including Homey) load without a bundler
 
 
@@ -147,13 +148,35 @@ await restored.connect();
 
 ### Refresh inventory
 
-`connect()` lists the cloud account and enrolls reachable boards. Call `sync()` again to pick up devices that came online later. Offline or unreachable boards are skipped so one timeout cannot block the rest.
+`connect()` lists the cloud account and enrolls reachable devices. `sync()` reconciles that list again: devices that left the account are dropped, devices that came online are added, and known devices are re-read so a firmware update that changed abilities takes effect. Offline or unreachable devices are skipped so one timeout cannot block the rest, and each skip is reported on the session `warning` event. A stale token still rejects `sync()` itself. Overlapping `sync()` calls share the run already in flight rather than starting a second pass.
 
 ```javascript
 await session.sync();
 ```
 
+A re-read reuses the existing `Endpoint` when the device reports the same abilities and channels, so listeners survive. Only a changed shape replaces it, which shows up as a new object from `session.endpoint(id)`.
+
+Devices are enrolled a few at a time rather than one after another, so a large account does not take minutes to appear.
+
 `disconnect()` closes transports and clears inventory; the stored token remains valid for `restore`.
+
+### Recover from an expired token
+
+A long-running host will eventually see `AuthError` with code `TOKEN_EXPIRED`. `reauthenticate()` swaps in fresh credentials without discarding inventory, so every `Endpoint` and its listeners stay valid:
+
+```javascript
+try {
+  await session.sync();
+} catch (error) {
+  if (error.code === 'TOKEN_EXPIRED') {
+    await session.reauthenticate({ email: 'you@example.com', password: 'secret' });
+    // persist session.getToken() again
+    await session.sync();
+  }
+}
+```
+
+Transports are only rebuilt when the device key, user id, or broker domain actually changed, and the old connection stays live until the new one is up.
 
 ### Events
 
@@ -166,6 +189,11 @@ session.on('connection', (connected) => {
 
 session.on('ratelimit', (uuid, dropped) => {
   // cloud publish dropped for this device; dropped is the cumulative count
+});
+
+session.on('warning', (error) => {
+  // a single device that sync() skipped, e.g. an Ability / System.All timeout.
+  // Cloud-level failures reject sync() itself instead of arriving here.
 });
 
 const endpoint = session.endpoint(row.id);
@@ -199,7 +227,7 @@ Unknown ids throw `MerossError` with code `ENDPOINT_NOT_FOUND`. Commands on a se
 
 ## Traits
 
-Traits are present only when the board advertised the matching ability. Use optional chaining or an `if` guard.
+Traits are present only when the device advertised the matching ability. Use optional chaining or an `if` guard.
 
 
 | Trait       | Typical devices                    | Host API                                                                              |
@@ -217,8 +245,8 @@ Traits are present only when the board advertised the matching ability. Use opti
 | `sprinkler` | Hub sprinkler valves               | `setOn`, `setDuration`, `getSchedule`; last cycle on `change`                         |
 | `media`     | Speakers                           | `setMuted`, `setVolume`, `setSong`                                                    |
 | `alarm`     | Hub sirens, board chimes           | `setOn(on, durationSeconds?)`, `setLinked`, `setBeep`                                 |
-| `dnd`       | LED mute on the board              | `isOn()`, `setOn(boolean)`                                                            |
-| `system`    | Board firmware, time, diagnostics  | `getFirmware` / `getHardware` / `getTime`, `setTimezone`, `getDebug`, `getPosition` / `setPosition`, `clockSkewSeconds` |
+| `dnd`       | LED mute on the device             | `isOn()`, `setOn(boolean)`                                                            |
+| `system`    | Device firmware, time, diagnostics | `getFirmware` / `getHardware` / `getTime`, `setTimezone`, `getDebug`, `getPosition` / `setPosition`, `clockSkewSeconds` |
 | `timer`     | Toggle / ToggleX clock schedules   | `list()`, `set()`, `setEnabled()`, `remove()`                                         |
 | `trigger`   | Toggle / ToggleX countdown rules   | `list()`, `set()`, `setEnabled()`, `remove()`                                         |
 

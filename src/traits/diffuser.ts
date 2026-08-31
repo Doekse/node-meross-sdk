@@ -28,7 +28,7 @@ export interface DiffuserValues {
 }
 
 /**
- * Transport + channel bind for one Diffuser board. Session supplies this;
+ * Transport + channel bind for one Diffuser device. Session supplies this;
  * trait tests inject a fake request/emit pair.
  */
 export interface DiffuserTraitBind {

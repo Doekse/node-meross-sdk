@@ -46,7 +46,7 @@ export interface TriggerTraitBind {
     /** Chosen at enrollment from Ability: TriggerX preferred over Control.Trigger. */
     generation: TriggerGeneration;
     /**
-     * Ability keys advertised by the board. Digest.TriggerX listing no-ops when absent.
+     * Ability keys advertised by the device. Digest.TriggerX listing no-ops when absent.
      */
     namespaces?: ReadonlySet<string>;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
@@ -131,7 +131,7 @@ export class TriggerTrait {
             return;
         }
         if (message.header.namespace === CONTROL_TRIGGER_NAMESPACE && this.bind.generation === 'legacy') {
-            // Classic Toggle only applies on channel 0; pre-X Trigger is the same board list.
+            // Classic Toggle only applies on channel 0; pre-X Trigger is the same device-wide list.
             if (this.bind.channel !== 0) {
                 return;
             }

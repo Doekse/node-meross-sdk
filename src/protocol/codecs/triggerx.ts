@@ -125,13 +125,13 @@ function decodeDigestRow(item: unknown): DigestTriggerXRow {
     return row;
 }
 
-/** GET `{ trigger: {} }` returns every countdown on the board. */
+/** GET `{ trigger: {} }` returns every countdown on the device. */
 export function encodeControlTriggerGet(): MerossPayload {
     return { trigger: {} };
 }
 
 /**
- * SET replaces the board's full trigger list (no DELETE on this namespace).
+ * SET replaces the device's full trigger list (no DELETE on this namespace).
  * Host `{ duration, week }` expands to the `_if_` / `_then_` / `_do_` auto-off shape.
  */
 export function encodeControlTriggerSet(entries: TriggerXEntry[]): MerossPayload {

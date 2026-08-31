@@ -185,7 +185,7 @@ describe('SwitchTrait PUSH', () => {
         assert.deepEqual(changes, [{ trait: 'switch', values: { on: true } }]);
     });
 
-    it('ignores PUSH entries for other channels on the same board', () => {
+    it('ignores PUSH entries for other channels on the same device', () => {
         const { endpoint, trait } = createSwitchHarness();
         const changes: unknown[] = [];
         endpoint.on('change', (change) => changes.push(change));

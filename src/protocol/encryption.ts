@@ -109,7 +109,7 @@ export function decodeEncryptEcdheSetAck(payload: MerossPayload): EncryptEcdhe {
 
 /**
  * Unpaired P-256 key agreement (Suite `ka: ecdhe256`) before the device has an
- * account key. Configured boards use {@link deriveEncryptionKey} instead;
+ * account key. Configured devices use {@link deriveEncryptionKey} instead;
  * pairing flows SET Encrypt.ECDHE with {@link encodeEncryptEcdheSet}.
  */
 export class EcdheHandshake {

@@ -35,7 +35,7 @@ export interface PresenceValues {
 }
 
 /**
- * Transport + channel bind for a WiFi presence board (MS600). Session supplies
+ * Transport + channel bind for a WiFi presence device (MS600). Session supplies
  * this; trait tests inject a fake request/emit pair.
  */
 export interface PresenceTraitBind {

@@ -29,7 +29,7 @@ export interface SystemTimeSetOptions {
 
 /**
  * Same object as `system.firmware` in System.All. meross_lan reads this dict
- * with `.get()` because boards omit fields the firmware table marks required.
+ * with `.get()` because devices omit fields the firmware table marks required.
  */
 export interface SystemFirmwareState {
     version?: string;

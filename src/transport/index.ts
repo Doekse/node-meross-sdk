@@ -13,11 +13,13 @@ export type {
 export { DEFAULT_LAN_TIMEOUT_MS, LanHttpTransport } from './lan-http';
 export type { LanHttpRequestOptions, LanHttpTransportOptions } from './lan-http';
 export {
+    RATE_LIMIT_BACKGROUND_MAX,
     RATE_LIMIT_MAX_PUBLISHES,
+    RATE_LIMIT_USER_RESERVE,
     RATE_LIMIT_WINDOW_MS,
     PublishRateLimiter
 } from './rate-limit';
-export type { PublishRateLimiterOptions } from './rate-limit';
+export type { PublishPriority, PublishRateLimiterOptions } from './rate-limit';
 export {
     DEFAULT_ERROR_BUDGET_WINDOW_MS,
     DEFAULT_MAX_ERRORS,

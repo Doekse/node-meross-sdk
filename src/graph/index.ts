@@ -28,6 +28,7 @@ export {
     ENERGY_CLOUD_PERIOD_MS,
     ENERGY_PERIOD_MS,
     HUB_BATTERY_PERIOD_MS,
+    POLL_START_STAGGER_MS,
     SENSOR_FAST_CLOUD_PERIOD_MS,
     SENSOR_FAST_PERIOD_MS,
     SENSOR_SLOW_CLOUD_PERIOD_MS,
@@ -89,7 +90,7 @@ export interface GraphEndpoint {
 }
 
 /**
- * Physical board after Ability + System.All enrollment. Session keeps this
+ * Physical device after Ability + System.All enrollment. Session keeps this
  * for LAN IP / Multiple packing; inventory only sees {@link GraphEndpoint}.
  */
 export interface PhysicalDevice {
@@ -103,7 +104,7 @@ export interface PhysicalDevice {
     /** Digest/cloud snapshot so DeviceAvailability can start before the first Online PUSH. */
     online: boolean;
     /**
-     * System.All board snapshot so SystemTrait can start before the first poll.
+     * System.All device snapshot so SystemTrait can start before the first poll.
      * Standalone Firmware/Hardware GETs stay a fallback when All omitted fields.
      */
     system: {
@@ -156,32 +157,85 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
     };
 }
 
+/** Order-insensitive, because neither abilities nor traits carry an order. */
+function sameMembers(a: readonly string[], b: readonly string[]): boolean {
+    if (a.length !== b.length) {
+        return false;
+    }
+    const seen = new Set(a);
+    return b.every((value) => seen.has(value));
+}
+
 /**
- * Collects protocol-enrolled boards so Session can project inventory rows.
+ * Whether two enrollments are interchangeable. Traits capture an ability
+ * snapshot and a channel at construction, so a device matching on abilities and
+ * on every endpoint's traits can be refreshed in place; anything else needs its
+ * endpoints rebuilt against the new shape.
+ */
+function sameShape(a: PhysicalDevice, b: PhysicalDevice): boolean {
+    if (!sameMembers(Object.keys(a.ability), Object.keys(b.ability))) {
+        return false;
+    }
+    if (a.endpoints.length !== b.endpoints.length) {
+        return false;
+    }
+    const byId = new Map(a.endpoints.map((endpoint) => [endpoint.id, endpoint]));
+    return b.endpoints.every((endpoint) => {
+        const previous = byId.get(endpoint.id);
+        return previous !== undefined && sameMembers(previous.traits, endpoint.traits);
+    });
+}
+
+export interface EnrollResult {
+    device: PhysicalDevice;
+    /** True when the caller must rebuild this device's endpoints. */
+    reshaped: boolean;
+}
+
+/**
+ * Collects protocol-enrolled devices so Session can project inventory rows.
  */
 export class DeviceGraph {
     private readonly physical = new Map<string, PhysicalDevice>();
 
     /**
-     * Replaces the board for this uuid so a later Ability/System.All refresh
-     * keeps the same physical entry.
+     * An unchanged shape refreshes the stored device in place and keeps its
+     * object identity, because Session's pollers and availability probes read
+     * live fields (innerIp, maxCmdNum) straight off it.
      */
-    enroll(input: EnrollInput): PhysicalDevice {
+    enroll(input: EnrollInput): EnrollResult {
         const device = enrollPhysicalDevice(input);
-        this.physical.set(device.uuid, device);
-        return device;
+        const existing = this.physical.get(device.uuid);
+        if (!existing || !sameShape(existing, device)) {
+            this.physical.set(device.uuid, device);
+            return { device, reshaped: true };
+        }
+        return { device: Object.assign(existing, device), reshaped: false };
     }
 
     /**
-     * Session needs the board (LAN IP, ability, maxCmdNum), not the inventory row.
+     * Session needs the device (LAN IP, ability, maxCmdNum), not the inventory row.
      */
     getPhysical(uuid: string): PhysicalDevice | undefined {
         return this.physical.get(uuid);
     }
 
+    /** Enrolled device ids, for reconciling against a fresh cloud device list. */
+    uuids(): string[] {
+        return [...this.physical.keys()];
+    }
+
+    /**
+     * Drops a device that left the account. Session stops its poller and
+     * availability separately; this only clears the projection source.
+     */
+    remove(uuid: string): void {
+        this.physical.delete(uuid);
+    }
+
     /**
      * Inventory ids are `{uuid}:{channel}` or `{uuid}#{subDeviceId}`; lookup
-     * walks boards because those ids are not the physical map key.
+     * walks devices because those ids are not the physical map key.
      */
     getEndpoint(id: string): GraphEndpoint | undefined {
         for (const device of this.physical.values()) {

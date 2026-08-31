@@ -16,6 +16,7 @@ import {
     MQTT_RECONNECT_PERIOD_MS,
     MqttTransport,
     PublishRateLimiter,
+    RATE_LIMIT_BACKGROUND_MAX,
     RATE_LIMIT_MAX_PUBLISHES,
     type MqttBrokerClient,
     type MqttConnectOptions,
@@ -36,11 +37,13 @@ class FakeMqttClient extends EventEmitter implements MqttBrokerClient {
     readonly subscriptions: string[] = [];
     readonly published: Array<{ topic: string; payload: string }> = [];
     ended = false;
+    reconnects = 0;
     publishError: Error | null = null;
+    subscribeError: Error | null = null;
 
     subscribe(topic: string, callback: (error?: Error | null) => void): void {
         this.subscriptions.push(topic);
-        callback();
+        callback(this.subscribeError);
     }
 
     publish(topic: string, payload: string, callback: (error?: Error | null) => void): void {
@@ -52,6 +55,14 @@ class FakeMqttClient extends EventEmitter implements MqttBrokerClient {
         this.ended = true;
         this.emit('close');
         callback();
+    }
+
+    /**
+     * mqtt.js reopens the same client and emits `connect` again; tests drive
+     * that event so a persistent subscribe failure cannot loop.
+     */
+    reconnect(): void {
+        this.reconnects += 1;
     }
 
     deliver(message: MerossMessage | string): void {
@@ -380,10 +391,55 @@ describe('MqttTransport', () => {
         assert.deepEqual(connections, [true, false, true, false]);
     });
 
+    it('forces a reconnect when re-subscribe fails after a drop', async () => {
+        const client = new FakeMqttClient();
+        const connections: boolean[] = [];
+        const { transport } = createTransport({
+            client,
+            onConnectionChange: (connected) => connections.push(connected)
+        });
+        await transport.connect();
+
+        client.subscribeError = new Error('not authorized');
+        client.emit('close');
+        client.emit('connect');
+
+        assert.equal(client.reconnects, 1);
+        assert.deepEqual(connections, [true, false]);
+        await assert.rejects(
+            transport.request({ uuid: UUID, namespace: TOGGLEX_NAMESPACE, method: 'GET' }),
+            (err: unknown) => err instanceof TransportError && err.code === 'MQTT_NOT_CONNECTED'
+        );
+
+        client.subscribeError = null;
+        client.emit('connect');
+        assert.deepEqual(connections, [true, false, true]);
+
+        const pending = transport.request({
+            uuid: UUID,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        client.deliver(ackFor(decodeMessage(client.published[0]!.payload, KEY), 'GETACK'));
+        assert.equal((await pending).header.method, 'GETACK');
+        await transport.disconnect();
+    });
+
+    it('rejects the first handshake on subscribe failure instead of reconnecting', async () => {
+        const client = new FakeMqttClient();
+        client.subscribeError = new Error('not authorized');
+        const { transport } = createTransport({ client });
+        await assert.rejects(
+            transport.connect(),
+            (err: unknown) => err instanceof TransportError && err.code === 'MQTT_SUBSCRIBE_FAILED'
+        );
+        assert.equal(client.reconnects, 0);
+    });
+
     it('notifies onRateLimit and leaves no pending entry when limited', async (t) => {
         const limiter = new PublishRateLimiter({ now: () => 1_000_000 });
         for (let i = 0; i < RATE_LIMIT_MAX_PUBLISHES; i += 1) {
-            limiter.take(UUID);
+            limiter.take(UUID, 'user');
         }
         const drops: Array<[string, number]> = [];
         const dispatcher = new ProtocolDispatcher();
@@ -408,6 +464,27 @@ describe('MqttTransport', () => {
         assert.deepEqual(drops, [[UUID, 1]]);
         assert.equal(getClient().published.length, publishedBefore);
         assert.equal(register.mock.callCount(), 0);
+        await transport.disconnect();
+    });
+
+    it('treats an unannotated request as a user command', async () => {
+        const limiter = new PublishRateLimiter({ now: () => 1_000_000 });
+        for (let i = 0; i < RATE_LIMIT_BACKGROUND_MAX; i += 1) {
+            limiter.take(UUID, 'background');
+        }
+        const { transport, getClient } = createTransport({ rateLimiter: limiter });
+        await transport.connect();
+        const client = getClient();
+
+        // Background is spent, so this only goes through on the user reserve.
+        const pending = transport.request({
+            uuid: UUID,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        client.deliver(ackFor(decodeMessage(client.published[0]!.payload, KEY), 'GETACK'));
+        await pending;
+
         await transport.disconnect();
     });
 });

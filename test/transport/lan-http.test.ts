@@ -225,7 +225,7 @@ describe('LanHttpTransport', () => {
             namespace: TOGGLEX_NAMESPACE,
             method: 'GET'
         });
-        // Per-uuid queue awaits the prior slot before arming the abort timer.
+        // Per-uuid queue awaits the prior request before arming the abort timer.
         await flushMicrotasks();
         // 1s → 2s → 4s; a fourth attempt (8s) would outrun the pending timer.
         t.mock.timers.tick(DEFAULT_LAN_TIMEOUT_MS);

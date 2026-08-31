@@ -46,7 +46,7 @@ export interface TimerTraitBind {
     /** Chosen at enrollment from Ability: TimerX preferred over Control.Timer. */
     generation: TimerGeneration;
     /**
-     * Ability keys advertised by the board. Digest.TimerX listing no-ops when absent.
+     * Ability keys advertised by the device. Digest.TimerX listing no-ops when absent.
      */
     namespaces?: ReadonlySet<string>;
     request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
@@ -134,7 +134,7 @@ export class TimerTrait {
             return;
         }
         if (message.header.namespace === CONTROL_TIMER_NAMESPACE && this.bind.generation === 'legacy') {
-            // Classic Toggle only applies on channel 0; pre-X Timer is the same board list.
+            // Classic Toggle only applies on channel 0; pre-X Timer is the same device-wide list.
             if (this.bind.channel !== 0) {
                 return;
             }

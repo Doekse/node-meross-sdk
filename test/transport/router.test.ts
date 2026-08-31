@@ -18,6 +18,8 @@ import {
 import {
     LanHttpTransport,
     MqttTransport,
+    PublishRateLimiter,
+    RATE_LIMIT_BACKGROUND_MAX,
     TransportRouter,
     type MqttBrokerClient,
     type MqttTransportOptions
@@ -34,6 +36,7 @@ const CONSUMPTIONX = 'Appliance.Control.ConsumptionX';
 
 class FakeMqttClient extends EventEmitter implements MqttBrokerClient {
     readonly published: Array<{ topic: string; payload: string }> = [];
+    reconnects = 0;
 
     subscribe(_topic: string, callback: (error?: Error | null) => void): void {
         callback();
@@ -47,6 +50,10 @@ class FakeMqttClient extends EventEmitter implements MqttBrokerClient {
     end(_force: boolean, callback: () => void): void {
         this.emit('close');
         callback();
+    }
+
+    reconnect(): void {
+        this.reconnects += 1;
     }
 
     deliver(message: MerossMessage): void {
@@ -112,9 +119,10 @@ function createRouted(options: {
     lan?: (sent: MerossMessage, calls: FetchCall[]) => Promise<Response> | Response;
     now?: () => number;
     errorBudgetTimeWindowMs?: number;
+    rateLimiter?: PublishRateLimiter;
 } = {}) {
     const dispatcher = new ProtocolDispatcher();
-    const mqtt = createMqtt({ dispatcher });
+    const mqtt = createMqtt({ dispatcher, rateLimiter: options.rateLimiter });
     const lanCalls: FetchCall[] = [];
     const lan = new LanHttpTransport({
         key: KEY,
@@ -148,10 +156,10 @@ function defaultLanOk(sent: MerossMessage): Response {
     return jsonResponse(ackFor(sent, sent.header.method === 'SET' ? 'SETACK' : 'GETACK'));
 }
 
-async function connectAndAckMqtt(
+async function connectAndAckMqtt<T>(
     mqtt: ReturnType<typeof createMqtt>,
-    pending: Promise<MerossMessage>
-): Promise<MerossMessage> {
+    pending: Promise<T>
+): Promise<T> {
     const client = mqtt.getClient();
     const before = client.published.length;
     for (let i = 0; i < 20 && client.published.length === before; i++) {
@@ -529,5 +537,37 @@ describe('TransportRouter', () => {
         });
         assert.equal(lanCalls.length, 2);
         assert.equal(reply.header.method, 'GETACK');
+    });
+
+    it('forwards priority so background polling cannot spend the user reserve', async () => {
+        const rateLimiter = new PublishRateLimiter({ now: () => 1_000_000 });
+        const { router, mqtt } = createRouted({ rateLimiter });
+        await router.connect();
+
+        for (let i = 0; i < RATE_LIMIT_BACKGROUND_MAX; i += 1) {
+            await connectAndAckMqtt(mqtt, router.requestGets({
+                uuid: UUID,
+                gets: [{ namespace: TOGGLEX_NAMESPACE }],
+                priority: 'background'
+            }));
+        }
+
+        await assert.rejects(
+            router.requestGets({
+                uuid: UUID,
+                gets: [{ namespace: TOGGLEX_NAMESPACE }],
+                priority: 'background'
+            }),
+            (err: unknown) => err instanceof TransportError && err.code === 'MQTT_RATE_LIMITED'
+        );
+
+        const reply = await connectAndAckMqtt(mqtt, router.request({
+            uuid: UUID,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'SET'
+        }));
+        assert.equal(reply.header.method, 'SETACK');
+
+        await router.disconnect();
     });
 });

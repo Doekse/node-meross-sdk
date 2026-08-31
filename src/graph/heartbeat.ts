@@ -10,7 +10,7 @@ export interface HeartbeatOptions {
 }
 
 /**
- * Marks a board offline after extended silence instead of on a single failed
+ * Marks a device offline after extended silence instead of on a single failed
  * poll, matching Meross app behaviour and avoiding LAN blips as false offline.
  * The probe itself is System.All (see DeviceAvailability.pollOnline).
  */

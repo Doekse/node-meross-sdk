@@ -8,6 +8,22 @@ export const RATE_LIMIT_WINDOW_MS = 91_000;
 /** Max publishes per uuid inside {@link RATE_LIMIT_WINDOW_MS}. */
 export const RATE_LIMIT_MAX_PUBLISHES = 5;
 
+/**
+ * Publishes no background caller may take. Polling runs on a timer and would
+ * otherwise spend the whole window before a host ever calls a trait, failing
+ * that command on a cloud-only device. Two covers a command plus one retry.
+ */
+export const RATE_LIMIT_USER_RESERVE = 2;
+
+/** Where background publishes stop; see {@link RATE_LIMIT_USER_RESERVE}. */
+export const RATE_LIMIT_BACKGROUND_MAX = RATE_LIMIT_MAX_PUBLISHES - RATE_LIMIT_USER_RESERVE;
+
+/**
+ * `background` is scheduled work (polling, availability probes); `user` is a
+ * host-initiated trait call and may spend the full window.
+ */
+export type PublishPriority = 'user' | 'background';
+
 export interface PublishRateLimiterOptions {
     now?: () => number;
 }
@@ -31,10 +47,10 @@ export class PublishRateLimiter {
     }
 
     /**
-     * Claims a publish slot for `uuid`. False means the window is full and
-     * the caller must not publish.
+     * Records a publish for `uuid`. False means the window is full for this
+     * priority and the caller must not publish.
      */
-    take(uuid: string): boolean {
+    take(uuid: string, priority: PublishPriority): boolean {
         const now = this.now();
         const window = this.windowEntry(uuid);
         const cutoff = now - RATE_LIMIT_WINDOW_MS;
@@ -42,7 +58,8 @@ export class PublishRateLimiter {
             window.timestamps.shift();
         }
 
-        if (window.timestamps.length >= RATE_LIMIT_MAX_PUBLISHES) {
+        const capacity = priority === 'user' ? RATE_LIMIT_MAX_PUBLISHES : RATE_LIMIT_BACKGROUND_MAX;
+        if (window.timestamps.length >= capacity) {
             window.dropped += 1;
             return false;
         }

@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 
+import type { MerossMessage } from './protocol';
 import type { AlarmTrait } from './traits/alarm';
 import type { ClimateTrait } from './traits/climate';
 import type { CoverTrait } from './traits/cover';
@@ -113,6 +114,16 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
      */
     isOnline(): boolean {
         return this.online;
+    }
+
+    /**
+     * Driven by {@link traits} rather than a hand-listed set, so adding a trait
+     * cannot leave it silently deaf to PUSH frames.
+     */
+    handlePush(message: MerossMessage): void {
+        for (const trait of this.traits) {
+            this[trait]?.handlePush(message);
+        }
     }
 
     /**

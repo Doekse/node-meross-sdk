@@ -79,7 +79,7 @@ export function decodeElectricityGetAck(payload: MerossPayload): ElectricitySamp
 export const ELECTRICITYX_NAMESPACE = 'Appliance.Control.ElectricityX';
 
 /**
- * GET channel `0xffff` means every channel. An empty GET misses some boards.
+ * GET channel `0xffff` means every channel. An empty GET misses some devices.
  */
 export const ELECTRICITYX_ALL_CHANNELS = 0xffff;
 

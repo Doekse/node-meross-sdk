@@ -336,7 +336,7 @@ describe('EnergyTrait.poll', () => {
         ]);
     });
 
-    it('supports on-demand hourly polling for ConsumptionH-only boards', async () => {
+    it('supports on-demand hourly polling for ConsumptionH-only devices', async () => {
         const { trait, requests } = createEnergyHarness({
             hasElectricity: false,
             hasElectricityX: false,

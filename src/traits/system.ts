@@ -33,7 +33,7 @@ export type {
 };
 
 /**
- * Board diagnostics snapshot emitted on `change`. Nested objects replace the
+ * Device diagnostics snapshot emitted on `change`. Nested objects replace the
  * previous value; `clockSkewSeconds` is derived from Time / Clock vs local time.
  */
 export interface SystemValues {
@@ -46,7 +46,7 @@ export interface SystemValues {
 }
 
 /**
- * Transport bind for one board System.* surface. Session supplies this;
+ * Transport bind for one device's System.* surface. Session supplies this;
  * trait tests inject a fake request/emit pair.
  */
 export interface SystemTraitBind {
@@ -64,7 +64,7 @@ export interface SystemTraitBind {
 }
 
 /**
- * Board firmware, hardware, time, and diagnostics. Channel-agnostic; Session
+ * Device firmware, hardware, time, and diagnostics. Channel-agnostic; Session
  * attaches one instance on channel 0 / hub root.
  */
 export class SystemTrait {

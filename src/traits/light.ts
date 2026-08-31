@@ -102,7 +102,7 @@ export class LightTrait {
     }
 
     /**
-     * Boards without Light.Effect still take an effect id on Control.Light.
+     * Devices without Light.Effect still take an effect id on Control.Light.
      * MSL320 also needs that catalog row enabled on Light.Effect.
      */
     async setEffect(effect: number): Promise<{ effect: number }> {

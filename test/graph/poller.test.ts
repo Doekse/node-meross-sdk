@@ -68,10 +68,13 @@ function createHarness(
         maxCmdNum?: number;
         jobs?: readonly PollJob[];
         intervalMs?: number;
+        startDelayMs?: number;
+        /** Non-zero proves scheduling does not depend on the clock origin. */
+        startClock?: number;
     } = {}
 ): Harness {
     t.mock.timers.enable({ apis: ['setTimeout'] });
-    let clock = 0;
+    let clock = options.startClock ?? 0;
     const online = options.online ?? true;
     const cloudPath = options.cloudPath ?? false;
     const intervalMs = options.intervalMs ?? INTERVAL_MS;
@@ -97,6 +100,7 @@ function createHarness(
         },
         jobs: options.jobs,
         intervalMs,
+        startDelayMs: options.startDelayMs,
         now: () => clock
     });
 
@@ -316,9 +320,10 @@ describe('DevicePoller', () => {
         harness.poller.stop();
     });
 
-    it('caps smart/once to one cloud MQTT job per cycle within the cloud period', async (t) => {
+    it('spends one cloud publish per cycle and fills the Multiple batch', async (t) => {
         const harness = createHarness(t, {
             cloudPath: true,
+            maxCmdNum: 3,
             jobs: [
                 {
                     namespace: 'Appliance.Control.Electricity',
@@ -335,27 +340,116 @@ describe('DevicePoller', () => {
             ]
         });
 
+        // Both namespaces fit one Control.Multiple, so one publish covers them.
+        harness.poller.start();
+        await harness.advance(0);
+        assert.equal(harness.requestGets.mock.callCount(), 1);
+        assert.deepEqual(
+            harness.getsHistory[0].map((get) => get.namespace).sort(),
+            ['Appliance.Control.ConsumptionX', 'Appliance.Control.Electricity']
+        );
+
+        await harness.advance(INTERVAL_MS);
+        assert.equal(harness.requestGets.mock.callCount(), 2);
+
+        harness.poller.stop();
+    });
+
+    it('does not treat a never-polled job as overdue on a wall clock', async (t) => {
+        const harness = createHarness(t, {
+            cloudPath: true,
+            // No Control.Multiple, so the batch holds exactly one GET.
+            maxCmdNum: 1,
+            startClock: 1_700_000_000_000,
+            jobs: [
+                {
+                    namespace: ELECTRICITY_NAMESPACE,
+                    strategy: 'smart',
+                    periodMs: SENSOR_FAST_PERIOD_MS,
+                    periodCloudMs: SENSOR_FAST_CLOUD_PERIOD_MS
+                },
+                {
+                    namespace: CONSUMPTIONX_NAMESPACE,
+                    strategy: 'smart',
+                    periodMs: ENERGY_PERIOD_MS,
+                    periodCloudMs: ENERGY_CLOUD_PERIOD_MS
+                }
+            ]
+        });
+
         harness.poller.start();
         await harness.advance(0);
         assert.equal(harness.requestGets.mock.callCount(), 1);
         assert.deepEqual(
             harness.getsHistory[0].map((get) => get.namespace),
-            ['Appliance.Control.Electricity']
-        );
-
-        await harness.advance(INTERVAL_MS);
-        assert.equal(harness.requestGets.mock.callCount(), 2);
-        assert.deepEqual(
-            harness.getsHistory[1].map((get) => get.namespace),
-            ['Appliance.Control.Electricity']
+            [ELECTRICITY_NAMESPACE]
         );
 
         harness.poller.stop();
     });
 
-    it('honors the cloud floor for default and all the same way as smart', async (t) => {
+    it('rotates the cloud publish so an always-due job cannot starve its neighbour', async (t) => {
         const harness = createHarness(t, {
             cloudPath: true,
+            maxCmdNum: 1,
+            startClock: 1_700_000_000_000,
+            jobs: [
+                {
+                    namespace: ELECTRICITY_NAMESPACE,
+                    strategy: 'smart',
+                    periodMs: SENSOR_FAST_PERIOD_MS,
+                    periodCloudMs: SENSOR_FAST_CLOUD_PERIOD_MS
+                },
+                {
+                    namespace: CONSUMPTIONX_NAMESPACE,
+                    strategy: 'smart',
+                    periodMs: ENERGY_PERIOD_MS,
+                    periodCloudMs: ENERGY_CLOUD_PERIOD_MS
+                }
+            ]
+        });
+
+        harness.poller.start();
+        await harness.advance(0);
+        await harness.advance(30 * INTERVAL_MS);
+        harness.poller.stop();
+
+        // Electricity is due every tick, so first-come ordering would hand it
+        // the one publish every cycle and ConsumptionX would never run.
+        const seen = new Set(harness.getsHistory.flat().map((get) => get.namespace));
+        assert.deepEqual([...seen].sort(), [CONSUMPTIONX_NAMESPACE, ELECTRICITY_NAMESPACE].sort());
+        assert.ok(
+            harness.getsHistory.every((gets) => gets.length === 1),
+            'without Control.Multiple a cycle must not exceed one GET'
+        );
+    });
+
+    it('waits out startDelayMs before the first tick', async (t) => {
+        const harness = createHarness(t, {
+            startDelayMs: 500,
+            jobs: [{
+                namespace: TOGGLEX_NAMESPACE,
+                strategy: 'default',
+                periodMs: 0,
+                periodCloudMs: 0
+            }]
+        });
+
+        harness.poller.start();
+        await harness.advance(0);
+        assert.equal(harness.requestGets.mock.callCount(), 0);
+
+        await harness.advance(500);
+        assert.equal(harness.requestGets.mock.callCount(), 1);
+
+        harness.poller.stop();
+    });
+
+    it('gives default and all no more cloud publishes than smart', async (t) => {
+        const harness = createHarness(t, {
+            cloudPath: true,
+            // No Control.Multiple, so each strategy competes for the one publish.
+            maxCmdNum: 1,
             jobs: [
                 {
                     namespace: SYSTEM_ALL_NAMESPACE,
@@ -393,11 +487,13 @@ describe('DevicePoller', () => {
             [TOGGLEX_NAMESPACE]
         );
 
+        // ToggleX is due every tick but has now been served, so the publish
+        // moves on to the one namespace still waiting for its first read.
         await harness.advance(INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 3);
         assert.deepEqual(
             harness.getsHistory[2].map((get) => get.namespace),
-            [TOGGLEX_NAMESPACE]
+            [ELECTRICITY_NAMESPACE]
         );
 
         harness.poller.stop();
@@ -415,7 +511,7 @@ describe('DevicePoller', () => {
             [{ channel: 0, traits: ['switch', 'energy', 'dnd'] }]
         );
         // Firmware without Control.Multiple sends one publish per GET, so this
-        // is the path that overran the budget; a packing device is strictly cheaper.
+        // is the path that overran the publish window; a packing device is strictly cheaper.
         const harness = createHarness(t, {
             cloudPath: true,
             intervalMs: DEFAULT_POLL_INTERVAL_MS,
@@ -432,7 +528,7 @@ describe('DevicePoller', () => {
         assert.ok(publishes < 200, `expected under 200 publishes/hour, got ${publishes}`);
     });
 
-    it('lazy-fills leftover Multiple slots with oldest smart jobs first', async (t) => {
+    it('lazy-fills leftover Multiple batch room with oldest smart jobs first', async (t) => {
         const harness = createHarness(t, {
             maxCmdNum: 3,
             jobs: [
@@ -463,7 +559,7 @@ describe('DevicePoller', () => {
         assert.equal(harness.getsHistory[0]?.length, 3);
 
         await harness.advance(INTERVAL_MS);
-        // Default must poll; smart jobs are not due yet and fill the leftover slots.
+        // Default must poll; smart jobs are not due yet and fill the leftover batch room.
         assert.deepEqual(
             harness.getsHistory[1].map((get) => get.namespace),
             [

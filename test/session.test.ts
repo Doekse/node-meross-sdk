@@ -69,6 +69,7 @@ function loadFixture(name: string): MerossMessage['payload'] {
 
 class FakeMqttClient extends EventEmitter implements MqttBrokerClient {
     readonly published: Array<{ topic: string; payload: string }> = [];
+    reconnects = 0;
 
     subscribe(_topic: string, callback: (error?: Error | null) => void): void {
         callback();
@@ -82,6 +83,10 @@ class FakeMqttClient extends EventEmitter implements MqttBrokerClient {
     end(_force: boolean, callback: () => void): void {
         this.emit('close');
         callback();
+    }
+
+    reconnect(): void {
+        this.reconnects += 1;
     }
 
     deliver(message: MerossMessage): void {
@@ -184,12 +189,15 @@ function enrollmentAck(sent: MerossMessage, options: { innerIp?: boolean; encryp
     return ackFor(sent, 'GETACK');
 }
 
-function createCloudFetch(devices: unknown[] = [DEVICE_ROW]) {
+function createCloudFetch(
+    devices: unknown[] = [DEVICE_ROW],
+    login: () => unknown = () => LOGIN_DATA
+) {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const fetchImpl = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
         calls.push({ url: String(url), init: init ?? {} });
         if (String(url).endsWith('/v1/Auth/signIn')) {
-            return ok(LOGIN_DATA);
+            return ok(login());
         }
         if (String(url).endsWith('/v1/Device/devList')) {
             return ok(devices);
@@ -226,11 +234,12 @@ function isPendingGet(sent: MerossMessage, alreadyAcked: Set<string>): boolean {
 /**
  * Acks every outstanding GET / Multiple until a short quiet window — covers
  * Ability + System.All enrollment and the poller's cold-start batch.
+ * `failUuid` answers one device with an ERROR instead.
  */
 async function drainPendingGets(
     client: FakeMqttClient,
     alreadyAcked: Set<string>,
-    options?: { innerIp?: boolean; encrypt?: boolean }
+    options?: { innerIp?: boolean; encrypt?: boolean; failUuid?: string }
 ): Promise<void> {
     for (let quiet = 0; quiet < 5; ) {
         let ackedOne = false;
@@ -240,7 +249,9 @@ async function drainPendingGets(
                 continue;
             }
             alreadyAcked.add(sent.header.messageId);
-            client.deliver(enrollmentAck(sent, options));
+            client.deliver(sent.header.uuid === options?.failUuid
+                ? ackFor(sent, 'ERROR', { error: { code: 5000, detail: 'boom' } })
+                : enrollmentAck(sent, options));
             ackedOne = true;
             break;
         }
@@ -256,8 +267,13 @@ async function drainPendingGets(
 
 /**
  * Ability + System.All enrollment, then DevicePoller schedule(0) cold-start GETs.
+ * Returns the settled message ids so a follow-up `sync` can keep draining
+ * without re-delivering acks for requests that already resolved.
  */
-async function connectSession(session: Session, clientRef: { current?: FakeMqttClient }): Promise<void> {
+async function connectSession(
+    session: Session,
+    clientRef: { current?: FakeMqttClient }
+): Promise<Set<string>> {
     const connectPromise = session.connect();
     await Promise.resolve();
     const client = clientRef.current!;
@@ -267,6 +283,7 @@ async function connectSession(session: Session, clientRef: { current?: FakeMqttC
     await drainPendingGets(client, acked);
     await connectPromise;
     await drainPendingGets(client, acked);
+    return acked;
 }
 
 describe('Session.login and restore', () => {
@@ -408,7 +425,7 @@ describe('Session.connect', () => {
         await session.disconnect();
     });
 
-    it('skips offline cloud boards until they answer Ability and System.All', async () => {
+    it('skips offline cloud devices until they answer Ability and System.All', async () => {
         const shed = {
             uuid: 'offline00000000000000000000000001',
             devName: 'Shed plug',
@@ -438,7 +455,7 @@ describe('Session.connect', () => {
         await session.disconnect();
     });
 
-    it('sync enrolls boards added to the account after connect', async () => {
+    it('sync enrolls devices added to the account after connect', async () => {
         const devices: unknown[] = [DEVICE_ROW];
         const { fetchImpl } = createCloudFetch(devices);
         const clientRef: { current?: FakeMqttClient } = {};
@@ -603,7 +620,7 @@ describe('Session.connect', () => {
         assert.deepEqual(connections, [true, false, true, false]);
     });
 
-    it('emits ratelimit when MQTT publish budget is exhausted', async () => {
+    it('emits ratelimit when the MQTT publish window is exhausted', async () => {
         const { fetchImpl } = createCloudFetch();
         const clientRef: { current?: FakeMqttClient } = {};
         const session = await Session.login(
@@ -673,6 +690,241 @@ describe('Session.connect', () => {
             (error: unknown) => error instanceof AuthError && error.code === 'TOKEN_EXPIRED'
         );
         assert.deepEqual(connections, [true, false]);
+        await session.disconnect();
+    });
+});
+
+const LAMP_UUID = '3306138957096651080248e1e99705b7';
+const LAMP_ROW = {
+    uuid: LAMP_UUID,
+    devName: 'Lamp',
+    deviceType: 'mss110',
+    onlineStatus: 1,
+    channels: [{ channel: 0, devName: 'Lamp' }]
+};
+
+describe('Session.sync', () => {
+    it('drops devices that left the cloud account', async () => {
+        const devices: unknown[] = [DEVICE_ROW, LAMP_ROW];
+        const { fetchImpl } = createCloudFetch(devices);
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+
+        const acked = await connectSession(session, clientRef);
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id).sort(),
+            [`${LAMP_UUID}:0`, `${UUID}:0`].sort()
+        );
+
+        devices.splice(1, 1);
+        const syncing = session.sync();
+        await drainPendingGets(clientRef.current!, acked);
+        await syncing;
+
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            [`${UUID}:0`]
+        );
+        assert.throws(
+            () => session.endpoint(`${LAMP_UUID}:0`),
+            (err: unknown) => err instanceof MerossError && err.code === 'ENDPOINT_NOT_FOUND'
+        );
+        await session.disconnect();
+    });
+
+    it('keeps the same Endpoint when a re-read finds the same shape', async () => {
+        const { fetchImpl } = createCloudFetch();
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+
+        const acked = await connectSession(session, clientRef);
+        const before = session.endpoint(`${UUID}:0`);
+
+        const syncing = session.sync();
+        await drainPendingGets(clientRef.current!, acked);
+        await syncing;
+
+        assert.equal(session.endpoint(`${UUID}:0`), before);
+        await session.disconnect();
+    });
+
+    it('joins overlapping callers to the run already in flight', async () => {
+        const { fetchImpl, calls } = createCloudFetch();
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+
+        const acked = await connectSession(session, clientRef);
+        const listedAfterConnect = calls.filter((call) => call.url.endsWith('/v1/Device/devList')).length;
+
+        const first = session.sync();
+        const second = session.sync();
+        await drainPendingGets(clientRef.current!, acked);
+        await Promise.all([first, second]);
+
+        // A second pass would re-list and could drop a device the first just enrolled.
+        assert.equal(
+            calls.filter((call) => call.url.endsWith('/v1/Device/devList')).length,
+            listedAfterConnect + 1
+        );
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            [`${UUID}:0`]
+        );
+        await session.disconnect();
+    });
+
+    it('runs a later sync normally once the first has settled', async () => {
+        const { fetchImpl, calls } = createCloudFetch();
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+
+        const acked = await connectSession(session, clientRef);
+        const listedAfterConnect = calls.filter((call) => call.url.endsWith('/v1/Device/devList')).length;
+
+        for (let i = 0; i < 2; i += 1) {
+            const syncing = session.sync();
+            await drainPendingGets(clientRef.current!, acked);
+            await syncing;
+        }
+
+        assert.equal(
+            calls.filter((call) => call.url.endsWith('/v1/Device/devList')).length,
+            listedAfterConnect + 2
+        );
+        await session.disconnect();
+    });
+
+    it('rebuilds an Endpoint when the device reports new abilities', async () => {
+        const { fetchImpl } = createCloudFetch();
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+
+        const acked = await connectSession(session, clientRef);
+        const before = session.endpoint(`${UUID}:0`);
+
+        // Encrypt.ECDHE appears after a firmware update, changing the ability set.
+        const syncing = session.sync();
+        await drainPendingGets(clientRef.current!, acked, { encrypt: true });
+        await syncing;
+
+        const after = session.endpoint(`${UUID}:0`);
+        assert.notEqual(after, before);
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            [`${UUID}:0`]
+        );
+        await session.disconnect();
+    });
+
+    it('emits error and keeps the rest when one device fails to enroll', async () => {
+        const devices: unknown[] = [DEVICE_ROW];
+        const { fetchImpl } = createCloudFetch(devices);
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+
+        const acked = await connectSession(session, clientRef);
+        const errors: Error[] = [];
+        session.on('warning', (error) => errors.push(error));
+
+        devices.push(LAMP_ROW);
+        const syncing = session.sync();
+        await drainPendingGets(clientRef.current!, acked, { failUuid: LAMP_UUID });
+        await syncing;
+
+        assert.equal(errors.length, 1);
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            [`${UUID}:0`]
+        );
+        await session.disconnect();
+    });
+});
+
+describe('Session.reauthenticate', () => {
+    it('swaps the token in place and leaves transports alone', async () => {
+        let loginData: unknown = LOGIN_DATA;
+        const { fetchImpl } = createCloudFetch([DEVICE_ROW], () => loginData);
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+
+        await connectSession(session, clientRef);
+        const client = clientRef.current;
+        const before = session.endpoint(`${UUID}:0`);
+
+        loginData = { ...LOGIN_DATA, token: 'fresh-token' };
+        const token = await session.reauthenticate({ email: EMAIL, password: PASSWORD });
+
+        assert.equal(token.token, 'fresh-token');
+        assert.equal(session.getToken().token, 'fresh-token');
+        assert.equal(clientRef.current, client);
+        assert.equal(session.endpoint(`${UUID}:0`), before);
+        await session.disconnect();
+    });
+
+    it('rebuilds transports when the device key rotated but keeps endpoints', async () => {
+        let loginData: unknown = LOGIN_DATA;
+        const { fetchImpl } = createCloudFetch([DEVICE_ROW], () => loginData);
+        const clientRef: { current?: FakeMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+
+        await connectSession(session, clientRef);
+        const client = clientRef.current;
+        const before = session.endpoint(`${UUID}:0`);
+
+        loginData = { ...LOGIN_DATA, key: 'rotated-key' };
+        await session.reauthenticate({ email: EMAIL, password: PASSWORD });
+
+        assert.equal(session.getToken().key, 'rotated-key');
+        assert.notEqual(clientRef.current, client);
+        assert.equal(session.endpoint(`${UUID}:0`), before);
         await session.disconnect();
     });
 });

@@ -3,15 +3,18 @@ import { EventEmitter } from 'node:events';
 import { CloudClient } from './cloud';
 import type { CloudClientOptions, CloudDevice } from './cloud';
 import { Endpoint } from './endpoint';
+import type { TraitName } from './endpoint';
 import { MerossError } from './errors';
 import {
     ABILITY_NAMESPACE,
+    DEFAULT_POLL_INTERVAL_MS,
     DeviceGraph,
+    POLL_START_STAGGER_MS,
     SYSTEM_ALL_NAMESPACE,
     buildPollJobs,
     decodeAbilityGetAck
 } from './graph';
-import type { GraphEndpoint, PhysicalDevice } from './graph';
+import type { EnrollResult, GraphEndpoint, PhysicalDevice } from './graph';
 import { DeviceAvailability } from './graph/availability';
 import { DevicePoller } from './graph/poller';
 import { Inventory } from './inventory';
@@ -87,6 +90,29 @@ export interface SessionOptions {
 interface SessionEvents {
     connection: [connected: boolean];
     ratelimit: [uuid: string, dropped: number];
+    /**
+     * Per-device failure {@link Session.sync} swallowed to keep going, typically
+     * an Ability / System.All timeout. Cloud-level failures still reject `sync`
+     * itself, so a stale token surfaces there rather than here.
+     *
+     * Deliberately not named `error`: Node throws on an unhandled `error` emit,
+     * which would turn one unreachable device into a crashed host process.
+     */
+    warning: [error: Error];
+}
+
+/**
+ * Enrollment is two round trips per device, so running devices one after another
+ * makes a large account take minutes; unbounded would put every device's Ability
+ * GET on the wire at once.
+ */
+const ENROLL_CONCURRENCY = 4;
+
+/** Timers and endpoints owned by one enrolled device, torn down as a unit. */
+interface DeviceRuntime {
+    availability: DeviceAvailability;
+    poller: DevicePoller;
+    endpoints: readonly Endpoint[];
 }
 
 /**
@@ -97,16 +123,17 @@ export class Session extends EventEmitter<SessionEvents> {
     readonly inventory: Inventory;
 
     private readonly cloud: CloudClient;
-    private readonly token: TokenData;
+    private token: TokenData;
     private readonly mqttConnect?: MqttConnectFn;
     private readonly lanFetch?: typeof globalThis.fetch;
     private graph = new DeviceGraph();
     private readonly endpoints = new Map<string, Endpoint>();
-    private readonly boards = new Map<string, {
-        availability: DeviceAvailability;
-        poller: DevicePoller;
-    }>();
+    private readonly devices = new Map<string, DeviceRuntime>();
+    /** Monotonic so devices enrolled by a later sync keep spreading their ticks. */
+    private startedDevices = 0;
     private router: TransportRouter | undefined;
+    /** In-flight {@link Session.sync}, shared by overlapping callers. */
+    private syncing: Promise<void> | undefined;
 
     private constructor(
         token: TokenData,
@@ -148,7 +175,7 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Opens MQTT and LAN, then enrolls boards into {@link Inventory}.
+     * Opens MQTT and LAN, then enrolls devices into {@link Inventory}.
      * Transports stay internal; hosts only see inventory after this.
      * A failed attempt clears the router so a later call can retry.
      */
@@ -156,7 +183,107 @@ export class Session extends EventEmitter<SessionEvents> {
         if (this.router) {
             return;
         }
+        this.router = this.createRouter();
+        try {
+            await this.router.connect();
+            await this.sync();
+        } catch (error) {
+            await this.teardownRouter();
+            throw error;
+        }
+    }
 
+    /**
+     * Swaps in fresh cloud credentials without discarding inventory, so a host
+     * that hits `TOKEN_EXPIRED` can recover in place instead of rebuilding every
+     * Endpoint and re-registering its listeners. Transports are only replaced
+     * when the broker credentials actually changed, and the old router stays
+     * live until the new one connects.
+     */
+    async reauthenticate(options: LoginOptions): Promise<TokenData> {
+        const previous = this.token;
+        this.token = await this.cloud.login(options);
+        const stale = this.router;
+        if (!stale || !this.brokerChanged(previous)) {
+            return this.getToken();
+        }
+
+        const fresh = this.createRouter();
+        await fresh.connect();
+        this.router = fresh;
+        await stale.disconnect();
+        return this.getToken();
+    }
+
+    /**
+     * Reconciles inventory with the cloud account: devices that left are dropped,
+     * new online devices are enrolled, and known devices are re-read so a firmware
+     * update that changed abilities takes effect. Unreachable devices are skipped
+     * so one timeout cannot block the rest; each skip is reported on `warning`.
+     *
+     * Overlapping callers join the run already in flight rather than starting a
+     * second one, because two passes would interleave device removal with
+     * endpoint materialization and could drop a device the other just enrolled.
+     */
+    async sync(): Promise<void> {
+        if (!this.router) {
+            throw new MerossError('Session is not connected', 'NOT_CONNECTED');
+        }
+        this.syncing ??= this.runSync().finally(() => {
+            this.syncing = undefined;
+        });
+        return this.syncing;
+    }
+
+    private async runSync(): Promise<void> {
+        const cloudDevices = await this.cloud.listDevices();
+        const listed = new Set(cloudDevices.map((cloudDevice) => cloudDevice.uuid));
+        for (const uuid of this.graph.uuids()) {
+            if (!listed.has(uuid)) {
+                this.stopDevice(uuid);
+                this.graph.remove(uuid);
+            }
+        }
+
+        // Offline devices answer neither Ability nor System.All; a later sync picks them up.
+        const online = cloudDevices.filter((cloudDevice) => cloudDevice.onlineStatus === 1);
+        this.materializeEndpoints(await this.enrollAll(online));
+    }
+
+    /**
+     * Closes transports without discarding the stored token.
+     */
+    async disconnect(): Promise<void> {
+        this.stopAllDevices();
+        this.graph = new DeviceGraph();
+        this.inventory.replace([]);
+        await this.teardownRouter();
+    }
+
+    /**
+     * Looks up an enrolled endpoint by inventory row id.
+     */
+    endpoint(id: string): Endpoint {
+        const endpoint = this.endpoints.get(id);
+        if (!endpoint) {
+            throw new MerossError(`Unknown endpoint: ${id}`, 'ENDPOINT_NOT_FOUND');
+        }
+        return endpoint;
+    }
+
+    /**
+     * Transports only exist between {@link connect} and {@link disconnect}, and
+     * device timers can outlive a teardown by one tick, so reads go through here
+     * to fail as NOT_CONNECTED instead of a TypeError.
+     */
+    private get connectedRouter(): TransportRouter {
+        if (!this.router) {
+            throw new MerossError('Session is not connected', 'NOT_CONNECTED');
+        }
+        return this.router;
+    }
+
+    private createRouter(): TransportRouter {
         const dispatcher = new ProtocolDispatcher({
             onPush: (message) => this.handlePush(message),
             onInbound: (message) => this.handleInbound(message)
@@ -176,57 +303,14 @@ export class Session extends EventEmitter<SessionEvents> {
             dispatcher,
             fetch: this.lanFetch
         });
-        this.router = new TransportRouter({ mqtt, lan });
-        try {
-            await this.router.connect();
-            await this.sync();
-        } catch (error) {
-            await this.teardownRouter();
-            throw error;
-        }
+        return new TransportRouter({ mqtt, lan });
     }
 
-    /**
-     * Re-lists the cloud account and enrolls boards not yet in inventory.
-     * Offline or unreachable boards are skipped so one timeout cannot block the rest.
-     */
-    async sync(): Promise<void> {
-        if (!this.router) {
-            throw new MerossError('Session is not connected', 'NOT_CONNECTED');
-        }
-        for (const cloudDevice of await this.cloud.listDevices()) {
-            if (this.graph.getPhysical(cloudDevice.uuid) || cloudDevice.onlineStatus !== 1) {
-                continue;
-            }
-            try {
-                await this.enroll(cloudDevice);
-            } catch {
-                // Ability / System.All timed out; leave the board out of inventory.
-            }
-        }
-        this.materializeEndpoints();
-    }
-
-    /**
-     * Closes transports without discarding the stored token.
-     */
-    async disconnect(): Promise<void> {
-        this.endpoints.clear();
-        this.stopBoards();
-        this.graph = new DeviceGraph();
-        this.inventory.replace([]);
-        await this.teardownRouter();
-    }
-
-    /**
-     * Looks up an enrolled endpoint by inventory row id.
-     */
-    endpoint(id: string): Endpoint {
-        const endpoint = this.endpoints.get(id);
-        if (!endpoint) {
-            throw new MerossError(`Unknown endpoint: ${id}`, 'ENDPOINT_NOT_FOUND');
-        }
-        return endpoint;
+    /** MQTT credentials and topics; a change means the transports are stale. */
+    private brokerChanged(previous: TokenData): boolean {
+        return this.token.key !== previous.key
+            || this.token.userId !== previous.userId
+            || this.token.mqttDomain !== previous.mqttDomain;
     }
 
     private async teardownRouter(): Promise<void> {
@@ -235,51 +319,77 @@ export class Session extends EventEmitter<SessionEvents> {
         await router?.disconnect();
     }
 
+    private emitWarning(error: unknown): void {
+        this.emit('warning', error instanceof Error ? error : new Error(String(error)));
+    }
+
+    /**
+     * Enrolls up to {@link ENROLL_CONCURRENCY} devices at a time, collecting the
+     * uuids whose shape changed so the caller can rebuild just those.
+     */
+    private async enrollAll(cloudDevices: readonly CloudDevice[]): Promise<Set<string>> {
+        const reshaped = new Set<string>();
+        let next = 0;
+        const worker = async (): Promise<void> => {
+            while (next < cloudDevices.length) {
+                const cloudDevice = cloudDevices[next++]!;
+                try {
+                    if ((await this.enroll(cloudDevice)).reshaped) {
+                        reshaped.add(cloudDevice.uuid);
+                    }
+                } catch (error) {
+                    this.emitWarning(error);
+                }
+            }
+        };
+        await Promise.all(Array.from({ length: ENROLL_CONCURRENCY }, worker));
+        return reshaped;
+    }
+
     private handlePush(message: MerossMessage): void {
         if (message.header.method === 'PUSH') {
             const uuid = message.header.uuid
                 ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
             if (uuid) {
-                this.boards.get(uuid)?.poller.recordPush(message);
+                this.devices.get(uuid)?.poller.recordPush(message);
             }
         }
         for (const endpoint of this.endpoints.values()) {
-            endpoint.switch?.handlePush(message);
-            endpoint.energy?.handlePush(message);
-            endpoint.light?.handlePush(message);
-            endpoint.cover?.handlePush(message);
-            endpoint.climate?.handlePush(message);
-            endpoint.sensor?.handlePush(message);
-            endpoint.presence?.handlePush(message);
-            endpoint.sprinkler?.handlePush(message);
-            endpoint.spray?.handlePush(message);
-            endpoint.fan?.handlePush(message);
-            endpoint.diffuser?.handlePush(message);
-            endpoint.media?.handlePush(message);
-            endpoint.alarm?.handlePush(message);
-            endpoint.dnd?.handlePush(message);
-            endpoint.system?.handlePush(message);
-            endpoint.timer?.handlePush(message);
-            endpoint.trigger?.handlePush(message);
+            endpoint.handlePush(message);
         }
     }
 
     private handleInbound(message: MerossMessage): void {
-        for (const { availability } of this.boards.values()) {
+        for (const { availability } of this.devices.values()) {
             availability.handleMessage(message);
         }
     }
 
-    private stopBoards(): void {
-        for (const { availability, poller } of this.boards.values()) {
-            poller.stop();
-            availability.stop();
+    private stopAllDevices(): void {
+        for (const uuid of this.devices.keys()) {
+            this.stopDevice(uuid);
         }
-        this.boards.clear();
     }
 
-    private async enroll(cloudDevice: CloudDevice): Promise<void> {
-        const [abilityReply, allReply] = await this.router!.requestGets({
+    /**
+     * Stops a device's timers and forgets the endpoints it owns. The graph entry
+     * stays so {@link materializeEndpoints} can rebuild from a fresh enrollment.
+     */
+    private stopDevice(uuid: string): void {
+        const runtime = this.devices.get(uuid);
+        if (!runtime) {
+            return;
+        }
+        runtime.poller.stop();
+        runtime.availability.stop();
+        for (const endpoint of runtime.endpoints) {
+            this.endpoints.delete(endpoint.id);
+        }
+        this.devices.delete(uuid);
+    }
+
+    private async enroll(cloudDevice: CloudDevice): Promise<EnrollResult> {
+        const [abilityReply, allReply] = await this.connectedRouter.requestGets({
             uuid: cloudDevice.uuid,
             gets: [
                 { namespace: ABILITY_NAMESPACE, payload: {} },
@@ -288,7 +398,7 @@ export class Session extends EventEmitter<SessionEvents> {
         });
 
         const ability = decodeAbilityGetAck(abilityReply.payload);
-        this.graph.enroll({
+        return this.graph.enroll({
             abilityPayload: abilityReply.payload,
             allPayload: allReply.payload,
             cloud: cloudDevice,
@@ -298,28 +408,38 @@ export class Session extends EventEmitter<SessionEvents> {
         });
     }
 
-    private materializeEndpoints(): void {
+    /**
+     * Reshaped devices are torn down before being rebuilt, because their traits
+     * captured the previous ability snapshot at construction.
+     */
+    private materializeEndpoints(reshaped: ReadonlySet<string>): void {
+        for (const uuid of reshaped) {
+            this.stopDevice(uuid);
+        }
+
         const rows = this.graph.inventoryRows();
         this.inventory.replace(rows);
-        for (const row of rows) {
-            if (!this.endpoints.has(row.id)) {
-                this.endpoints.set(row.id, this.createEndpoint(this.graph.getEndpoint(row.id)!));
-            }
-        }
         const byUuid = new Map<string, Endpoint[]>();
         for (const row of rows) {
-            const uuid = this.graph.getEndpoint(row.id)!.uuid;
-            const group = byUuid.get(uuid) ?? [];
-            group.push(this.endpoints.get(row.id)!);
-            byUuid.set(uuid, group);
+            const graphEndpoint = this.graph.getEndpoint(row.id)!;
+            let endpoint = this.endpoints.get(row.id);
+            if (!endpoint) {
+                endpoint = this.createEndpoint(graphEndpoint);
+                this.endpoints.set(row.id, endpoint);
+            }
+            const group = byUuid.get(graphEndpoint.uuid) ?? [];
+            group.push(endpoint);
+            byUuid.set(graphEndpoint.uuid, group);
         }
+
         for (const [uuid, endpoints] of byUuid) {
-            if (this.boards.has(uuid)) {
+            if (this.devices.has(uuid)) {
                 continue;
             }
             const physical = this.graph.getPhysical(uuid)!;
             const request = this.deviceRequest(physical);
-            let poller!: DevicePoller;
+            const startDelayMs = (this.startedDevices * POLL_START_STAGGER_MS) % DEFAULT_POLL_INTERVAL_MS;
+            this.startedDevices += 1;
             const availability = new DeviceAvailability({
                 uuid,
                 initialOnline: physical.online,
@@ -327,28 +447,33 @@ export class Session extends EventEmitter<SessionEvents> {
                 request: (namespace, method, payload) => request({
                     namespace,
                     method,
-                    payload: payload ?? {}
+                    payload: payload ?? {},
+                    priority: 'background'
                 }),
                 onOnlineChange: (online) => poller.setOnline(online),
                 onInnerIp: (innerIp) => {
                     physical.innerIp = innerIp;
                 }
             });
-            poller = new DevicePoller({
+            // Mutually referential with `availability`; both only read each
+            // other from callbacks, so declaration order is safe.
+            const poller: DevicePoller = new DevicePoller({
                 uuid,
                 isOnline: () => availability.isOnline(),
-                isCloudPath: () => this.router!.isCloudPath(uuid, physical.innerIp),
+                isCloudPath: () => this.connectedRouter.isCloudPath(uuid, physical.innerIp),
                 maxCmdNum: () => physical.maxCmdNum,
-                requestGets: (gets, maxCmdNum) => this.router!.requestGets({
+                requestGets: (gets, maxCmdNum) => this.connectedRouter.requestGets({
                     uuid,
                     gets,
                     maxCmdNum,
+                    priority: 'background',
                     ...this.lanBind(physical)
                 }),
                 onAck: (message) => this.handlePush(message),
-                jobs: buildPollJobs(physical.ability, physical.endpoints)
+                jobs: buildPollJobs(physical.ability, physical.endpoints),
+                startDelayMs
             });
-            this.boards.set(uuid, { availability, poller });
+            this.devices.set(uuid, { availability, poller, endpoints });
             availability.start();
             poller.start();
         }
@@ -362,6 +487,14 @@ export class Session extends EventEmitter<SessionEvents> {
         // Assigned after traits so emitChange closures can capture the binding.
         // eslint-disable-next-line prefer-const -- definite assignment; constructed below
         let endpoint!: Endpoint;
+        /**
+         * Each trait declares its own `Values` interface, so the parameter is
+         * widened to `object`; the spread is what gives {@link EndpointChange}
+         * an indexable type.
+         */
+        const changeEmitter = (trait: TraitName) => (values: object) => {
+            endpoint.emit('change', { trait, values: { ...values } });
+        };
         let switchTrait: SwitchTrait | undefined;
         let energyTrait: EnergyTrait | undefined;
         let lightTrait: LightTrait | undefined;
@@ -388,10 +521,7 @@ export class Session extends EventEmitter<SessionEvents> {
                     initialOn: graphEndpoint.on,
                     namespaces,
                     request,
-                    emitChange: (values) => endpoint.emit('change', {
-                        trait: 'switch',
-                        values: { ...values }
-                    })
+                    emitChange: changeEmitter('switch')
                 });
             } else {
                 switchTrait = new SwitchTrait({
@@ -403,10 +533,7 @@ export class Session extends EventEmitter<SessionEvents> {
                         : TOGGLEX_NAMESPACE,
                     initialOn: graphEndpoint.on,
                     request,
-                    emitChange: (values) => endpoint.emit('change', {
-                        trait: 'switch',
-                        values: { ...values }
-                    })
+                    emitChange: changeEmitter('switch')
                 });
             }
         }
@@ -421,10 +548,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 hasConsumptionH: CONSUMPTIONH_NAMESPACE in physical.ability,
                 namespaces,
                 request,
-                emitChange: (values) => endpoint.emit('change', {
-                    trait: 'energy',
-                    values: { ...values }
-                })
+                emitChange: changeEmitter('energy')
             });
         }
 
@@ -448,10 +572,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 hasLightEffect,
                 lightCapacity: guessedCapacity,
                 request,
-                emitChange: (values) => endpoint.emit('change', {
-                    trait: 'light',
-                    values: { ...values }
-                })
+                emitChange: changeEmitter('light')
             });
         }
         if (graphEndpoint.traits.includes('cover')) {
@@ -462,12 +583,9 @@ export class Session extends EventEmitter<SessionEvents> {
                 uuid: physical.uuid,
                 channel,
                 kind,
-                namespaces: new Set(Object.keys(physical.ability)),
+                namespaces,
                 request,
-                emitChange: (values) => endpoint.emit('change', {
-                    trait: 'cover',
-                    values: { ...values }
-                })
+                emitChange: changeEmitter('cover')
             });
         }
         if (graphEndpoint.traits.includes('climate')) {
@@ -478,10 +596,7 @@ export class Session extends EventEmitter<SessionEvents> {
                     subDeviceId: graphEndpoint.subDeviceId,
                     namespaces,
                     request,
-                    emitChange: (values) => endpoint.emit('change', {
-                        trait: 'climate',
-                        values: { ...values }
-                    })
+                    emitChange: changeEmitter('climate')
                 });
             } else {
                 const generation: ThermostatGeneration =
@@ -495,10 +610,7 @@ export class Session extends EventEmitter<SessionEvents> {
                     generation,
                     namespaces,
                     request,
-                    emitChange: (values) => endpoint.emit('change', {
-                        trait: 'climate',
-                        values: { ...values }
-                    })
+                    emitChange: changeEmitter('climate')
                 });
             }
         }
@@ -511,10 +623,7 @@ export class Session extends EventEmitter<SessionEvents> {
                     family,
                     namespaces,
                     request,
-                    emitChange: (values) => endpoint.emit('change', {
-                        trait: 'sensor',
-                        values: { ...values }
-                    })
+                    emitChange: changeEmitter('sensor')
                 });
             }
         }
@@ -524,10 +633,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 channel,
                 namespaces,
                 request,
-                emitChange: (values) => endpoint.emit('change', {
-                    trait: 'presence',
-                    values: { ...values }
-                })
+                emitChange: changeEmitter('presence')
             });
         }
         if (graphEndpoint.traits.includes('sprinkler') && graphEndpoint.subDeviceId) {
@@ -536,10 +642,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 subDeviceId: graphEndpoint.subDeviceId,
                 namespaces,
                 request,
-                emitChange: (values) => endpoint.emit('change', {
-                    trait: 'sprinkler',
-                    values: { ...values }
-                })
+                emitChange: changeEmitter('sprinkler')
             });
         }
         if (graphEndpoint.traits.includes('spray')) {
@@ -547,10 +650,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 uuid: physical.uuid,
                 channel,
                 request,
-                emitChange: (values) => endpoint.emit('change', {
-                    trait: 'spray',
-                    values: { ...values }
-                })
+                emitChange: changeEmitter('spray')
             });
         }
         if (graphEndpoint.traits.includes('fan')) {
@@ -562,10 +662,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 hasToggle: !(TOGGLEX_NAMESPACE in physical.ability)
                     && 'Appliance.Control.Toggle' in physical.ability,
                 request,
-                emitChange: (values) => endpoint.emit('change', {
-                    trait: 'fan',
-                    values: { ...values }
-                })
+                emitChange: changeEmitter('fan')
             });
         }
         if (graphEndpoint.traits.includes('diffuser')) {
@@ -574,10 +671,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 channel,
                 namespaces,
                 request,
-                emitChange: (values) => endpoint.emit('change', {
-                    trait: 'diffuser',
-                    values: { ...values }
-                })
+                emitChange: changeEmitter('diffuser')
             });
         }
         if (graphEndpoint.traits.includes('media')) {
@@ -585,10 +679,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 uuid: physical.uuid,
                 channel,
                 request,
-                emitChange: (values) => endpoint.emit('change', {
-                    trait: 'media',
-                    values: { ...values }
-                })
+                emitChange: changeEmitter('media')
             });
         }
         if (graphEndpoint.traits.includes('alarm')) {
@@ -597,10 +688,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 channel,
                 namespaces,
                 request,
-                emitChange: (values) => endpoint.emit('change', {
-                    trait: 'alarm',
-                    values: { ...values }
-                })
+                emitChange: changeEmitter('alarm')
             });
         }
         if (graphEndpoint.traits.includes('dnd')) {
@@ -617,10 +705,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 initialHardware: physical.system.hardware,
                 initialTime: physical.system.time,
                 request,
-                emitChange: (values) => endpoint.emit('change', {
-                    trait: 'system',
-                    values: { ...values }
-                })
+                emitChange: changeEmitter('system')
             });
         }
         if (graphEndpoint.traits.includes('timer')) {
@@ -633,10 +718,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 generation,
                 namespaces,
                 request,
-                emitChange: (values) => endpoint.emit('change', {
-                    trait: 'timer',
-                    values: { ...values }
-                })
+                emitChange: changeEmitter('timer')
             });
         }
         if (graphEndpoint.traits.includes('trigger')) {
@@ -649,10 +731,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 generation,
                 namespaces,
                 request,
-                emitChange: (values) => endpoint.emit('change', {
-                    trait: 'trigger',
-                    values: { ...values }
-                })
+                emitChange: changeEmitter('trigger')
             });
         }
         endpoint = new Endpoint({
@@ -695,7 +774,7 @@ export class Session extends EventEmitter<SessionEvents> {
 
     private deviceRequest(physical: PhysicalDevice) {
         return (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) =>
-            this.router!.request({
+            this.connectedRouter.request({
                 uuid: physical.uuid,
                 ...this.lanBind(physical),
                 ...options

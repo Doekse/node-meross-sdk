@@ -8,6 +8,7 @@ import {
 import type { MerossMessage, MerossPayload } from '../protocol';
 import type { LanHttpTransport } from './lan-http';
 import type { MqttTransport } from './mqtt';
+import type { PublishPriority } from './rate-limit';
 
 export const DEFAULT_MAX_ERRORS = 1;
 export const DEFAULT_ERROR_BUDGET_WINDOW_MS = 60_000;
@@ -19,6 +20,11 @@ export interface RoutedRequestOptions {
     payload?: MerossPayload;
     ip?: string | null;
     encryptionKey?: Buffer;
+    /**
+     * Only reaches the MQTT rate limiter; LAN HTTP has no publish window.
+     * Defaults to `user`, so scheduled work must opt in to `background`.
+     */
+    priority?: PublishPriority;
 }
 
 export interface GetCommand {
@@ -37,6 +43,7 @@ export interface RequestGetsOptions {
      * one at a time.
      */
     maxCmdNum?: number;
+    priority?: PublishPriority;
 }
 
 export interface TransportRouterOptions {
@@ -47,8 +54,9 @@ export interface TransportRouterOptions {
     now?: () => number;
 }
 
-interface BudgetEntry {
-    budget: number;
+/** Remaining LAN failures allowed for one device before the window resets. */
+interface ErrorBudget {
+    remaining: number;
     windowStart: number;
 }
 
@@ -63,7 +71,7 @@ export class TransportRouter {
     private readonly maxErrors: number;
     private readonly windowMs: number;
     private readonly now: () => number;
-    private readonly budgets = new Map<string, BudgetEntry>();
+    private readonly errorBudgets = new Map<string, ErrorBudget>();
 
     constructor(options: TransportRouterOptions) {
         this.mqtt = options.mqtt;
@@ -78,7 +86,7 @@ export class TransportRouter {
     }
 
     async disconnect(): Promise<void> {
-        this.budgets.clear();
+        this.errorBudgets.clear();
         await this.mqtt.disconnect();
     }
 
@@ -87,7 +95,7 @@ export class TransportRouter {
      * DevicePoller uses this for cloud smart/once caps.
      */
     isCloudPath(uuid: string, ip?: string | null): boolean {
-        return !ip || this.budgetEntry(uuid).budget < 1;
+        return !ip || this.errorBudget(uuid).remaining < 1;
     }
 
     /**
@@ -99,10 +107,11 @@ export class TransportRouter {
             uuid: options.uuid,
             namespace: options.namespace,
             method: options.method,
-            payload: options.payload
+            payload: options.payload,
+            priority: options.priority
         };
 
-        if (options.ip && this.budgetEntry(options.uuid).budget >= 1) {
+        if (options.ip && this.errorBudget(options.uuid).remaining >= 1) {
             try {
                 return await this.lan.request({
                     ...command,
@@ -114,7 +123,7 @@ export class TransportRouter {
                     throw error;
                 }
                 if (error instanceof TransportError) {
-                    this.budgetEntry(options.uuid).budget -= 1;
+                    this.errorBudget(options.uuid).remaining -= 1;
                 }
             }
         }
@@ -170,7 +179,8 @@ export class TransportRouter {
                     payload: get.payload ?? {}
                 }))),
                 ip: options.ip,
-                encryptionKey: options.encryptionKey
+                encryptionKey: options.encryptionKey,
+                priority: options.priority
             });
             const subs = decodeMultipleAck(packed.payload);
             if (subs.length !== chunk.length) {
@@ -203,18 +213,19 @@ export class TransportRouter {
                 method: get.method ?? 'GET',
                 payload: get.payload,
                 ip: options.ip,
-                encryptionKey: options.encryptionKey
+                encryptionKey: options.encryptionKey,
+                priority: options.priority
             }));
         }
         return results;
     }
 
-    private budgetEntry(uuid: string): BudgetEntry {
+    private errorBudget(uuid: string): ErrorBudget {
         const now = this.now();
-        let entry = this.budgets.get(uuid);
+        let entry = this.errorBudgets.get(uuid);
         if (!entry || now > entry.windowStart + this.windowMs) {
-            entry = { budget: this.maxErrors, windowStart: now };
-            this.budgets.set(uuid, entry);
+            entry = { remaining: this.maxErrors, windowStart: now };
+            this.errorBudgets.set(uuid, entry);
         }
         return entry;
     }
