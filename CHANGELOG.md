@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1-alpha] - 2026-09-01
+
 ### Fixed
 
 - LAN HTTP and poller GETACK are applied on the device that issued the request, matching meross_lan HTTP. Firmware that echoes the app `from` and omits `uuid` is no longer dropped; the envelope is not rewritten.
@@ -25,5 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Traits: switch, light, energy, cover, climate, sensor, presence, fan, spray, diffuser, sprinkler, media, alarm, dnd, system, timer, trigger.
 - TypeScript types shipped next to CommonJS `dist/` so `require()` hosts (including Homey) load without a bundler.
 
-[unreleased]: https://github.com/Doekse/node-meross-sdk/compare/v0.1.0-alpha...HEAD
+[unreleased]: https://github.com/Doekse/node-meross-sdk/compare/v0.1.1-alpha...HEAD
+[0.1.1-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.1.0-alpha...v0.1.1-alpha
 [0.1.0-alpha]: https://github.com/Doekse/node-meross-sdk/releases/tag/v0.1.0-alpha
