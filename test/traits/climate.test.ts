@@ -893,21 +893,4 @@ describe('ClimateTrait alert config and sensor association', () => {
         assert.equal(changes.length, 1);
     });
 
-    it('ignores AlertConfig PUSH when uuid does not match', () => {
-        const { endpoint, trait } = createBoardHarness('modeC', namespaces);
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        trait.handlePush(encodeMessage({
-            namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: {
-                config: [{ channel: CHANNEL, type: 5, value: { mts300: {} } }]
-            }
-        }));
-        assert.deepEqual(changes, []);
-    });
 });

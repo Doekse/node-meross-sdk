@@ -124,11 +124,6 @@ export class AlarmTrait {
     }
 
     handlePush(message: MerossMessage): void {
-        const uuid = message.header.uuid
-            ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
-        if (!uuid || uuid !== this.bind.uuid) {
-            return;
-        }
         if (message.header.namespace === CONTROL_ALARM_NAMESPACE && this.has(CONTROL_ALARM_NAMESPACE)) {
             for (const entry of decodeAlarmPush(message.payload)) {
                 if (this.matchesAlarm(entry)) {

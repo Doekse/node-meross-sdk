@@ -6,6 +6,7 @@ export { signMessage, verifySignature } from './sign';
 export {
     DEFAULT_TRIGGER_SRC,
     PAYLOAD_VERSION,
+    uuidFromHeader,
     decodeMessage,
     deviceErrorCode,
     encodeMessage

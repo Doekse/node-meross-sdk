@@ -119,6 +119,8 @@ export class TransportRouter {
                 if (error instanceof CommandError || error instanceof ProtocolError) {
                     throw error;
                 }
+                // meross_lan clears `_http_active` only on Appliance.System.All
+                // HTTP failure; other namespaces still retry LAN next cycle.
                 if (options.namespace === SYSTEM_ALL_NAMESPACE) {
                     this.httpDown.add(options.uuid);
                 }

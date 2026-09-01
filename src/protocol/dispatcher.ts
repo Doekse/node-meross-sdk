@@ -1,11 +1,11 @@
-import type { MerossMessage } from './message';
+import { uuidFromHeader, type MerossMessage } from './message';
 import { PendingRequests } from './pending';
 
 export type DispatchResult = 'reply' | 'push' | 'stale' | 'ignored';
 
 export interface DispatcherHandlers {
     onPush?: (message: MerossMessage) => void;
-    onInbound?: (message: MerossMessage) => void;
+    onInbound?: (message: MerossMessage, originUuid?: string) => void;
 }
 
 /**
@@ -17,7 +17,7 @@ const PUSH_STALE_WINDOW_MS = 60_000;
 /**
  * Match replies by `messageId`; apply unmatched PUSH in header-time order so
  * MQTT reordering cannot overwrite a newer update. One dispatcher serves the
- * whole session, so the gate key includes the appliance id.
+ * whole session, so the gate key includes the device uuid.
  */
 export class ProtocolDispatcher {
     readonly pending = new PendingRequests();
@@ -32,8 +32,12 @@ export class ProtocolDispatcher {
         }
     }
 
-    handle(message: MerossMessage): DispatchResult {
-        this.handlers.onInbound?.(message);
+    /**
+     * meross_lan applies HTTP on the Device that POSTed. Pass that uuid when
+     * the envelope cannot identify the device.
+     */
+    handle(message: MerossMessage, originUuid?: string): DispatchResult {
+        this.handlers.onInbound?.(message, originUuid);
 
         if (this.pending.settle(message)) {
             return 'reply';
@@ -42,8 +46,7 @@ export class ProtocolDispatcher {
             return 'ignored';
         }
 
-        const id = message.header.uuid
-            ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
+        const id = uuidFromHeader(message.header);
         const key = id ? `${id}:${message.header.namespace}` : message.header.namespace;
         const ts = message.header.timestamp * 1000 + (message.header.timestampMs ?? 0);
         const last = this.lastTs.get(key);

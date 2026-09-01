@@ -380,18 +380,6 @@ describe('SensorTrait — exception and version', () => {
         assert.equal(changes.length, 0);
     });
 
-    it('ignores Hub.Exception PUSH when uuid does not match the bind', () => {
-        const { trait, changes } = createHarness('tempHum');
-        trait.handlePush(encodeMessage({
-            namespace: HUB_EXCEPTION_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: { exception: [{ id: SUB_DEVICE_ID, code: 5061 }] }
-        }));
-        assert.equal(changes.length, 0);
-    });
 
     it('applies firmwareVersion from Hub.SubDevice.Version PUSH', () => {
         const { trait, changes } = createHarness('tempHum');
@@ -436,20 +424,6 @@ describe('SensorTrait — exception and version', () => {
         assert.equal(changes.length, 1);
     });
 
-    it('ignores Version PUSH when uuid does not match the bind', () => {
-        const { trait, changes } = createHarness('tempHum');
-        trait.handlePush(encodeMessage({
-            namespace: HUB_SUBDEVICE_VERSION_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: {
-                version: [{ id: SUB_DEVICE_ID, firmware: '5.1.8' }]
-            }
-        }));
-        assert.equal(changes.length, 0);
-    });
 });
 
 describe('SensorTrait — handlePush', () => {
@@ -625,18 +599,6 @@ describe('SensorTrait — extras', () => {
         assert.equal(requests.length, 0);
     });
 
-    it('ignores PUSH when uuid does not match the bind', () => {
-        const { trait, changes } = createHarness('tempHum');
-        trait.handlePush(encodeMessage({
-            namespace: HUB_SENSOR_TEMPHUM_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: { tempHum: [{ id: SUB_DEVICE_ID, latestTemperature: 230, latestHumidity: 450 }] }
-        }));
-        assert.equal(changes.length, 0);
-    });
 
     it('applies Config.Sensor.Association PUSH for matching subId', () => {
         const { trait, changes } = createHarness('tempHum');

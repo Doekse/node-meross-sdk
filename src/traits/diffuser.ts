@@ -144,11 +144,6 @@ export class DiffuserTrait {
     }
 
     handlePush(message: MerossMessage): void {
-        const uuid = message.header.uuid
-            ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
-        if (!uuid || uuid !== this.bind.uuid) {
-            return;
-        }
         const ns = message.header.namespace;
         if (ns === DIFFUSER_LIGHT_NAMESPACE) {
             for (const entry of decodeDiffuserLightPush(message.payload)) {

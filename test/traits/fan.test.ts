@@ -187,18 +187,6 @@ describe('FanTrait', () => {
         assert.deepEqual(changes, [{ on: false }]);
     });
 
-    it('ignores PUSH when uuid does not match the bind', () => {
-        const { trait, changes } = createHarness();
-        trait.handlePush(encodeMessage({
-            namespace: FAN_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: { fan: [{ channel: CHANNEL, speed: 1, maxSpeed: 4 }] }
-        }));
-        assert.equal(changes.length, 0);
-    });
 
     it('applies Fan.Config and ignores zero maxSpeed when Fan already set it', () => {
         const { trait, changes } = createHarness({

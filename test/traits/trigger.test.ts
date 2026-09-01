@@ -289,19 +289,6 @@ describe('TriggerTrait', () => {
         assert.equal(changes.length, 0);
     });
 
-    it('ignores PUSH when uuid does not match the bind', () => {
-        const { trait, changes } = createHarness({ getAck: { triggerx: [] } });
-        trait.handlePush(encodeMessage({
-            namespace: TRIGGERX_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: { triggerx: [WIRE_ENTRY] }
-        }));
-        assert.equal(changes.length, 0);
-        assert.deepEqual(trait.list(), []);
-    });
 });
 
 describe('TriggerTrait legacy Control.Trigger', () => {
@@ -334,20 +321,6 @@ describe('TriggerTrait legacy Control.Trigger', () => {
         assert.equal(changes.length, 1);
     });
 
-    it('ignores Control.Trigger PUSH from another device', () => {
-        const { trait, changes } = createHarness({ generation: 'legacy' });
-
-        trait.handlePush(encodeMessage({
-            namespace: CONTROL_TRIGGER_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: { trigger: [{ ...LEGACY_WIRE, id: 'other' }] }
-        }));
-
-        assert.equal(changes.length, 0);
-    });
 
     it('set SETs expanded legacy rules including the new entry', async () => {
         const { trait, requests } = createHarness({ generation: 'legacy' });

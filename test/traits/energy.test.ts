@@ -349,6 +349,37 @@ describe('EnergyTrait PUSH', () => {
         assert.deepEqual(changes, []);
     });
 
+    it('applies Electricity GETACK that omits uuid and echoes the app from', () => {
+        const { endpoint, trait } = createEnergyHarness({ hasConsumptionX: false });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const ack = electricityAck();
+        delete ack.header.uuid;
+        ack.header.from = '/app/42-lan/subscribe';
+
+        trait.handlePush(ack);
+
+        assert.deepEqual(changes, [
+            { trait: 'energy', values: { power: 11, current: 0.05, voltage: 230, consume: 42 } }
+        ]);
+    });
+
+    it('applies Electricity GETACK when uuid is present even if from is the app topic', () => {
+        const { endpoint, trait } = createEnergyHarness({ hasConsumptionX: false });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const ack = electricityAck();
+        ack.header.from = '/app/42-lan/subscribe';
+
+        trait.handlePush(ack);
+
+        assert.deepEqual(changes, [
+            { trait: 'energy', values: { power: 11, current: 0.05, voltage: 230, consume: 42 } }
+        ]);
+    });
+
     it('applies ConsumptionH PUSH when advertised', () => {
         const { endpoint, trait } = createEnergyHarness({
             hasConsumptionX: false,
@@ -551,25 +582,6 @@ describe('EnergyTrait over-temp', () => {
         }]);
     });
 
-    it('ignores OverTemp PUSH when uuid does not match', () => {
-        const { endpoint, trait } = createEnergyHarness({
-            hasConsumptionX: false,
-            namespaces: overTempNamespaces
-        });
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        trait.handlePush(encodeMessage({
-            namespace: CONFIG_OVERTEMP_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: { overTemp: { enable: 1, type: 1 } }
-        }));
-
-        assert.deepEqual(changes, []);
-    });
 });
 
 describe('EnergyTrait alert config', () => {
@@ -872,31 +884,4 @@ describe('EnergyTrait standby killer', () => {
         assert.deepEqual(changes, []);
     });
 
-    it('ignores StandbyKiller PUSH when uuid does not match', () => {
-        const { endpoint, trait } = createEnergyHarness({
-            hasConsumptionX: false,
-            namespaces
-        });
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        trait.handlePush(encodeMessage({
-            namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: {
-                config: [{
-                    channel: CHANNEL,
-                    power: 1000,
-                    time: 60,
-                    enable: 1,
-                    alert: 1
-                }]
-            }
-        }));
-
-        assert.deepEqual(changes, []);
-    });
 });

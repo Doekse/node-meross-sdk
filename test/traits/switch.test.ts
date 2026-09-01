@@ -167,18 +167,6 @@ describe('SwitchTrait PUSH', () => {
         assert.deepEqual(changes, []);
     });
 
-    it('ignores ToggleX PUSH from another device', () => {
-        const { endpoint, trait } = createSwitchHarness();
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        const push = loadFixture('togglex-push.json');
-        push.header.from = '/appliance/other-device/publish';
-
-        trait.handlePush(push);
-
-        assert.deepEqual(changes, []);
-    });
 
     it('ignores PUSH on a namespace the switch is not bound to', () => {
         const { endpoint, trait } = createSwitchHarness();

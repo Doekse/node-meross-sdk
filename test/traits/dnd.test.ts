@@ -77,19 +77,4 @@ describe('DndTrait', () => {
         assert.deepEqual(changes, [true]);
     });
 
-    it('ignores DND PUSH from another device', () => {
-        const { trait, changes } = createHarness();
-
-        trait.handlePush(encodeMessage({
-            namespace: DND_MODE_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: { DNDMode: { mode: 0 } }
-        }));
-
-        assert.equal(changes.length, 0);
-        assert.equal(trait.isOn(), undefined);
-    });
 });

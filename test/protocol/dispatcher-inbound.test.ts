@@ -87,4 +87,24 @@ describe('ProtocolDispatcher.onInbound', () => {
         dispatcher.handle(push);
         assert.deepEqual(pushed, ['PUSH']);
     });
+
+    it('forwards originUuid to onInbound', () => {
+        let origin: string | undefined;
+        const dispatcher = new ProtocolDispatcher({
+            onInbound: (_message, originUuid) => {
+                origin = originUuid;
+            }
+        });
+        const ack = encodeMessage({
+            namespace: 'Appliance.System.Online',
+            method: 'GETACK',
+            key: KEY,
+            from: '/app/test/subscribe',
+            payload: {}
+        });
+
+        dispatcher.handle(ack, 'device-1');
+
+        assert.equal(origin, 'device-1');
+    });
 });

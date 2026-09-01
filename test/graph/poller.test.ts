@@ -37,17 +37,6 @@ function ack(namespace: string, payload: Record<string, unknown> = {}): MerossMe
     });
 }
 
-function push(namespace: string): MerossMessage {
-    return encodeMessage({
-        namespace,
-        method: 'PUSH',
-        key: KEY,
-        from: `/appliance/${UUID}/publish`,
-        uuid: UUID,
-        payload: {}
-    });
-}
-
 function flushMicrotasks(): Promise<void> {
     return Promise.resolve().then(() => Promise.resolve());
 }
@@ -150,7 +139,7 @@ describe('DevicePoller', () => {
             ['Appliance.Control.ToggleX']
         );
 
-        harness.poller.recordPush(push('Appliance.Control.ToggleX'));
+        harness.poller.recordPush();
         await harness.advance(INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
@@ -169,7 +158,7 @@ describe('DevicePoller', () => {
 
         harness.poller.start();
         await harness.advance(0);
-        harness.poller.recordPush(push('Appliance.Control.ToggleX'));
+        harness.poller.recordPush();
         await harness.advance(INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
@@ -194,7 +183,7 @@ describe('DevicePoller', () => {
         });
 
         harness.poller.start();
-        harness.poller.recordPush(push('Appliance.Control.ToggleX'));
+        harness.poller.recordPush();
         await harness.advance(0);
         await harness.advance(INTERVAL_MS);
         await harness.advance(INTERVAL_MS);
@@ -661,7 +650,7 @@ describe('DevicePoller', () => {
             ]
         });
 
-        harness.poller.recordPush(push('Appliance.Control.ToggleX'));
+        harness.poller.recordPush();
         harness.poller.start();
         await harness.advance(0);
         assert.deepEqual(
@@ -695,12 +684,12 @@ describe('DevicePoller', () => {
             ]
         });
 
-        harness.poller.recordPush(push(TOGGLEX_NAMESPACE));
+        harness.poller.recordPush();
         harness.poller.start();
         await harness.advance(0);
         await harness.advance(INTERVAL_MS);
         // MQTT skip expires at SYSTEM_ALL_PERIOD_MS; a later PUSH keeps this a probe.
-        harness.poller.recordPush(push(TOGGLEX_NAMESPACE));
+        harness.poller.recordPush();
 
         await harness.advance(SYSTEM_ALL_PERIOD_MS - INTERVAL_MS);
 
@@ -732,11 +721,11 @@ describe('DevicePoller', () => {
             ]
         });
 
-        harness.poller.recordPush(push(TOGGLEX_NAMESPACE));
+        harness.poller.recordPush();
         harness.poller.start();
         await harness.advance(0);
         await harness.advance(INTERVAL_MS);
-        harness.poller.recordPush(push(TOGGLEX_NAMESPACE));
+        harness.poller.recordPush();
 
         await harness.advance(SYSTEM_ALL_PERIOD_MS - INTERVAL_MS);
 

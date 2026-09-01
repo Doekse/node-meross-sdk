@@ -64,11 +64,6 @@ export class PresenceTrait {
     }
 
     handlePush(message: MerossMessage): void {
-        const uuid = message.header.uuid
-            ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
-        if (!uuid || uuid !== this.bind.uuid) {
-            return;
-        }
         if (message.header.namespace === SENSOR_LATESTX_NAMESPACE) {
             for (const entry of decodeLatestXPush(message.payload)) {
                 if (entry.subId || entry.channel !== this.bind.channel) {

@@ -114,16 +114,4 @@ describe('DiffuserTrait', () => {
         assert.deepEqual(changes, [{ sprayMode: 'light' }]);
     });
 
-    it('ignores PUSH when uuid does not match the bind', () => {
-        const { trait, changes } = createHarness();
-        trait.handlePush(encodeMessage({
-            namespace: DIFFUSER_SPRAY_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: { spray: [{ channel: CHANNEL, mode: 0 }] }
-        }));
-        assert.equal(changes.length, 0);
-    });
 });

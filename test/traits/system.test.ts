@@ -170,19 +170,4 @@ describe('SystemTrait', () => {
         assert.equal(trait.getFirmware()?.version, '7.4.0');
     });
 
-    it('ignores firmware PUSH from another device', () => {
-        const { trait, changes } = createHarness();
-
-        trait.handlePush(encodeMessage({
-            namespace: SYSTEM_FIRMWARE_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: { firmware: { version: '9.0.0' } }
-        }));
-
-        assert.equal(changes.length, 0);
-        assert.equal(trait.getFirmware()?.version, '7.3.13');
-    });
 });

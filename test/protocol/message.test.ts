@@ -7,6 +7,7 @@ import { ProtocolError } from '../../src/errors';
 import {
     DEFAULT_TRIGGER_SRC,
     PAYLOAD_VERSION,
+    uuidFromHeader,
     decodeMessage,
     encodeMessage
 } from '../../src/protocol/message';
@@ -164,6 +165,27 @@ describe('protocol message envelope', () => {
             from: '/app/1/subscribe'
         });
         assert.equal(without.header.uuid, undefined);
+    });
+
+    it('prefers header uuid over from', () => {
+        const uuid = uuidFromHeader({
+            uuid: 'header',
+            from: '/appliance/from-id/publish'
+        });
+
+        assert.equal(uuid, 'header');
+    });
+
+    it('reads uuid from MQTT from when the header omits it', () => {
+        const uuid = uuidFromHeader({ from: '/appliance/from-id/publish' });
+
+        assert.equal(uuid, 'from-id');
+    });
+
+    it('returns undefined when from is an app topic', () => {
+        const uuid = uuidFromHeader({ from: '/app/1/subscribe' });
+
+        assert.equal(uuid, undefined);
     });
 
     it('includes uuid when the caller supplies one', () => {

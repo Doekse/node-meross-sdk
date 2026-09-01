@@ -114,23 +114,6 @@ describe('PresenceTrait', () => {
         assert.equal(changes.length, 0);
     });
 
-    it('ignores PUSH when uuid does not match the bind', () => {
-        const { trait, changes } = createHarness();
-        trait.handlePush(encodeMessage({
-            namespace: SENSOR_LATESTX_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: {
-                latest: [{
-                    channel: CHANNEL,
-                    data: { presence: [{ times: 1, distance: 100, value: 2, timestamp: 1 }] }
-                }]
-            }
-        }));
-        assert.equal(changes.length, 0);
-    });
 
     it('emits config fields from Presence.Config PUSH', () => {
         const { trait, changes } = createHarness();

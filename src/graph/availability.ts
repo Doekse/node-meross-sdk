@@ -88,12 +88,6 @@ export class DeviceAvailability {
     }
 
     handleMessage(message: MerossMessage): void {
-        const uuid = message.header.uuid
-            ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
-        if (uuid !== this.uuid) {
-            return;
-        }
-
         this.heartbeat.recordResponse();
 
         const { namespace, method } = message.header;

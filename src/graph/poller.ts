@@ -79,7 +79,10 @@ export interface DevicePollerOptions {
     httpDown?: () => boolean;
     maxCmdNum: () => number;
     requestGets: (gets: GetCommand[], maxCmdNum: number) => Promise<MerossMessage[]>;
-    /** Fan out GETACKs the same way Session fans out PUSH. */
+    /**
+     * GETACK is a pending reply, not PUSH, so the dispatcher will not call
+     * onPush. Session still applies the payload on this device.
+     */
     onAck: (message: MerossMessage) => void;
     jobs?: readonly PollJob[];
     intervalMs?: number;
@@ -220,15 +223,8 @@ export class DevicePoller {
      * state can ride PUSH instead of GET. The flag expires after the heartbeat
      * window so a leftover cloud PUSH does not leave HTTP-only devices stale.
      */
-    recordPush(message: MerossMessage): void {
-        if (message.header.method !== 'PUSH') {
-            return;
-        }
-        const uuid = message.header.uuid
-            ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
-        if (uuid === this.uuid) {
-            this.lastPushMs = this.now();
-        }
+    recordPush(): void {
+        this.lastPushMs = this.now();
     }
 
     /**
@@ -261,10 +257,11 @@ export class DevicePoller {
         if (this.timer !== undefined) {
             clearTimeout(this.timer);
         }
+        // Do not unref: Homey (and similar hosts) can drop unref'd timers while
+        // the app process stays alive for other reasons, which stops polling.
         this.timer = setTimeout(() => {
             void this.perform();
         }, delayMs);
-        this.timer.unref?.();
     }
 
     private async perform(): Promise<void> {
@@ -368,8 +365,8 @@ export class DevicePoller {
             return;
         }
 
-        // Advance before awaiting so a failed or rate-limited batch still waits
-        // for its next period instead of spinning on every tick.
+        // meross_lan `async_request_poll` stamps lastrequest / next before send
+        // so a failed or rate-limited batch still waits for its period.
         for (const job of pending) {
             job.lastRequestMs = epoch;
             job.nextMs = epoch + job.periodMs;

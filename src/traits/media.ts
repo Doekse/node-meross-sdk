@@ -93,11 +93,6 @@ export class MediaTrait {
     }
 
     handlePush(message: MerossMessage): void {
-        const uuid = message.header.uuid
-            ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
-        if (!uuid || uuid !== this.bind.uuid) {
-            return;
-        }
         if (message.header.namespace !== MP3_NAMESPACE) {
             return;
         }

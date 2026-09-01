@@ -257,11 +257,6 @@ export class SensorTrait {
     }
 
     handlePush(message: MerossMessage): void {
-        const uuid = message.header.uuid
-            ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
-        if (!uuid || uuid !== this.bind.uuid) {
-            return;
-        }
         const ns = message.header.namespace;
         const payload = message.payload;
         const id = this.bind.subDeviceId;

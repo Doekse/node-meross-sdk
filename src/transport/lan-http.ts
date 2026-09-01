@@ -158,7 +158,9 @@ export class LanHttpTransport {
             text = decryptPayload(text, options.encryptionKey);
         }
 
-        if (this.dispatcher.handle(decodeMessage(text, this.key)) !== 'reply') {
+        const decoded = decodeMessage(text, this.key);
+        // Envelope often cannot identify the device; this POST's uuid can.
+        if (this.dispatcher.handle(decoded, options.uuid) !== 'reply') {
             throw new ProtocolError('LAN HTTP response did not match a pending request');
         }
     }

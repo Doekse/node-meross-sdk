@@ -295,21 +295,6 @@ describe('SprinklerTrait', () => {
         assert.equal(changes.length, 1);
     });
 
-    it('ignores Control.WaterEvent PUSH when uuid does not match the bind', () => {
-        const { trait, changes } = createHarness({}, new Set([
-            ...SPRINKLER_NAMESPACES,
-            CONTROL_WATER_EVENT_NAMESPACE
-        ]));
-        trait.handlePush(encodeMessage({
-            namespace: CONTROL_WATER_EVENT_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: { control: [{ subId: SUB_DEVICE_ID, dura: 60, timestamp: 1 }] }
-        }));
-        assert.equal(changes.length, 0);
-    });
 
     it('ignores Control.WaterEvent when Ability lacks the namespace', () => {
         const { trait, changes } = createHarness({}, SPRINKLER_NAMESPACES);

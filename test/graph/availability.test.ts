@@ -175,6 +175,41 @@ describe('DeviceAvailability', () => {
         monitor.stop();
     });
 
+    it('applies GETACK that omits uuid and echoes the app from', () => {
+        const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
+        const seen: boolean[] = [];
+        endpoint.on('availability', (online) => seen.push(online));
+
+        const monitor = new DeviceAvailability({
+            uuid: UUID,
+            initialOnline: true,
+            endpoints: [endpoint],
+            request: async () => encodeMessage({
+                namespace: 'Appliance.System.Online',
+                method: 'GETACK',
+                key: KEY,
+                from: `/appliance/${UUID}/publish`,
+                uuid: UUID,
+                payload: {}
+            })
+        });
+        monitor.start();
+        seen.length = 0;
+
+        const ack = encodeMessage({
+            namespace: 'Appliance.System.Online',
+            method: 'GETACK',
+            key: KEY,
+            from: '/app/42-lan/subscribe',
+            payload: { online: { status: 2 } }
+        });
+
+        monitor.handleMessage(ack);
+
+        assert.deepEqual(seen, [false]);
+        monitor.stop();
+    });
+
     it('applies System.All GETACK online.status to all endpoints', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: false });
         const seen: boolean[] = [];

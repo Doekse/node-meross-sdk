@@ -43,11 +43,6 @@ export class DndTrait {
     }
 
     handlePush(message: MerossMessage): void {
-        const uuid = message.header.uuid
-            ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
-        if (!uuid || uuid !== this.bind.uuid) {
-            return;
-        }
         if (message.header.namespace !== DND_MODE_NAMESPACE) {
             return;
         }

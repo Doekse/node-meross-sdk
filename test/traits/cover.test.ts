@@ -248,22 +248,6 @@ describe('CoverTrait PUSH', () => {
         assert.deepEqual(changes, []);
     });
 
-    it('ignores PUSH when uuid does not match the bind', () => {
-        const { endpoint, trait } = createCoverHarness('garage');
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        trait.handlePush(encodeMessage({
-            namespace: GARAGE_STATE_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other-device/publish',
-            uuid: 'other-device',
-            payload: { state: { channel: CHANNEL, open: 1 } }
-        }));
-
-        assert.deepEqual(changes, []);
-    });
 
     it('applies RollerShutter.Position PUSH and derives open from position 100', () => {
         const { endpoint, trait } = createCoverHarness('shutter');

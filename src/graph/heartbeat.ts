@@ -75,10 +75,11 @@ export class Heartbeat {
             return;
         }
         const delay = this.isOnline() ? this.intervalMs : this.pollingDelay;
+        // Do not unref: see DevicePoller.schedule — hosts like Homey can drop
+        // unref'd timers while the app process remains alive.
         this.timer = setTimeout(() => {
             void this.perform();
         }, delay);
-        this.timer.unref?.();
     }
 
     private async perform(): Promise<void> {

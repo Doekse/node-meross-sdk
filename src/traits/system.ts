@@ -153,11 +153,6 @@ export class SystemTrait {
     }
 
     handlePush(message: MerossMessage): void {
-        const uuid = message.header.uuid
-            ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
-        if (!uuid || uuid !== this.bind.uuid) {
-            return;
-        }
         const { namespace } = message.header;
         if (namespace === SYSTEM_ALL_NAMESPACE) {
             this.applyAll(message.payload);

@@ -302,19 +302,6 @@ describe('TimerTrait', () => {
         assert.equal(changes.length, 0);
     });
 
-    it('ignores PUSH when uuid does not match the bind', () => {
-        const { trait, changes } = createHarness({ getAck: { timerx: [] } });
-        trait.handlePush(encodeMessage({
-            namespace: TIMERX_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: { timerx: [WIRE_ENTRY] }
-        }));
-        assert.equal(changes.length, 0);
-        assert.deepEqual(trait.list(), []);
-    });
 });
 
 describe('TimerTrait legacy Control.Timer', () => {
@@ -348,21 +335,6 @@ describe('TimerTrait legacy Control.Timer', () => {
         assert.equal(changes.length, 1);
     });
 
-    it('ignores Control.Timer GETACK from another device', () => {
-        const { trait, changes } = createHarness({ generation: 'legacy' });
-
-        trait.handlePush(encodeMessage({
-            namespace: CONTROL_TIMER_NAMESPACE,
-            method: 'GETACK',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: { timer: [{ ...LEGACY_WIRE, id: 'other' }] }
-        }));
-
-        assert.equal(changes.length, 0);
-        assert.deepEqual(trait.list(), []);
-    });
 
     it('set SETs the full Control.Timer list including the new entry', async () => {
         const { trait, requests } = createHarness({ generation: 'legacy' });

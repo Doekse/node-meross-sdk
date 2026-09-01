@@ -107,16 +107,4 @@ describe('MediaTrait', () => {
         assert.equal(changes.length, 0);
     });
 
-    it('ignores PUSH when uuid does not match the bind', () => {
-        const { trait, changes } = createHarness();
-        trait.handlePush(encodeMessage({
-            namespace: MP3_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: { mp3: { channel: CHANNEL, mute: 0, volume: 16, song: 2 } }
-        }));
-        assert.equal(changes.length, 0);
-    });
 });

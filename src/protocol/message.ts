@@ -31,6 +31,19 @@ export interface MerossMessage {
     payload: MerossPayload;
 }
 
+/** Header uuid is optional; firmware MQTT `from` still names the device. */
+const FROM_UUID = /^\/appliance\/([^/]+)\//;
+
+/**
+ * MQTT frames carry the device uuid in the header or in `from`. LAN GETACK
+ * often has neither; Session uses the POST target instead of this helper.
+ */
+export function uuidFromHeader(
+    header: Pick<MerossHeader, 'uuid' | 'from'>
+): string | undefined {
+    return header.uuid ?? FROM_UUID.exec(header.from)?.[1];
+}
+
 export interface EncodeMessageOptions {
     namespace: string;
     method: string;

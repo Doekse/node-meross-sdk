@@ -125,11 +125,6 @@ export class TriggerTrait {
     }
 
     handlePush(message: MerossMessage): void {
-        const uuid = message.header.uuid
-            ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
-        if (!uuid || uuid !== this.bind.uuid) {
-            return;
-        }
         if (message.header.namespace === CONTROL_TRIGGER_NAMESPACE && this.bind.generation === 'legacy') {
             // Classic Toggle only applies on channel 0; pre-X Trigger is the same device-wide list.
             if (this.bind.channel !== 0) {

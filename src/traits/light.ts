@@ -192,10 +192,6 @@ export class LightTrait {
     }
 
     handlePush(message: MerossMessage): void {
-        const uuid = message.header.uuid ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
-        if (!uuid || uuid !== this.bind.uuid) {
-            return;
-        }
 
         if (message.header.namespace === TOGGLEX_NAMESPACE && this.bind.hasToggleX) {
             for (const entry of decodeToggleXPush(message.payload)) {

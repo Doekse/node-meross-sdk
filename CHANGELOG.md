@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- LAN HTTP and poller GETACK are applied on the device that issued the request, matching meross_lan HTTP. Firmware that echoes the app `from` and omits `uuid` is no longer dropped; the envelope is not rewritten.
+- Poller/heartbeat timers no longer call `unref()`, matching meross_lan's HA `call_later` timers which stay referenced for the process lifetime.
+
 ## [0.1.0-alpha] - 2026-08-31
 
 ### Added

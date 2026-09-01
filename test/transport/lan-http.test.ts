@@ -108,6 +108,43 @@ describe('LanHttpTransport', () => {
         assert.equal(transport.dispatcher.pending.has(sent.header.messageId), false);
     });
 
+    it('routes GETACK by POST target without rewriting firmware uuid or from', async () => {
+        const inbound: Array<{ uuid?: string; from: string; origin?: string }> = [];
+        const dispatcher = new ProtocolDispatcher({
+            onInbound: (message, originUuid) => {
+                inbound.push({
+                    uuid: message.header.uuid,
+                    from: message.header.from,
+                    origin: originUuid
+                });
+            }
+        });
+        const { transport } = createTransport(async (_url, init) => {
+            const sent = decodeMessage(String(init.body), KEY);
+            return jsonResponse(encodeMessage({
+                namespace: sent.header.namespace,
+                method: 'GETACK',
+                key: KEY,
+                from: FROM,
+                messageId: sent.header.messageId,
+                timestamp: sent.header.timestamp,
+                payload: { togglex: { channel: 0, onoff: 1 } }
+            }));
+        }, { dispatcher });
+
+        const reply = await transport.request({
+            uuid: UUID,
+            ip: IP,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+
+        assert.equal(reply.header.uuid, undefined);
+        assert.equal(reply.header.from, FROM);
+        assert.equal(reply.header.method, 'GETACK');
+        assert.deepEqual(inbound, [{ uuid: undefined, from: FROM, origin: UUID }]);
+    });
+
     it('encrypts the body and decrypts the response when an AES key is set', async () => {
         const { transport, calls } = createTransport(async (_url, init) => {
             const plain = decryptPayload(String(init.body), ENCRYPTION_KEY);

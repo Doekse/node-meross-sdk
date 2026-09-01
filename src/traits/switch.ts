@@ -90,11 +90,6 @@ export class SwitchTrait {
     }
 
     handlePush(message: MerossMessage): void {
-        const uuid = message.header.uuid
-            ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
-        if (!uuid || uuid !== this.bind.uuid) {
-            return;
-        }
         if (this.bind.kind === 'hub') {
             const ns = message.header.namespace;
             if (ns === HUB_EXCEPTION_NAMESPACE && this.has(ns)) {

@@ -28,6 +28,7 @@ import {
     TIMERX_NAMESPACE,
     TOGGLEX_NAMESPACE,
     TRIGGERX_NAMESPACE,
+    uuidFromHeader,
     deriveEncryptionKey,
     macAddressFromUuid,
     supportsLanEncryption,
@@ -286,7 +287,7 @@ export class Session extends EventEmitter<SessionEvents> {
     private createRouter(): TransportRouter {
         const dispatcher = new ProtocolDispatcher({
             onPush: (message) => this.handlePush(message),
-            onInbound: (message) => this.handleInbound(message)
+            onInbound: (message, originUuid) => this.handleInbound(message, originUuid)
         });
         const mqtt = new MqttTransport({
             userId: this.token.userId,
@@ -346,23 +347,36 @@ export class Session extends EventEmitter<SessionEvents> {
         return reshaped;
     }
 
-    private handlePush(message: MerossMessage): void {
-        if (message.header.method === 'PUSH') {
-            const uuid = message.header.uuid
-                ?? /^\/appliance\/([^/]+)\//.exec(message.header.from)?.[1];
-            if (uuid) {
-                this.devices.get(uuid)?.poller.recordPush(message);
-            }
+    /**
+     * meross_lan HTTP applies on the Device that POSTed; MQTT looks up by
+     * header/`from`. Namespace handlers then apply without a second uuid check.
+     */
+    private handlePush(message: MerossMessage, originUuid?: string): void {
+        const runtime = this.deviceRuntime(message, originUuid);
+        if (!runtime) {
+            return;
         }
-        for (const endpoint of this.endpoints.values()) {
+        if (message.header.method === 'PUSH') {
+            runtime.poller.recordPush();
+        }
+        for (const endpoint of runtime.endpoints) {
             endpoint.handlePush(message);
         }
     }
 
-    private handleInbound(message: MerossMessage): void {
-        for (const { availability } of this.devices.values()) {
-            availability.handleMessage(message);
-        }
+    /**
+     * Same lookup as {@link handlePush} so LAN GETACK still counts as liveness.
+     */
+    private handleInbound(message: MerossMessage, originUuid?: string): void {
+        this.deviceRuntime(message, originUuid)?.availability.handleMessage(message);
+    }
+
+    private deviceRuntime(
+        message: MerossMessage,
+        originUuid?: string
+    ): DeviceRuntime | undefined {
+        const uuid = originUuid ?? uuidFromHeader(message.header);
+        return uuid ? this.devices.get(uuid) : undefined;
     }
 
     private stopAllDevices(): void {
@@ -470,7 +484,7 @@ export class Session extends EventEmitter<SessionEvents> {
                     priority: 'background',
                     ...this.lanBind(physical)
                 }),
-                onAck: (message) => this.handlePush(message),
+                onAck: (message) => this.handlePush(message, uuid),
                 jobs: buildPollJobs(physical.ability, physical.endpoints),
                 startDelayMs
             });

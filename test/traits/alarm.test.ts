@@ -231,25 +231,6 @@ describe('AlarmTrait', () => {
         assert.equal(changes.length, 0);
     });
 
-    it('ignores Alarm PUSH from another device', () => {
-        const { trait, changes } = createHarness();
-
-        trait.handlePush(encodeMessage({
-            namespace: CONTROL_ALARM_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: '/appliance/other/publish',
-            uuid: 'other',
-            payload: {
-                alarm: [{
-                    channel: CHANNEL,
-                    event: { security: { value: 1, timestamp: 10 } }
-                }]
-            }
-        }));
-
-        assert.equal(changes.length, 0);
-    });
 
     it('applies maSecurity PUSH as the hub-wide siren', () => {
         const { trait, changes } = createHarness();
