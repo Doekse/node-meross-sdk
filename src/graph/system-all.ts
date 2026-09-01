@@ -39,9 +39,7 @@ export interface SystemAll {
     digest: {
         togglex: DigestToggle[];
         light: number[];
-        garageDoor: number[];
-        /** Same rows as `garageDoor`, with the state firmware reported. */
-        garageDoorState: DigestGarageDoor[];
+        garageDoor: DigestGarageDoor[];
         rollerShutter: number[];
         spray: number[];
         fan: number[];
@@ -95,8 +93,7 @@ export function decodeSystemAllGetAck(payload: MerossPayload): SystemAll {
         digest: {
             togglex: digestTogglex(d.togglex),
             light: channelList(d.light, 'light'),
-            garageDoor: channelList(d.garageDoor, 'garageDoor'),
-            garageDoorState: digestGarageDoor(d.garageDoor),
+            garageDoor: digestGarageDoor(d.garageDoor),
             rollerShutter: channelList(d.rollerShutter, 'rollerShutter'),
             spray: channelList(d.spray, 'spray'),
             fan: channelList(d.fan, 'fan'),
@@ -158,13 +155,9 @@ function digestGarageDoor(raw: unknown): DigestGarageDoor[] {
         const row: DigestGarageDoor = { channel };
         if (typeof open === 'number') {
             row.open = open === 1;
-        } else if (typeof open === 'boolean') {
-            row.open = open;
         }
         if (typeof doorEnable === 'number') {
             row.doorEnable = doorEnable === 1;
-        } else if (typeof doorEnable === 'boolean') {
-            row.doorEnable = doorEnable;
         }
         return row;
     });
