@@ -48,11 +48,17 @@ describe('Control.Multiple codec', () => {
         ]);
     });
 
-    it('does not pack System.All, Control.Multiple, or Hub.ToggleX', () => {
+    it('does not pack Control.Multiple into itself', () => {
         assert.equal(canPackInMultiple(TOGGLEX_NAMESPACE), true);
-        for (const namespace of [MULTIPLE_NAMESPACE, SYSTEM_ALL_NAMESPACE, HUB_TOGGLEX_NAMESPACE]) {
-            assert.equal(canPackInMultiple(namespace), false);
-        }
+        assert.equal(canPackInMultiple(MULTIPLE_NAMESPACE), false);
+    });
+
+    it('packs System.All and Hub.ToggleX like any other GET, matching meross_lan', () => {
+        // Excluding either spends a cloud publish on that namespace alone and
+        // can starve a same-tick smart poll. meross_lan has no nesting
+        // restriction for either.
+        assert.equal(canPackInMultiple(SYSTEM_ALL_NAMESPACE), true);
+        assert.equal(canPackInMultiple(HUB_TOGGLEX_NAMESPACE), true);
     });
 
     it('rejects a SETACK without a multiple array', () => {
