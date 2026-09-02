@@ -55,6 +55,15 @@ export interface EndpointOptions {
 interface EndpointEvents {
     change: [change: EndpointChange];
     availability: [online: boolean];
+    /**
+     * One trait's handlePush threw; the rest of the batch still ran, same as
+     * {@link SessionEvents.warning}.
+     *
+     * Deliberately not named `error`: Node throws on an unhandled `error`
+     * emit, which would turn one trait's decode bug into a crashed host
+     * process.
+     */
+    warning: [error: Error, trait: TraitName];
 }
 
 /**
@@ -118,12 +127,22 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
 
     /**
      * Driven by {@link traits} rather than a hand-listed set, so adding a trait
-     * cannot leave it silently deaf to PUSH frames.
+     * cannot leave it silently deaf to PUSH frames. Handler exceptions are
+     * isolated so one namespace cannot drop the rest of a GETACK batch; the
+     * failure is still surfaced via `warning` rather than swallowed.
      */
     handlePush(message: MerossMessage): void {
         for (const trait of this.traits) {
-            this[trait]?.handlePush(message);
+            try {
+                this[trait]?.handlePush(message);
+            } catch (error) {
+                this.emitWarning(error, trait);
+            }
         }
+    }
+
+    private emitWarning(error: unknown, trait: TraitName): void {
+        this.emit('warning', error instanceof Error ? error : new Error(String(error)), trait);
     }
 
     /**
