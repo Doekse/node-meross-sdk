@@ -5,6 +5,7 @@ export const THERMOSTAT_MODE_NAMESPACE = 'Appliance.Control.Thermostat.Mode';
 export const THERMOSTAT_MODEB_NAMESPACE = 'Appliance.Control.Thermostat.ModeB';
 export const THERMOSTAT_MODEC_NAMESPACE = 'Appliance.Control.Thermostat.ModeC';
 
+export const HUB_TOGGLEX_NAMESPACE = 'Appliance.Hub.ToggleX';
 export const HUB_MTS100_MODE_NAMESPACE = 'Appliance.Hub.Mts100.Mode';
 export const HUB_MTS100_TEMPERATURE_NAMESPACE = 'Appliance.Hub.Mts100.Temperature';
 

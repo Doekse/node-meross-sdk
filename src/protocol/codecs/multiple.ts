@@ -2,8 +2,6 @@ import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
 export const MULTIPLE_NAMESPACE = 'Appliance.Control.Multiple';
-export const SYSTEM_ALL_NAMESPACE = 'Appliance.System.All';
-export const HUB_TOGGLEX_NAMESPACE = 'Appliance.Hub.ToggleX';
 
 export interface MultipleSubCommand {
     header: {

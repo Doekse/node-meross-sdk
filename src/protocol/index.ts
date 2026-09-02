@@ -50,6 +50,7 @@ export {
     encodeSystemTimeGet,
     encodeSystemTimeSet
 } from './codecs/system';
+export { SYSTEM_ALL_NAMESPACE } from '../graph/system-all';
 export type {
     SystemClockState,
     SystemDebugState,
@@ -217,9 +218,7 @@ export type {
     ShutterAdjustStatus
 } from './codecs/cover';
 export {
-    HUB_TOGGLEX_NAMESPACE,
     MULTIPLE_NAMESPACE,
-    SYSTEM_ALL_NAMESPACE,
     canPackInMultiple,
     decodeMultipleAck,
     encodeMultipleSet
@@ -229,6 +228,7 @@ export {
     THERMOSTAT_MODE_NAMESPACE,
     THERMOSTAT_MODEB_NAMESPACE,
     THERMOSTAT_MODEC_NAMESPACE,
+    HUB_TOGGLEX_NAMESPACE,
     HUB_MTS100_MODE_NAMESPACE,
     HUB_MTS100_TEMPERATURE_NAMESPACE,
     HOLD_ACTION_NAMESPACE,
