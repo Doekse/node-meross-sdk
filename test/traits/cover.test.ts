@@ -231,7 +231,10 @@ describe('CoverTrait initial state', () => {
     it('exposes digest open without emitting change', () => {
         const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['cover'] });
         const { request } = createRequestRecorder({ uuid: UUID, key: KEY });
-        const withDigest = new CoverTrait({
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const trait = new CoverTrait({
             uuid: UUID,
             channel: CHANNEL,
             kind: 'garage',
@@ -239,10 +242,8 @@ describe('CoverTrait initial state', () => {
             request,
             emitChange: (values) => endpoint.emit('change', { trait: 'cover', values: { ...values } })
         });
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
 
-        assert.equal(withDigest.isOpen(), true);
+        assert.equal(trait.isOpen(), true);
         assert.deepEqual(changes, []);
     });
 });

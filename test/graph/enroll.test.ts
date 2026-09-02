@@ -114,6 +114,24 @@ describe('System.All GETACK', () => {
         );
     });
 
+    it('rejects a non-array garageDoor digest', () => {
+        const allPayload = systemAllWithDigest({ garageDoor: { channel: 1 } });
+
+        assert.throws(
+            () => decodeSystemAllGetAck(allPayload),
+            (err: unknown) => err instanceof ProtocolError
+        );
+    });
+
+    it('rejects a garageDoor digest row without a numeric channel', () => {
+        const allPayload = systemAllWithDigest({ garageDoor: [{ channel: '1', open: 1 }] });
+
+        assert.throws(
+            () => decodeSystemAllGetAck(allPayload),
+            (err: unknown) => err instanceof ProtocolError
+        );
+    });
+
     it('decodes spray, fan, and diffuser digest channel lists', () => {
         const all = decodeSystemAllGetAck(systemAllWithDigest({
             spray: [{ channel: 0, mode: 0 }],
@@ -723,15 +741,14 @@ describe('enrollPhysicalDevice', () => {
             })
         });
 
-        assert.deepEqual(
-            device.endpoints
-                .filter((endpoint) => endpoint.traits.includes('cover'))
-                .map((endpoint) => ({ channel: endpoint.channel, on: endpoint.on })),
-            [
-                { channel: 1, on: true },
-                { channel: 2, on: false }
-            ]
-        );
+        const covers = device.endpoints
+            .filter((endpoint) => endpoint.traits.includes('cover'))
+            .map((endpoint) => ({ channel: endpoint.channel, on: endpoint.on }));
+
+        assert.deepEqual(covers, [
+            { channel: 1, on: true },
+            { channel: 2, on: false }
+        ]);
     });
 
     it('leaves cover state undefined when the digest omits open', () => {
@@ -773,16 +790,15 @@ describe('enrollPhysicalDevice', () => {
         // Channel 3 must not come back as a cover, and must not fall through to
         // the ToggleX pass as a plain socket either: a switch bound to a garage
         // door relay is worse than a missing device.
-        assert.deepEqual(
-            device.endpoints.map((endpoint) => ({
-                channel: endpoint.channel,
-                classHint: endpoint.classHint
-            })),
-            [
-                { channel: 1, classHint: 'cover' },
-                { channel: 2, classHint: 'cover' }
-            ]
-        );
+        const endpoints = device.endpoints.map((endpoint) => ({
+            channel: endpoint.channel,
+            classHint: endpoint.classHint
+        }));
+
+        assert.deepEqual(endpoints, [
+            { channel: 1, classHint: 'cover' },
+            { channel: 2, classHint: 'cover' }
+        ]);
     });
 
     it('sets classHint light when Control.Light is in Ability', () => {
