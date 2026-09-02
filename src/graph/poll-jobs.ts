@@ -106,22 +106,81 @@ import { CONTROL_WATER_NAMESPACE, DEVICE_CFG_NAMESPACE } from '../protocol/codec
 import type { MerossPayload } from '../protocol/message';
 import type { AbilityMap } from './ability';
 import type { GraphEndpoint } from '.';
-import {
-    CLOUDMQTT_PERIOD_MS,
-    ENERGY_CLOUD_PERIOD_MS,
-    ENERGY_PERIOD_MS,
-    HUB_BATTERY_PERIOD_MS,
-    SENSOR_FAST_CLOUD_PERIOD_MS,
-    SENSOR_FAST_PERIOD_MS,
-    SENSOR_SLOW_CLOUD_PERIOD_MS,
-    SENSOR_SLOW_PERIOD_MS,
-    SYSTEM_ALL_PERIOD_MS,
-    type PollJob,
-    type PollStrategy
-} from './poller';
-import { estimateResponseSize } from './poll-response-size';
+import type { PollJob, PollStrategy } from './poller';
 import { SYSTEM_ALL_NAMESPACE } from './system-all';
 import type { SystemAll } from './system-all';
+
+/**
+ * Firmware heartbeat window. HTTP is also probed on this interval while MQTT
+ * is current, so a dropped LAN path is noticed even while PUSH is still
+ * arriving.
+ */
+export const SYSTEM_ALL_PERIOD_MS = 295_000;
+
+/** Watt-hour totals do not need the instantaneous electricity period. */
+export const ENERGY_PERIOD_MS = 55_000;
+
+/** Consumption over cloud MQTT so daily totals do not fill the broker budget. */
+export const ENERGY_CLOUD_PERIOD_MS = 600_000;
+
+/** Live power / presence: due on every LAN tick. */
+export const SENSOR_FAST_PERIOD_MS = 0;
+
+/** Live sensors when the request rides cloud MQTT. */
+export const SENSOR_FAST_CLOUD_PERIOD_MS = 180_000;
+
+/** Config and slowly changing sensors on LAN. */
+export const SENSOR_SLOW_PERIOD_MS = 300_000;
+
+/** Slowly changing sensors over cloud MQTT. */
+export const SENSOR_SLOW_CLOUD_PERIOD_MS = 600_000;
+
+/** Config GETs over cloud MQTT; the slowest period, as they rarely change. */
+export const CLOUDMQTT_PERIOD_MS = 1_195_000;
+
+/** Hub battery percent barely moves; about once an hour is enough. */
+export const HUB_BATTERY_PERIOD_MS = 3_600_000;
+
+/**
+ * Control.Multiple's envelope is counted before any sub-GETACK so the HTTP
+ * ~3000-byte ceiling is not spent twice.
+ */
+export const POLL_RESPONSE_HEADER_SIZE = 300;
+
+/**
+ * Floor after a truncated-Multiple shrink, and the advertised max when
+ * `maxCmdNum * 800` is smaller, so packing cannot collapse below a usable
+ * HTTP body.
+ */
+export const POLL_RESPONSE_SIZE_MIN = 1_000;
+
+/**
+ * Ability advertises a command count, not a byte budget; 800 bytes per
+ * packed slot is the working estimate.
+ */
+export const POLL_RESPONSE_SIZE_PER_CMD = 800;
+
+/**
+ * Reserve a month of daily ConsumptionX rows before the first GETACK
+ * calibrates, so a large history reply cannot crowd live Electricity out
+ * of the same HTTP body.
+ */
+export const CONSUMPTIONX_DEFAULT_DAYS = 30;
+
+interface PollResponseParts {
+    base: number;
+    item: number;
+}
+
+/**
+ * Ability `maxCmdNum` is a command count; convert to a byte budget without
+ * going below {@link POLL_RESPONSE_SIZE_MIN}, including when the device
+ * advertises 0 or 1 commands.
+ */
+export function getDeviceResponseSizeMax(maxCmdNum: number): number {
+    const advertised = maxCmdNum * POLL_RESPONSE_SIZE_PER_CMD;
+    return advertised < POLL_RESPONSE_SIZE_MIN ? POLL_RESPONSE_SIZE_MIN : advertised;
+}
 
 interface PollPeriods {
     strategy: PollStrategy;
@@ -151,6 +210,13 @@ interface PollSpec extends PollPeriods {
     payload?: PayloadSpec;
     method?: 'GET' | 'PUSH';
     calibrate?: (payload: MerossPayload) => number | undefined;
+    /**
+     * GETACK bytes. Omitted `base` is {@link POLL_RESPONSE_HEADER_SIZE} and
+     * omitted `item` is 0, so packing still charges the Multiple envelope
+     * instead of treating the namespace as free.
+     */
+    base?: number;
+    item?: number;
 }
 
 const DEFAULT: PollPeriods = {
@@ -238,14 +304,16 @@ function subIdList(list: string, trait: TraitName): PayloadSpec {
 /**
  * GET schedule keyed by Ability. Unadvertised namespaces stay off the wire.
  * FilterMaintenance is PUSH-query (GET disconnects MAP100).
+ * `base`/`item` live here so packing does not keep a second per-namespace table.
  */
 const POLL: Record<string, PollSpec> = {
     [SYSTEM_ALL_NAMESPACE]: {
         strategy: 'all',
         periodMs: SYSTEM_ALL_PERIOD_MS,
-        periodCloudMs: 0
+        periodCloudMs: 0,
+        base: 1_000
     },
-    'Appliance.System.Runtime': SMART_CONFIG,
+    'Appliance.System.Runtime': { ...SMART_CONFIG, base: 330 },
     // Firmware / Hardware / Time ride System.All; standalone GET is the fallback.
     [SYSTEM_FIRMWARE_NAMESPACE]: {
         ...ONCE,
@@ -260,15 +328,16 @@ const POLL: Record<string, PollSpec> = {
         skipIf: SYSTEM_ALL_NAMESPACE
     },
     [SYSTEM_POSITION_NAMESPACE]: ONCE,
-    [SYSTEM_DEBUG_NAMESPACE]: ONCE,
-    [CONFIG_OVERTEMP_NAMESPACE]: SMART_CONFIG,
+    [SYSTEM_DEBUG_NAMESPACE]: { ...ONCE, base: 1_900 },
+    [CONFIG_OVERTEMP_NAMESPACE]: { ...SMART_CONFIG, base: 340 },
     [CONTROL_OVERTEMP_NAMESPACE]: {
         ...SMART_CONFIG,
         payload: channelList('overTemp', 'energy')
     },
     [CONFIG_SENSOR_ASSOCIATION_NAMESPACE]: {
         ...SMART_CONFIG,
-        payload: channelList('config')
+        payload: channelList('config'),
+        item: 30
     },
     [CONTROL_ALERT_CONFIG_NAMESPACE]: {
         ...SMART_CONFIG,
@@ -295,11 +364,13 @@ const POLL: Record<string, PollSpec> = {
     },
     [FAN_NAMESPACE]: {
         ...DEFAULT,
-        payload: channelList('fan', 'fan')
+        payload: channelList('fan', 'fan'),
+        item: 20
     },
     [MP3_NAMESPACE]: {
         ...DEFAULT,
-        payload: { dict: 'mp3' }
+        payload: { dict: 'mp3' },
+        base: 380
     },
     [DIFFUSER_LIGHT_NAMESPACE]: DEFAULT,
     [DIFFUSER_SPRAY_NAMESPACE]: DEFAULT,
@@ -307,14 +378,15 @@ const POLL: Record<string, PollSpec> = {
         ...DEFAULT,
         payload: { dict: 'state', channel: TOGGLEX_ALL_CHANNELS }
     },
-    [GARAGE_CONFIG_NAMESPACE]: SMART_CONFIG,
-    [GARAGE_MULTIPLE_CONFIG_NAMESPACE]: SMART_CONFIG,
-    [SHUTTER_POSITION_NAMESPACE]: DEFAULT,
-    [SHUTTER_STATE_NAMESPACE]: DEFAULT,
-    [SHUTTER_CONFIG_NAMESPACE]: SMART_CONFIG,
+    [GARAGE_CONFIG_NAMESPACE]: { ...SMART_CONFIG, base: 410 },
+    [GARAGE_MULTIPLE_CONFIG_NAMESPACE]: { ...SMART_CONFIG, item: 140 },
+    [SHUTTER_POSITION_NAMESPACE]: { ...DEFAULT, item: 50 },
+    [SHUTTER_STATE_NAMESPACE]: { ...DEFAULT, item: 40 },
+    [SHUTTER_CONFIG_NAMESPACE]: { ...SMART_CONFIG, item: 70 },
     [SHUTTER_ADJUST_NAMESPACE]: {
         ...SMART_CONFIG,
-        payload: channelList('adjust', 'cover')
+        payload: channelList('adjust', 'cover'),
+        item: 35
     },
     [CONTROL_ALARM_NAMESPACE]: {
         ...DEFAULT,
@@ -332,7 +404,8 @@ const POLL: Record<string, PollSpec> = {
     // Config / slow sensors
     [LIGHT_EFFECT_NAMESPACE]: {
         ...SMART_CONFIG,
-        payload: { list: 'effect' }
+        payload: { list: 'effect' },
+        base: 1_850
     },
     [FAN_CONFIG_NAMESPACE]: {
         ...SMART_CONFIG,
@@ -340,26 +413,32 @@ const POLL: Record<string, PollSpec> = {
     },
     [FILTER_MAINTENANCE_NAMESPACE]: {
         ...SMART_CLOUDMQTT,
-        method: 'PUSH'
+        method: 'PUSH',
+        item: 35
     },
-    [DIFFUSER_SENSOR_NAMESPACE]: SMART_SLOW,
-    [DND_MODE_NAMESPACE]: SMART_CONFIG,
+    [DIFFUSER_SENSOR_NAMESPACE]: { ...SMART_SLOW, item: 100 },
+    [DND_MODE_NAMESPACE]: { ...SMART_CONFIG, base: 320 },
     [PRESENCE_CONFIG_NAMESPACE]: {
         ...SMART_CONFIG,
-        payload: channelList('config', 'presence')
+        payload: channelList('config', 'presence'),
+        item: 260
     },
 
     // Energy / fast sensors
     [ELECTRICITY_NAMESPACE]: {
         ...SMART_FAST,
-        payload: { dict: 'electricity', channel: 0 }
+        payload: { dict: 'electricity', channel: 0 },
+        base: 430
     },
     [ELECTRICITYX_NAMESPACE]: {
         ...SMART_FAST,
-        payload: { dict: 'electricity', channel: ELECTRICITYX_ALL_CHANNELS }
+        payload: { dict: 'electricity', channel: ELECTRICITYX_ALL_CHANNELS },
+        item: 100
     },
     [CONSUMPTIONX_NAMESPACE]: {
         ...SMART_ENERGY,
+        base: 320,
+        item: 53,
         calibrate: (payload) => (
             consumptionXDays(payload) === undefined
                 ? undefined
@@ -368,7 +447,9 @@ const POLL: Record<string, PollSpec> = {
     },
     [CONSUMPTIONH_NAMESPACE]: {
         ...SMART_ENERGY,
-        payload: channelList('consumptionH', 'energy')
+        payload: channelList('consumptionH', 'energy'),
+        base: 320,
+        item: 1_900
     },
     [SENSOR_LATESTX_NAMESPACE]: {
         ...SMART_FAST_MQTT,
@@ -377,11 +458,13 @@ const POLL: Record<string, PollSpec> = {
             by: 'either',
             data: ['presence', 'light'],
             dataId: ['light', 'temp', 'humi']
-        }
+        },
+        item: 220
     },
     [SENSOR_LATEST_NAMESPACE]: {
         ...SMART_FAST_SLOW_CLOUD,
-        payload: channelList('latest', 'climate')
+        payload: channelList('latest', 'climate'),
+        item: 80
     },
 
     // Timer / trigger indexes (X) and legacy full-list GETs (pre-X)
@@ -465,11 +548,13 @@ const POLL: Record<string, PollSpec> = {
     },
     [SCREEN_BRIGHTNESS_NAMESPACE]: {
         ...SMART_CONFIG,
-        payload: channelList('brightness', 'climate')
+        payload: channelList('brightness', 'climate'),
+        item: 70
     },
     [PHYSICAL_LOCK_NAMESPACE]: {
         ...SMART_CONFIG,
-        payload: { list: 'lock', by: 'either', for: 'climate' }
+        payload: { list: 'lock', by: 'either', for: 'climate' },
+        item: 35
     },
     [FROST_NAMESPACE]: {
         ...SMART_SLOW,
@@ -583,6 +668,46 @@ const POLL: Record<string, PollSpec> = {
         payload: subIdList('config', 'sprinkler')
     }
 };
+
+/**
+ * Table lookup used by packing. Missing rows still charge the Multiple
+ * envelope rather than packing as free.
+ */
+export function getResponseSizeParts(namespace: string): PollResponseParts {
+    const spec = POLL[namespace];
+    return {
+        base: spec?.base ?? POLL_RESPONSE_HEADER_SIZE,
+        item: spec?.item ?? 0
+    };
+}
+
+function getPayloadItemCount(payload: MerossPayload): number {
+    for (const value of Object.values(payload)) {
+        if (Array.isArray(value)) {
+            return value.length;
+        }
+    }
+    return 1;
+}
+
+/**
+ * Estimated GETACK bytes so packing can refuse a sub-GET that would overflow
+ * the HTTP body. ConsumptionX without a list still reserves
+ * {@link CONSUMPTIONX_DEFAULT_DAYS}.
+ */
+export function estimateResponseSize(
+    namespace: string,
+    payload: MerossPayload = {}
+): number {
+    const { base, item } = getResponseSizeParts(namespace);
+    if (item === 0) {
+        return base;
+    }
+    if (namespace === CONSUMPTIONX_NAMESPACE && consumptionXDays(payload) === undefined) {
+        return base + item * CONSUMPTIONX_DEFAULT_DAYS;
+    }
+    return base + item * Math.max(getPayloadItemCount(payload), 1);
+}
 
 /**
  * Namespaces whose state is already in the System.All digest, so they GET

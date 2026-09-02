@@ -1,16 +1,18 @@
 import assert from 'node:assert/strict';
 import { describe, it, type TestContext } from 'node:test';
 
-import { buildPollJobs } from '../../src/graph/poll-jobs';
 import {
+    buildPollJobs,
     CLOUDMQTT_PERIOD_MS,
-    DevicePoller,
-    DEFAULT_POLL_INTERVAL_MS,
     ENERGY_CLOUD_PERIOD_MS,
     ENERGY_PERIOD_MS,
     SENSOR_FAST_CLOUD_PERIOD_MS,
     SENSOR_FAST_PERIOD_MS,
-    SYSTEM_ALL_PERIOD_MS,
+    SYSTEM_ALL_PERIOD_MS
+} from '../../src/graph/poll-jobs';
+import {
+    DevicePoller,
+    DEFAULT_POLL_INTERVAL_MS,
     type PollJob
 } from '../../src/graph/poller';
 import { SYSTEM_ALL_NAMESPACE } from '../../src/graph/system-all';

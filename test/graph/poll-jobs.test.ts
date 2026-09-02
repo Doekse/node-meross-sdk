@@ -4,20 +4,26 @@ import { describe, it } from 'node:test';
 import type { TraitName } from '../../src/endpoint';
 import type { AbilityMap } from '../../src/graph/ability';
 import type { GraphEndpoint } from '../../src/graph';
-import { buildPollJobs, getDigestNamespaces } from '../../src/graph/poll-jobs';
 import {
+    buildPollJobs,
     CLOUDMQTT_PERIOD_MS,
+    CONSUMPTIONX_DEFAULT_DAYS,
     ENERGY_CLOUD_PERIOD_MS,
     ENERGY_PERIOD_MS,
+    estimateResponseSize,
+    getDeviceResponseSizeMax,
+    getDigestNamespaces,
     HUB_BATTERY_PERIOD_MS,
+    POLL_RESPONSE_HEADER_SIZE,
+    POLL_RESPONSE_SIZE_MIN,
+    POLL_RESPONSE_SIZE_PER_CMD,
     SENSOR_FAST_CLOUD_PERIOD_MS,
     SENSOR_FAST_PERIOD_MS,
     SENSOR_SLOW_CLOUD_PERIOD_MS,
     SENSOR_SLOW_PERIOD_MS,
-    SYSTEM_ALL_PERIOD_MS,
-    type PollJob
-} from '../../src/graph/poller';
-import { estimateResponseSize } from '../../src/graph/poll-response-size';
+    SYSTEM_ALL_PERIOD_MS
+} from '../../src/graph/poll-jobs';
+import type { PollJob } from '../../src/graph/poller';
 import { SYSTEM_ALL_NAMESPACE } from '../../src/graph/system-all';
 import { CONTROL_ALERT_CONFIG_NAMESPACE } from '../../src/protocol/codecs/alertconfig';
 import { CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE } from '../../src/protocol/codecs/alarm';
@@ -1047,5 +1053,52 @@ describe('buildPollJobs', () => {
             THERMOSTAT_MODE_NAMESPACE,
             WINDOW_OPENED_NAMESPACE
         ]);
+    });
+});
+
+describe('poll response size', () => {
+    it('estimates Electricity as 430 bytes', () => {
+        assert.equal(estimateResponseSize(ELECTRICITY_NAMESPACE), 430);
+    });
+
+    it('estimates ConsumptionX as 30 days before calibration', () => {
+        assert.equal(
+            estimateResponseSize(CONSUMPTIONX_NAMESPACE),
+            320 + 53 * CONSUMPTIONX_DEFAULT_DAYS
+        );
+    });
+
+    it('counts ConsumptionH list channels', () => {
+        assert.equal(
+            estimateResponseSize(CONSUMPTIONH_NAMESPACE, {
+                consumptionH: [{ channel: 0 }, { channel: 1 }]
+            }),
+            320 + 1_900 * 2
+        );
+    });
+
+    it('defaults omitted catalog sizes to the Multiple header size', () => {
+        assert.equal(estimateResponseSize(TOGGLEX_NAMESPACE), POLL_RESPONSE_HEADER_SIZE);
+    });
+
+    it('counts ConsumptionX list days', () => {
+        assert.equal(
+            estimateResponseSize(CONSUMPTIONX_NAMESPACE, {
+                consumptionx: [{ date: '2018-03-05' }, { date: '2018-03-06' }]
+            }),
+            320 + 53 * 2
+        );
+    });
+
+    it('floors packed budget at 1000 when maxCmdNum is 0', () => {
+        assert.equal(getDeviceResponseSizeMax(0), POLL_RESPONSE_SIZE_MIN);
+    });
+
+    it('floors packed budget at 1000 when maxCmdNum is 1', () => {
+        assert.equal(getDeviceResponseSizeMax(1), POLL_RESPONSE_SIZE_MIN);
+    });
+
+    it('uses maxCmdNum times 800 when that exceeds the floor', () => {
+        assert.equal(getDeviceResponseSizeMax(3), 3 * POLL_RESPONSE_SIZE_PER_CMD);
     });
 });

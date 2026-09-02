@@ -2,21 +2,13 @@ import { canPackInMultiple } from '../protocol/codecs/multiple';
 import type { MerossMessage, MerossPayload } from '../protocol/message';
 import type { GetCommand } from '../transport/router';
 import {
-    getDeviceResponseSizeMax,
     estimateResponseSize,
-    POLL_RESPONSE_HEADER_SIZE,
-    POLL_RESPONSE_SIZE_MIN
-} from './poll-response-size';
-import { SYSTEM_ALL_NAMESPACE } from './system-all';
-
-export {
-    CONSUMPTIONX_DEFAULT_DAYS,
+    getDeviceResponseSizeMax,
     POLL_RESPONSE_HEADER_SIZE,
     POLL_RESPONSE_SIZE_MIN,
-    POLL_RESPONSE_SIZE_PER_CMD,
-    getDeviceResponseSizeMax,
-    estimateResponseSize
-} from './poll-response-size';
+    SYSTEM_ALL_PERIOD_MS
+} from './poll-jobs';
+import { SYSTEM_ALL_NAMESPACE } from './system-all';
 
 /** One shared tick so traits do not each run their own timer. */
 export const DEFAULT_POLL_INTERVAL_MS = 30_000;
@@ -27,37 +19,6 @@ export const DEFAULT_POLL_INTERVAL_MS = 30_000;
  * lockstep, bunching LAN POSTs and cloud publishes on one instant.
  */
 export const POLL_START_STAGGER_MS = 250;
-
-/**
- * Firmware heartbeat window. HTTP is also probed on this interval while MQTT
- * is current, so a dropped LAN path is noticed even while PUSH is still
- * arriving.
- */
-export const SYSTEM_ALL_PERIOD_MS = 295_000;
-
-/** Watt-hour totals do not need the instantaneous electricity period. */
-export const ENERGY_PERIOD_MS = 55_000;
-
-/** Consumption over cloud MQTT so daily totals do not fill the broker budget. */
-export const ENERGY_CLOUD_PERIOD_MS = 600_000;
-
-/** Live power / presence: due on every LAN tick. */
-export const SENSOR_FAST_PERIOD_MS = 0;
-
-/** Live sensors when the request rides cloud MQTT. */
-export const SENSOR_FAST_CLOUD_PERIOD_MS = 180_000;
-
-/** Config and slowly changing sensors on LAN. */
-export const SENSOR_SLOW_PERIOD_MS = 300_000;
-
-/** Slowly changing sensors over cloud MQTT. */
-export const SENSOR_SLOW_CLOUD_PERIOD_MS = 600_000;
-
-/** Config GETs over cloud MQTT; the slowest period, as they rarely change. */
-export const CLOUDMQTT_PERIOD_MS = 1_195_000;
-
-/** Hub battery percent barely moves; about once an hour is enough. */
-export const HUB_BATTERY_PERIOD_MS = 3_600_000;
 
 /**
  * Slack before a still-pending request is treated as overdue rather than
