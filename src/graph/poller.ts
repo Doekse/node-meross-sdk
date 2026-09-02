@@ -8,7 +8,7 @@ import {
     POLL_RESPONSE_SIZE_MIN,
     SYSTEM_ALL_PERIOD_MS
 } from './poll-jobs';
-import { SYSTEM_ALL_NAMESPACE } from './system-all';
+import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
 
 /** One shared tick so traits do not each run their own timer. */
 export const DEFAULT_POLL_INTERVAL_MS = 30_000;

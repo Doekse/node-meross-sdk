@@ -7,7 +7,7 @@ import {
     decodeOnlineStatus
 } from '../protocol/codecs/online';
 import { Heartbeat } from './heartbeat';
-import { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from './system-all';
+import { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from '../protocol/codecs/system-all';
 
 export interface DeviceAvailabilityOptions {
     uuid: string;

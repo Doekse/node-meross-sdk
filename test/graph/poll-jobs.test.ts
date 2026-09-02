@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { TraitName } from '../../src/endpoint';
-import type { AbilityMap } from '../../src/graph/ability';
+import type { AbilityMap } from '../../src/protocol/codecs/ability';
 import type { GraphEndpoint } from '../../src/graph';
 import {
     buildPollJobs,
@@ -24,7 +24,7 @@ import {
     SYSTEM_ALL_PERIOD_MS
 } from '../../src/graph/poll-jobs';
 import type { PollJob } from '../../src/graph/poller';
-import { SYSTEM_ALL_NAMESPACE } from '../../src/graph/system-all';
+import { SYSTEM_ALL_NAMESPACE } from '../../src/protocol/codecs/system-all';
 import { CONTROL_ALERT_CONFIG_NAMESPACE } from '../../src/protocol/codecs/alertconfig';
 import { CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE } from '../../src/protocol/codecs/alarm';
 import { CONSUMPTION_CONFIG_NAMESPACE } from '../../src/protocol/codecs/consumptionconfig';

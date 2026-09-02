@@ -1,4 +1,4 @@
-import { ProtocolError } from '../errors';
+import { ProtocolError } from '../../errors';
 import {
     decodeSystemFirmwareGetAck,
     decodeSystemHardwareGetAck,
@@ -6,8 +6,8 @@ import {
     type SystemFirmwareState,
     type SystemHardwareState,
     type SystemTimeState
-} from '../protocol/codecs/system';
-import type { MerossPayload } from '../protocol/message';
+} from './system';
+import type { MerossPayload } from '../message';
 
 export const SYSTEM_ALL_NAMESPACE = 'Appliance.System.All';
 

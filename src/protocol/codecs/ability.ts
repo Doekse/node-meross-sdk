@@ -1,6 +1,6 @@
-import { ProtocolError } from '../errors';
-import { MULTIPLE_NAMESPACE } from '../protocol/codecs/multiple';
-import type { MerossPayload } from '../protocol/message';
+import { ProtocolError } from '../../errors';
+import { MULTIPLE_NAMESPACE } from './multiple';
+import type { MerossPayload } from '../message';
 
 export const ABILITY_NAMESPACE = 'Appliance.System.Ability';
 

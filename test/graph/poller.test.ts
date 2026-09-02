@@ -15,7 +15,7 @@ import {
     DEFAULT_POLL_INTERVAL_MS,
     type PollJob
 } from '../../src/graph/poller';
-import { SYSTEM_ALL_NAMESPACE } from '../../src/graph/system-all';
+import { SYSTEM_ALL_NAMESPACE } from '../../src/protocol/codecs/system-all';
 import { Endpoint } from '../../src/endpoint';
 import { CTL_RANGE_NAMESPACE } from '../../src/protocol/codecs/climate';
 import { CONSUMPTIONX_NAMESPACE } from '../../src/protocol/codecs/consumptionx';

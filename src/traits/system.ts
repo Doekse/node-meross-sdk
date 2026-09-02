@@ -1,4 +1,4 @@
-import { decodeSystemAllGetAck } from '../graph/system-all';
+import { decodeSystemAllGetAck } from '../protocol/codecs/system-all';
 import {
     SYSTEM_ALL_NAMESPACE,
     SYSTEM_CLOCK_NAMESPACE,

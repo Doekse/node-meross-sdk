@@ -50,7 +50,7 @@ export {
     encodeSystemTimeGet,
     encodeSystemTimeSet
 } from './codecs/system';
-export { SYSTEM_ALL_NAMESPACE } from '../graph/system-all';
+export { SYSTEM_ALL_NAMESPACE } from './codecs/system-all';
 export type {
     SystemClockState,
     SystemDebugState,

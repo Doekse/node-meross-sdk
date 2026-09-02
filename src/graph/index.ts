@@ -14,14 +14,14 @@ import { CONTROL_TIMER_NAMESPACE, TIMERX_NAMESPACE } from '../protocol/codecs/ti
 import { CONTROL_TRIGGER_NAMESPACE, TRIGGERX_NAMESPACE } from '../protocol/codecs/triggerx';
 import { TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
 import type { MerossPayload } from '../protocol/message';
-import { abilityMaxCmdNum, decodeAbilityGetAck } from './ability';
-import type { AbilityMap } from './ability';
-import { decodeSystemAllGetAck } from './system-all';
-import type { DigestToggle, SystemAll } from './system-all';
+import { abilityMaxCmdNum, decodeAbilityGetAck } from '../protocol/codecs/ability';
+import type { AbilityMap } from '../protocol/codecs/ability';
+import { decodeSystemAllGetAck } from '../protocol/codecs/system-all';
+import type { DigestToggle, SystemAll } from '../protocol/codecs/system-all';
 import { getDigestNamespaces } from './poll-jobs';
 
-export { ABILITY_NAMESPACE, abilityMaxCmdNum, decodeAbilityGetAck } from './ability';
-export type { AbilityMap } from './ability';
+export { ABILITY_NAMESPACE, abilityMaxCmdNum, decodeAbilityGetAck } from '../protocol/codecs/ability';
+export type { AbilityMap } from '../protocol/codecs/ability';
 export {
     DEFAULT_POLL_INTERVAL_MS,
     DevicePoller,
@@ -45,8 +45,8 @@ export {
     getDeviceResponseSizeMax,
     getDigestNamespaces
 } from './poll-jobs';
-export { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from './system-all';
-export type { SystemAll } from './system-all';
+export { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from '../protocol/codecs/system-all';
+export type { SystemAll } from '../protocol/codecs/system-all';
 
 const CLIMATE_SUBDEVICES = new Set(['mts100', 'mts100v3', 'mts150', 'mts150p']);
 const SENSOR_SUBDEVICES = new Set([
