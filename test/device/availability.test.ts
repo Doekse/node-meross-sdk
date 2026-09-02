@@ -121,6 +121,86 @@ describe('Heartbeat silence detection', () => {
         assert.equal(pollOnline.mock.callCount(), 1);
         heartbeat.stop();
     });
+
+    it('reschedules the next check at the remaining silence window, not a full interval', async (t: TestContext) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let clock = 0;
+        const pollOnline = t.mock.fn(async () => {});
+
+        const heartbeat = new Heartbeat({
+            intervalMs: INTERVAL_MS,
+            isOnline: () => true,
+            pollOnline,
+            onSilenceOffline: () => {},
+            now: () => clock
+        });
+
+        heartbeat.start();
+        heartbeat.recordResponse();
+
+        clock = 6_000;
+        heartbeat.recordResponse();
+
+        clock = 10_000;
+        t.mock.timers.tick(10_000);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.equal(pollOnline.mock.callCount(), 0);
+
+        clock = 16_000;
+        t.mock.timers.tick(6_000);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.equal(pollOnline.mock.callCount(), 1);
+        heartbeat.stop();
+    });
+
+    it('does not leave a duplicate timer behind when stop() runs mid-check', async (t: TestContext) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let clock = 0;
+        let resolvePoll!: () => void;
+        const pollOnline = t.mock.fn(() => new Promise<void>((resolve) => {
+            resolvePoll = resolve;
+        }));
+
+        const heartbeat = new Heartbeat({
+            intervalMs: INTERVAL_MS,
+            isOnline: () => true,
+            pollOnline,
+            onSilenceOffline: () => {},
+            now: () => clock
+        });
+
+        heartbeat.start();
+        heartbeat.recordResponse();
+
+        clock = INTERVAL_MS;
+        t.mock.timers.tick(INTERVAL_MS);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.equal(pollOnline.mock.callCount(), 1);
+        const firstResolve = resolvePoll;
+
+        heartbeat.stop();
+        heartbeat.start();
+
+        firstResolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.equal(pollOnline.mock.callCount(), 1);
+
+        clock = INTERVAL_MS * 2;
+        t.mock.timers.tick(INTERVAL_MS);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        assert.equal(pollOnline.mock.callCount(), 2);
+        heartbeat.stop();
+    });
 });
 
 describe('DeviceAvailability', () => {

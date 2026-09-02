@@ -70,11 +70,14 @@ export class Heartbeat {
         return this.now() - this.lastResponseTime >= this.intervalMs;
     }
 
-    private schedule(): void {
+    private schedule(delayMs?: number): void {
         if (!this.running) {
             return;
         }
-        const delay = this.isOnline() ? this.intervalMs : this.pollingDelay;
+        if (this.timer !== undefined) {
+            clearTimeout(this.timer);
+        }
+        const delay = delayMs ?? (this.isOnline() ? this.intervalMs : this.pollingDelay);
         // Do not unref: see DevicePoller.schedule — hosts like Homey can drop
         // unref'd timers while the app process remains alive.
         this.timer = setTimeout(() => {
@@ -86,11 +89,17 @@ export class Heartbeat {
         if (!this.running) {
             return;
         }
+        // Clear the timer before awaiting, like DevicePoller.perform: a
+        // stop()+start() mid-check then arms its own timer instead of this
+        // call's eventual finally racing (and duplicating) it.
+        this.timer = undefined;
 
         if (this.lastResponseTime !== null) {
             const elapsed = this.now() - this.lastResponseTime;
             if (elapsed < this.intervalMs) {
-                this.schedule();
+                // A response landed since this timer was armed: recheck at the
+                // true remaining silence, not a full interval from now.
+                this.schedule(this.intervalMs - elapsed);
                 return;
             }
         }
