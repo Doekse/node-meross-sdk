@@ -14,12 +14,16 @@ import {
     type PollJob
 } from '../../src/graph/poller';
 import { SYSTEM_ALL_NAMESPACE } from '../../src/graph/system-all';
+import { Endpoint } from '../../src/endpoint';
 import { CTL_RANGE_NAMESPACE } from '../../src/protocol/codecs/climate';
 import { CONSUMPTIONX_NAMESPACE } from '../../src/protocol/codecs/consumptionx';
 import { DND_MODE_NAMESPACE } from '../../src/protocol/codecs/dnd';
 import { ELECTRICITY_NAMESPACE } from '../../src/protocol/codecs/electricity';
+import { CONFIG_STANDBY_KILLER_NAMESPACE } from '../../src/protocol/codecs/standbykiller';
 import { TOGGLEX_NAMESPACE } from '../../src/protocol/codecs/togglex';
 import { encodeMessage, type MerossMessage } from '../../src/protocol';
+import { MP3_NAMESPACE } from '../../src/protocol/codecs/mp3';
+import { EnergyTrait } from '../../src/traits/energy';
 import type { GetCommand } from '../../src/transport/router';
 
 const UUID = '2206138957096651080248e1e99705a4';
@@ -46,6 +50,7 @@ interface Harness {
     requestGets: ReturnType<TestContext['mock']['fn']>;
     acks: MerossMessage[];
     getsHistory: GetCommand[][];
+    setOnline: (online: boolean) => void;
     advance: (ms: number) => Promise<void>;
 }
 
@@ -61,11 +66,13 @@ function createHarness(
         startDelayMs?: number;
         /** Non-zero proves scheduling does not depend on the clock origin. */
         startClock?: number;
+        /** Tests that omit this still see applied GETACKs on {@link Harness.acks}. */
+        onAck?: (message: MerossMessage) => void;
     } = {}
 ): Harness {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     let clock = options.startClock ?? 0;
-    const online = options.online ?? true;
+    let online = options.online ?? true;
     const cloudPath = options.cloudPath ?? false;
     const intervalMs = options.intervalMs ?? INTERVAL_MS;
     const acks: MerossMessage[] = [];
@@ -79,16 +86,17 @@ function createHarness(
         return gets.map((get) => ack(get.namespace, get.payload ?? {}));
     });
 
+    const onAck = options.onAck ?? ((message: MerossMessage) => {
+        acks.push(message);
+    });
+
     const poller = new DevicePoller({
-        uuid: UUID,
         isOnline: () => online,
         isCloudPath: () => cloudPath,
         httpDown: () => options.httpDown ?? false,
         maxCmdNum: () => options.maxCmdNum ?? 3,
         requestGets,
-        onAck: (message) => {
-            acks.push(message);
-        },
+        onAck,
         jobs: options.jobs,
         intervalMs,
         startDelayMs: options.startDelayMs,
@@ -100,6 +108,9 @@ function createHarness(
         requestGets,
         acks,
         getsHistory,
+        setOnline: (value: boolean) => {
+            online = value;
+        },
         advance: async (ms: number) => {
             if (ms === 0) {
                 t.mock.timers.tick(0);
@@ -146,7 +157,7 @@ describe('DevicePoller', () => {
         harness.poller.stop();
     });
 
-    it('resumes default jobs after the heartbeat window without another PUSH', async (t) => {
+    it('keeps skipping default jobs after the heartbeat window while MQTT stays active', async (t) => {
         const harness = createHarness(t, {
             jobs: [{
                 namespace: 'Appliance.Control.ToggleX',
@@ -158,16 +169,17 @@ describe('DevicePoller', () => {
 
         harness.poller.start();
         await harness.advance(0);
+        assert.deepEqual(
+            harness.getsHistory[0].map((get) => get.namespace),
+            ['Appliance.Control.ToggleX']
+        );
+
         harness.poller.recordPush();
         await harness.advance(INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
         await harness.advance(SYSTEM_ALL_PERIOD_MS);
-        assert.ok(harness.requestGets.mock.callCount() > 1);
-        assert.equal(
-            harness.getsHistory.at(-1)?.[0]?.namespace,
-            'Appliance.Control.ToggleX'
-        );
+        assert.equal(harness.requestGets.mock.callCount(), 1);
 
         harness.poller.stop();
     });
@@ -246,9 +258,6 @@ describe('DevicePoller', () => {
         assert.equal(harness.requestGets.mock.callCount(), 1);
         assert.equal(harness.acks.length, 0);
 
-        await harness.advance(INTERVAL_MS);
-        assert.equal(harness.requestGets.mock.callCount(), 1);
-
         harness.requestGets.mock.mockImplementation(async (gets: GetCommand[]) => {
             harness.getsHistory.push(gets.map((get) => ({
                 namespace: get.namespace,
@@ -257,11 +266,16 @@ describe('DevicePoller', () => {
             return gets.map((get) => ack(get.namespace, get.payload ?? {}));
         });
 
+        await harness.advance(INTERVAL_MS);
+        assert.deepEqual(
+            harness.getsHistory[1]?.map((get) => get.namespace),
+            [SYSTEM_ALL_NAMESPACE]
+        );
+
         await harness.advance(ENERGY_PERIOD_MS);
-        assert.equal(harness.requestGets.mock.callCount(), 2);
-        assert.equal(
-            harness.getsHistory[1][0]?.namespace,
-            'Appliance.Control.ConsumptionX'
+        assert.deepEqual(
+            harness.getsHistory[2]?.map((get) => get.namespace),
+            [CONSUMPTIONX_NAMESPACE]
         );
 
         harness.poller.stop();
@@ -290,19 +304,24 @@ describe('DevicePoller', () => {
         );
 
         await harness.advance(INTERVAL_MS);
-        assert.equal(harness.requestGets.mock.callCount(), 2);
-        assert.equal(harness.acks.length, 1);
+        assert.equal(harness.requestGets.mock.callCount(), 3);
+        assert.deepEqual(
+            harness.acks.map((message) => message.header.namespace),
+            [SYSTEM_ALL_NAMESPACE, CTL_RANGE_NAMESPACE]
+        );
 
         await harness.advance(INTERVAL_MS);
-        assert.equal(harness.requestGets.mock.callCount(), 2);
+        assert.equal(harness.requestGets.mock.callCount(), 3);
 
         harness.poller.stop();
     });
 
     it('spends one cloud publish per cycle and fills the Multiple batch', async (t) => {
+        // Both namespaces fit one Control.Multiple under maxCmdNum 5 (4000-byte
+        // budget): header 300 + Electricity 430 + ConsumptionX 1910.
         const harness = createHarness(t, {
             cloudPath: true,
-            maxCmdNum: 3,
+            maxCmdNum: 5,
             jobs: [
                 {
                     namespace: 'Appliance.Control.Electricity',
@@ -319,7 +338,6 @@ describe('DevicePoller', () => {
             ]
         });
 
-        // Both namespaces fit one Control.Multiple, so one publish covers them.
         harness.poller.start();
         await harness.advance(0);
         assert.equal(harness.requestGets.mock.callCount(), 1);
@@ -334,10 +352,9 @@ describe('DevicePoller', () => {
         harness.poller.stop();
     });
 
-    it('does not treat a never-polled job as overdue on a wall clock', async (t) => {
+    it('polls every never-run smart job on a cloud cold start', async (t) => {
         const harness = createHarness(t, {
             cloudPath: true,
-            // No Control.Multiple, so the batch holds exactly one GET.
             maxCmdNum: 1,
             startClock: 1_700_000_000_000,
             jobs: [
@@ -358,16 +375,17 @@ describe('DevicePoller', () => {
 
         harness.poller.start();
         await harness.advance(0);
-        assert.equal(harness.requestGets.mock.callCount(), 1);
+
+        assert.equal(harness.requestGets.mock.callCount(), 2);
         assert.deepEqual(
-            harness.getsHistory[0].map((get) => get.namespace),
-            [ELECTRICITY_NAMESPACE]
+            harness.getsHistory.map((gets) => gets.map((get) => get.namespace)),
+            [[ELECTRICITY_NAMESPACE], [CONSUMPTIONX_NAMESPACE]]
         );
 
         harness.poller.stop();
     });
 
-    it('rotates the cloud publish so an always-due job cannot starve its neighbour', async (t) => {
+    it('polls electricity each cloud cycle while ConsumptionX waits for its cloud period', async (t) => {
         const harness = createHarness(t, {
             cloudPath: true,
             maxCmdNum: 1,
@@ -390,17 +408,24 @@ describe('DevicePoller', () => {
 
         harness.poller.start();
         await harness.advance(0);
-        await harness.advance(30 * INTERVAL_MS);
-        harness.poller.stop();
-
-        // Electricity is due every tick, so first-come ordering would hand it
-        // the one publish every cycle and ConsumptionX would never run.
-        const seen = new Set(harness.getsHistory.flat().map((get) => get.namespace));
-        assert.deepEqual([...seen].sort(), [CONSUMPTIONX_NAMESPACE, ELECTRICITY_NAMESPACE].sort());
-        assert.ok(
-            harness.getsHistory.every((gets) => gets.length === 1),
-            'without Control.Multiple a cycle must not exceed one GET'
+        assert.deepEqual(
+            harness.getsHistory.map((gets) => gets.map((get) => get.namespace)),
+            [[ELECTRICITY_NAMESPACE], [CONSUMPTIONX_NAMESPACE]]
         );
+
+        await harness.advance(INTERVAL_MS);
+        assert.deepEqual(
+            harness.getsHistory[2]?.map((get) => get.namespace),
+            [ELECTRICITY_NAMESPACE]
+        );
+
+        await harness.advance(ENERGY_PERIOD_MS - INTERVAL_MS);
+        assert.deepEqual(
+            harness.getsHistory.at(-1)?.map((get) => get.namespace),
+            [ELECTRICITY_NAMESPACE]
+        );
+
+        harness.poller.stop();
     });
 
     it('waits out startDelayMs before the first tick', async (t) => {
@@ -424,10 +449,9 @@ describe('DevicePoller', () => {
         harness.poller.stop();
     });
 
-    it('gives default and all no more cloud publishes than smart', async (t) => {
+    it('polls System.All before never-run smart jobs on a cloud cold start', async (t) => {
         const harness = createHarness(t, {
             cloudPath: true,
-            // No Control.Multiple, so each strategy competes for the one publish.
             maxCmdNum: 1,
             jobs: [
                 {
@@ -438,7 +462,7 @@ describe('DevicePoller', () => {
                 },
                 {
                     namespace: TOGGLEX_NAMESPACE,
-                    strategy: 'default',
+                    strategy: 'digest',
                     periodMs: 0,
                     periodCloudMs: CLOUDMQTT_PERIOD_MS
                 },
@@ -453,26 +477,15 @@ describe('DevicePoller', () => {
 
         harness.poller.start();
         await harness.advance(0);
-        assert.equal(harness.requestGets.mock.callCount(), 1);
         assert.deepEqual(
-            harness.getsHistory[0].map((get) => get.namespace),
-            [SYSTEM_ALL_NAMESPACE]
+            harness.getsHistory.map((gets) => gets.map((get) => get.namespace)),
+            [[SYSTEM_ALL_NAMESPACE], [ELECTRICITY_NAMESPACE]]
         );
 
         await harness.advance(INTERVAL_MS);
-        assert.equal(harness.requestGets.mock.callCount(), 2);
         assert.deepEqual(
-            harness.getsHistory[1].map((get) => get.namespace),
+            harness.getsHistory[2]?.map((get) => get.namespace),
             [TOGGLEX_NAMESPACE]
-        );
-
-        // ToggleX is due every tick but has now been served, so the publish
-        // moves on to the one namespace still waiting for its first read.
-        await harness.advance(INTERVAL_MS);
-        assert.equal(harness.requestGets.mock.callCount(), 3);
-        assert.deepEqual(
-            harness.getsHistory[2].map((get) => get.namespace),
-            [ELECTRICITY_NAMESPACE]
         );
 
         harness.poller.stop();
@@ -487,7 +500,8 @@ describe('DevicePoller', () => {
                 [CONSUMPTIONX_NAMESPACE]: {},
                 [DND_MODE_NAMESPACE]: {}
             },
-            [{ channel: 0, traits: ['switch', 'energy', 'dnd'] }]
+            [{ channel: 0, traits: ['switch', 'energy', 'dnd'] }],
+            new Set([TOGGLEX_NAMESPACE])
         );
         // Firmware without Control.Multiple sends one publish per GET, so this
         // is the path that overran the publish window; a packing device is strictly cheaper.
@@ -498,6 +512,7 @@ describe('DevicePoller', () => {
             jobs
         });
 
+        harness.poller.recordPush();
         harness.poller.start();
         await harness.advance(0);
         await harness.advance(3_600_000);
@@ -551,6 +566,76 @@ describe('DevicePoller', () => {
         harness.poller.stop();
     });
 
+    it('does not pack Electricity with ConsumptionX when the pair would overflow HTTP', async (t) => {
+        const harness = createHarness(t, {
+            maxCmdNum: 3,
+            jobs: [
+                {
+                    namespace: ELECTRICITY_NAMESPACE,
+                    strategy: 'smart',
+                    periodMs: SENSOR_FAST_PERIOD_MS,
+                    periodCloudMs: SENSOR_FAST_CLOUD_PERIOD_MS
+                },
+                {
+                    namespace: CONSUMPTIONX_NAMESPACE,
+                    strategy: 'smart',
+                    periodMs: ENERGY_PERIOD_MS,
+                    periodCloudMs: ENERGY_CLOUD_PERIOD_MS
+                }
+            ]
+        });
+
+        harness.poller.start();
+        await harness.advance(0);
+        // header 300 + Electricity 430 + ConsumptionX 1910 = 2640 > maxCmdNum 3 * 800.
+        assert.deepEqual(harness.getsHistory, [
+            [{ namespace: ELECTRICITY_NAMESPACE, payload: {} }],
+            [{ namespace: CONSUMPTIONX_NAMESPACE, payload: {} }]
+        ]);
+
+        await harness.advance(INTERVAL_MS);
+        assert.deepEqual(harness.getsHistory[2], [
+            { namespace: ELECTRICITY_NAMESPACE, payload: {} }
+        ]);
+
+        harness.poller.stop();
+    });
+
+    it('does not lazy-fill ConsumptionX into an Electricity Multiple that would overflow', async (t) => {
+        const harness = createHarness(t, {
+            maxCmdNum: 3,
+            jobs: [
+                {
+                    namespace: ELECTRICITY_NAMESPACE,
+                    strategy: 'smart',
+                    periodMs: SENSOR_FAST_PERIOD_MS,
+                    periodCloudMs: SENSOR_FAST_CLOUD_PERIOD_MS
+                },
+                {
+                    namespace: CONSUMPTIONX_NAMESPACE,
+                    strategy: 'smart',
+                    periodMs: ENERGY_PERIOD_MS,
+                    periodCloudMs: ENERGY_CLOUD_PERIOD_MS,
+                    responseSize: 2_000
+                }
+            ]
+        });
+
+        harness.poller.start();
+        await harness.advance(0);
+        assert.deepEqual(harness.getsHistory, [
+            [{ namespace: ELECTRICITY_NAMESPACE, payload: {} }],
+            [{ namespace: CONSUMPTIONX_NAMESPACE, payload: {} }]
+        ]);
+
+        await harness.advance(INTERVAL_MS);
+        assert.deepEqual(harness.getsHistory[2], [
+            { namespace: ELECTRICITY_NAMESPACE, payload: {} }
+        ]);
+
+        harness.poller.stop();
+    });
+
     it('doubles the offline System.All delay after a failed probe', async (t) => {
         const harness = createHarness(t, {
             online: false,
@@ -591,7 +676,7 @@ describe('DevicePoller', () => {
         harness.poller.stop();
     });
 
-    it('interleaves System.All with digest default jobs on HTTP', async (t) => {
+    it('interleaves System.All with digest jobs on HTTP', async (t) => {
         const harness = createHarness(t, {
             jobs: [
                 {
@@ -602,7 +687,7 @@ describe('DevicePoller', () => {
                 },
                 {
                     namespace: 'Appliance.Control.ToggleX',
-                    strategy: 'default',
+                    strategy: 'digest',
                     periodMs: 0,
                     periodCloudMs: 0
                 }
@@ -622,11 +707,10 @@ describe('DevicePoller', () => {
             ['Appliance.Control.ToggleX']
         );
 
-        await harness.advance(SYSTEM_ALL_PERIOD_MS);
-        assert.ok(
-            harness.getsHistory.some((gets, index) =>
-                index > 1 && gets.length === 1 && gets[0]?.namespace === SYSTEM_ALL_NAMESPACE
-            )
+        await harness.advance(SYSTEM_ALL_PERIOD_MS - INTERVAL_MS);
+        assert.deepEqual(
+            harness.getsHistory.at(-1)?.map((get) => get.namespace),
+            [SYSTEM_ALL_NAMESPACE]
         );
 
         harness.poller.stop();
@@ -653,9 +737,11 @@ describe('DevicePoller', () => {
         harness.poller.recordPush();
         harness.poller.start();
         await harness.advance(0);
+        // System.All has no nesting restriction, so onlining packs it with
+        // ToggleX into a single Control.Multiple instead of two requests.
         assert.deepEqual(
-            harness.getsHistory[0].map((get) => get.namespace).sort(),
-            [SYSTEM_ALL_NAMESPACE, 'Appliance.Control.ToggleX'].sort()
+            harness.getsHistory.map((gets) => gets.map((get) => get.namespace)),
+            [[SYSTEM_ALL_NAMESPACE, 'Appliance.Control.ToggleX']]
         );
 
         await harness.advance(INTERVAL_MS);
@@ -687,13 +773,19 @@ describe('DevicePoller', () => {
         harness.poller.recordPush();
         harness.poller.start();
         await harness.advance(0);
+        // Cold start still GETs default jobs; MQTT skip only applies after nextMs is set.
+        assert.deepEqual(
+            harness.getsHistory.map((gets) => gets.map((get) => get.namespace)),
+            [[SYSTEM_ALL_NAMESPACE, TOGGLEX_NAMESPACE]]
+        );
+
         await harness.advance(INTERVAL_MS);
-        // MQTT skip expires at SYSTEM_ALL_PERIOD_MS; a later PUSH keeps this a probe.
+        assert.equal(harness.requestGets.mock.callCount(), 1);
+
         harness.poller.recordPush();
-
         await harness.advance(SYSTEM_ALL_PERIOD_MS - INTERVAL_MS);
-
-        assert.equal(harness.requestGets.mock.callCount(), 2);
+        // ToggleX is not due this tick (MQTT active, already polled), so the
+        // heartbeat System.All goes out alone.
         assert.deepEqual(harness.getsHistory[1], [{
             namespace: SYSTEM_ALL_NAMESPACE,
             payload: {}
@@ -724,11 +816,17 @@ describe('DevicePoller', () => {
         harness.poller.recordPush();
         harness.poller.start();
         await harness.advance(0);
+        // Cold start still GETs default jobs; MQTT skip only applies after nextMs is set.
+        assert.deepEqual(
+            harness.getsHistory.map((gets) => gets.map((get) => get.namespace)),
+            [[SYSTEM_ALL_NAMESPACE, TOGGLEX_NAMESPACE]]
+        );
+
         await harness.advance(INTERVAL_MS);
+        assert.equal(harness.requestGets.mock.callCount(), 1);
+
         harness.poller.recordPush();
-
         await harness.advance(SYSTEM_ALL_PERIOD_MS - INTERVAL_MS);
-
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
         harness.poller.stop();
@@ -761,6 +859,60 @@ describe('DevicePoller', () => {
         harness.poller.stop();
     });
 
+    it('applies later GETACKs when a trait throws on an earlier namespace', async (t) => {
+        const applied: string[] = [];
+        const endpoint = new Endpoint({
+            id: UUID,
+            traits: ['energy'],
+            energy: new EnergyTrait({
+                uuid: UUID,
+                channel: 0,
+                hasElectricity: true,
+                hasElectricityX: false,
+                hasConsumptionX: false,
+                hasConsumptionH: false,
+                namespaces: new Set([CONFIG_STANDBY_KILLER_NAMESPACE]),
+                request: async () => ack(ELECTRICITY_NAMESPACE),
+                emitChange: () => {
+                    applied.push(ELECTRICITY_NAMESPACE);
+                }
+            })
+        });
+        const electricityAck = {
+            electricity: { channel: 0, power: 11_000, current: 53, voltage: 2274 }
+        };
+        const harness = createHarness(t, {
+            maxCmdNum: 5,
+            onAck: (message) => endpoint.handlePush(message),
+            jobs: [
+                {
+                    namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
+                    strategy: 'smart',
+                    periodMs: 300_000,
+                    periodCloudMs: 600_000,
+                    payload: { config: 1 }
+                },
+                {
+                    namespace: ELECTRICITY_NAMESPACE,
+                    strategy: 'smart',
+                    periodMs: SENSOR_FAST_PERIOD_MS,
+                    periodCloudMs: SENSOR_FAST_CLOUD_PERIOD_MS,
+                    payload: electricityAck
+                }
+            ]
+        });
+
+        harness.poller.start();
+        await harness.advance(0);
+        assert.deepEqual(
+            harness.getsHistory[0]?.map((get) => get.namespace),
+            [CONFIG_STANDBY_KILLER_NAMESPACE, ELECTRICITY_NAMESPACE]
+        );
+        assert.deepEqual(applied, [ELECTRICITY_NAMESPACE]);
+
+        harness.poller.stop();
+    });
+
     it('dispatches GETACKs through onAck', async (t) => {
         const harness = createHarness(t, {
             jobs: [{
@@ -776,6 +928,127 @@ describe('DevicePoller', () => {
         assert.equal(harness.acks.length, 1);
         assert.equal(harness.acks[0]?.header.namespace, 'Appliance.Control.ToggleX');
         assert.equal(harness.acks[0]?.header.method, 'GETACK');
+
+        harness.poller.stop();
+    });
+
+    it('still polls default jobs on a System.All tick', async (t) => {
+        const harness = createHarness(t, {
+            jobs: [
+                {
+                    namespace: SYSTEM_ALL_NAMESPACE,
+                    strategy: 'all',
+                    periodMs: SYSTEM_ALL_PERIOD_MS,
+                    periodCloudMs: 0
+                },
+                {
+                    namespace: MP3_NAMESPACE,
+                    strategy: 'default',
+                    periodMs: 0,
+                    periodCloudMs: 0
+                }
+            ]
+        });
+
+        harness.poller.start();
+        await harness.advance(0);
+        // System.All packs with default jobs on the same tick, so MP3 does not
+        // spend a second request.
+        assert.deepEqual(
+            harness.getsHistory.map((gets) => gets.map((get) => get.namespace)),
+            [[SYSTEM_ALL_NAMESPACE, MP3_NAMESPACE]]
+        );
+
+        harness.poller.stop();
+    });
+
+    it('polls immediately when MQTT traffic brings an offline device online', async (t) => {
+        const harness = createHarness(t, {
+            online: false,
+            jobs: [{
+                namespace: TOGGLEX_NAMESPACE,
+                strategy: 'default',
+                periodMs: 0,
+                periodCloudMs: 0
+            }]
+        });
+
+        harness.poller.start();
+        await harness.advance(0);
+        assert.deepEqual(
+            harness.getsHistory[0]?.map((get) => get.namespace),
+            [SYSTEM_ALL_NAMESPACE]
+        );
+
+        harness.setOnline(true);
+        harness.poller.setOnline(true);
+        await harness.advance(0);
+        assert.deepEqual(
+            harness.getsHistory[1]?.map((get) => get.namespace),
+            [TOGGLEX_NAMESPACE]
+        );
+
+        harness.poller.stop();
+    });
+
+    it('walks remaining jobs in the same tick when a probe onlines the device', async (t) => {
+        const harness = createHarness(t, {
+            online: false,
+            jobs: [{
+                namespace: TOGGLEX_NAMESPACE,
+                strategy: 'default',
+                periodMs: 0,
+                periodCloudMs: 0
+            }]
+        });
+
+        harness.requestGets.mock.mockImplementation(async (gets: GetCommand[]) => {
+            harness.getsHistory.push(gets.map((get) => ({
+                namespace: get.namespace,
+                payload: get.payload ?? {}
+            })));
+            harness.setOnline(true);
+            harness.poller.setOnline(true);
+            return gets.map((get) => ack(get.namespace, get.payload ?? {}));
+        });
+
+        harness.poller.start();
+        await harness.advance(0);
+        assert.deepEqual(
+            harness.getsHistory.map((gets) => gets.map((get) => get.namespace)),
+            [[SYSTEM_ALL_NAMESPACE], [TOGGLEX_NAMESPACE]]
+        );
+
+        harness.poller.stop();
+    });
+
+    it('resumes default jobs after MQTT drops', async (t) => {
+        const harness = createHarness(t, {
+            jobs: [{
+                namespace: TOGGLEX_NAMESPACE,
+                strategy: 'default',
+                periodMs: 0,
+                periodCloudMs: 0
+            }]
+        });
+
+        harness.poller.start();
+        await harness.advance(0);
+        assert.deepEqual(
+            harness.getsHistory[0]?.map((get) => get.namespace),
+            [TOGGLEX_NAMESPACE]
+        );
+
+        harness.poller.recordPush();
+        await harness.advance(INTERVAL_MS);
+        assert.equal(harness.requestGets.mock.callCount(), 1);
+
+        harness.poller.clearMqtt();
+        await harness.advance(INTERVAL_MS);
+        assert.deepEqual(
+            harness.getsHistory[1]?.map((get) => get.namespace),
+            [TOGGLEX_NAMESPACE]
+        );
 
         harness.poller.stop();
     });
