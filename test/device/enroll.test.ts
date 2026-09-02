@@ -9,11 +9,11 @@ import { Inventory } from '../../src/inventory';
 import {
     DeviceGraph,
     abilityMaxCmdNum,
-    buildPollJobs,
     decodeAbilityGetAck,
     decodeSystemAllGetAck,
     enrollPhysicalDevice
-} from '../../src/graph';
+} from '../../src/device';
+import { buildPollJobs } from '../../src/poll';
 import { decodeMessage } from '../../src/protocol/message';
 import type { MerossPayload } from '../../src/protocol/message';
 

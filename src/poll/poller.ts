@@ -7,7 +7,7 @@ import {
     POLL_RESPONSE_HEADER_SIZE,
     POLL_RESPONSE_SIZE_MIN,
     SYSTEM_ALL_PERIOD_MS
-} from './poll-jobs';
+} from './jobs';
 import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
 
 /** One shared tick so traits do not each run their own timer. */

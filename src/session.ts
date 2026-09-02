@@ -7,16 +7,18 @@ import type { TraitName } from './endpoint';
 import { MerossError } from './errors';
 import {
     ABILITY_NAMESPACE,
-    DEFAULT_POLL_INTERVAL_MS,
     DeviceGraph,
-    POLL_START_STAGGER_MS,
     SYSTEM_ALL_NAMESPACE,
-    buildPollJobs,
     decodeAbilityGetAck
-} from './graph';
-import type { EnrollResult, GraphEndpoint, PhysicalDevice } from './graph';
-import { DeviceAvailability } from './graph/availability';
-import { DevicePoller } from './graph/poller';
+} from './device';
+import type { EnrollResult, GraphEndpoint, PhysicalDevice } from './device';
+import { DeviceAvailability } from './device/availability';
+import {
+    DEFAULT_POLL_INTERVAL_MS,
+    POLL_START_STAGGER_MS,
+    buildPollJobs
+} from './poll';
+import { DevicePoller } from './poll/poller';
 import { Inventory } from './inventory';
 import {
     CONSUMPTIONH_NAMESPACE,

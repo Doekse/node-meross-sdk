@@ -9,12 +9,12 @@ import {
     SENSOR_FAST_CLOUD_PERIOD_MS,
     SENSOR_FAST_PERIOD_MS,
     SYSTEM_ALL_PERIOD_MS
-} from '../../src/graph/poll-jobs';
+} from '../../src/poll/jobs';
 import {
     DevicePoller,
     DEFAULT_POLL_INTERVAL_MS,
     type PollJob
-} from '../../src/graph/poller';
+} from '../../src/poll/poller';
 import { SYSTEM_ALL_NAMESPACE } from '../../src/protocol/codecs/system-all';
 import { Endpoint } from '../../src/endpoint';
 import { CTL_RANGE_NAMESPACE } from '../../src/protocol/codecs/climate';

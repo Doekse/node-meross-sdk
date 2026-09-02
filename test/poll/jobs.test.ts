@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 
 import type { TraitName } from '../../src/endpoint';
 import type { AbilityMap } from '../../src/protocol/codecs/ability';
-import type { GraphEndpoint } from '../../src/graph';
+import type { GraphEndpoint } from '../../src/device';
 import {
     buildPollJobs,
     CLOUDMQTT_PERIOD_MS,
@@ -22,8 +22,8 @@ import {
     SENSOR_SLOW_CLOUD_PERIOD_MS,
     SENSOR_SLOW_PERIOD_MS,
     SYSTEM_ALL_PERIOD_MS
-} from '../../src/graph/poll-jobs';
-import type { PollJob } from '../../src/graph/poller';
+} from '../../src/poll/jobs';
+import type { PollJob } from '../../src/poll/poller';
 import { SYSTEM_ALL_NAMESPACE } from '../../src/protocol/codecs/system-all';
 import { CONTROL_ALERT_CONFIG_NAMESPACE } from '../../src/protocol/codecs/alertconfig';
 import { CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE } from '../../src/protocol/codecs/alarm';

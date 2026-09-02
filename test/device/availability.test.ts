@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { describe, it, type TestContext } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
-import { DeviceAvailability } from '../../src/graph/availability';
-import { Heartbeat } from '../../src/graph/heartbeat';
+import { DeviceAvailability } from '../../src/device/availability';
+import { Heartbeat } from '../../src/device/heartbeat';
 import { decodeMessage, encodeMessage, type MerossMessage } from '../../src/protocol';
 
 const fixturesDir = join(process.cwd(), 'test/fixtures');

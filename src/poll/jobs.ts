@@ -105,7 +105,7 @@ import {
 import { CONTROL_WATER_NAMESPACE, DEVICE_CFG_NAMESPACE } from '../protocol/codecs/water';
 import type { MerossPayload } from '../protocol/message';
 import type { AbilityMap } from '../protocol/codecs/ability';
-import type { GraphEndpoint } from '.';
+import type { GraphEndpoint } from '../device';
 import type { PollJob, PollStrategy } from './poller';
 import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
 import type { SystemAll } from '../protocol/codecs/system-all';

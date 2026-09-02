@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
-import { ABILITY_NAMESPACE, SYSTEM_ALL_NAMESPACE } from '../src/graph';
+import { ABILITY_NAMESPACE, SYSTEM_ALL_NAMESPACE } from '../src/device';
 import { AuthError, MerossError, TransportError } from '../src/errors';
 import {
     decodeMessage,
