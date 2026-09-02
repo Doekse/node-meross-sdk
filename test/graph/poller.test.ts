@@ -352,6 +352,64 @@ describe('DevicePoller', () => {
         harness.poller.stop();
     });
 
+    it('restores the advertised response budget after a complete packed reply', async (t) => {
+        const harness = createHarness(t, {
+            maxCmdNum: 5,
+            jobs: ['One', 'Two', 'Three'].map((suffix) => ({
+                namespace: `Appliance.Test.${suffix}`,
+                strategy: 'default' as const,
+                periodMs: 0,
+                periodCloudMs: 0,
+                responseSize: 800
+            }))
+        });
+
+        harness.poller.shrinkResponseBudget();
+        harness.poller.start();
+        await harness.advance(0);
+        assert.deepEqual(harness.getsHistory.map((gets) => gets.length), [2, 1]);
+        await flushMicrotasks();
+
+        await harness.advance(INTERVAL_MS);
+        assert.equal(harness.getsHistory[2]?.length, 3);
+
+        harness.poller.stop();
+    });
+
+    it('does not undo a response-budget shrink reported by the current request', async (t) => {
+        const harness = createHarness(t, {
+            maxCmdNum: 5,
+            jobs: ['One', 'Two', 'Three'].map((suffix) => ({
+                namespace: `Appliance.Test.${suffix}`,
+                strategy: 'default' as const,
+                periodMs: 0,
+                periodCloudMs: 0,
+                responseSize: 800
+            }))
+        });
+        let reportTruncation = true;
+        harness.requestGets.mock.mockImplementation(async (gets: GetCommand[]) => {
+            harness.getsHistory.push(gets.map((get) => ({
+                namespace: get.namespace,
+                payload: get.payload ?? {}
+            })));
+            if (reportTruncation) {
+                reportTruncation = false;
+                harness.poller.shrinkResponseBudget();
+            }
+            return gets.map((get) => ack(get.namespace, get.payload ?? {}));
+        });
+
+        harness.poller.start();
+        await harness.advance(0);
+        assert.equal(harness.getsHistory[0]?.length, 3);
+
+        await harness.advance(INTERVAL_MS);
+        assert.deepEqual(harness.getsHistory.slice(1).map((gets) => gets.length), [2, 1]);
+
+        harness.poller.stop();
+    });
+
     it('polls every never-run smart job on a cloud cold start', async (t) => {
         const harness = createHarness(t, {
             cloudPath: true,
@@ -861,6 +919,7 @@ describe('DevicePoller', () => {
 
     it('applies later GETACKs when a trait throws on an earlier namespace', async (t) => {
         const applied: string[] = [];
+        const warnings: Array<{ error: Error; trait: string }> = [];
         const endpoint = new Endpoint({
             id: UUID,
             traits: ['energy'],
@@ -877,6 +936,9 @@ describe('DevicePoller', () => {
                     applied.push(ELECTRICITY_NAMESPACE);
                 }
             })
+        });
+        endpoint.on('warning', (error, trait) => {
+            warnings.push({ error, trait });
         });
         const electricityAck = {
             electricity: { channel: 0, power: 11_000, current: 53, voltage: 2274 }
@@ -909,6 +971,8 @@ describe('DevicePoller', () => {
             [CONFIG_STANDBY_KILLER_NAMESPACE, ELECTRICITY_NAMESPACE]
         );
         assert.deepEqual(applied, [ELECTRICITY_NAMESPACE]);
+        assert.equal(warnings.length, 1);
+        assert.equal(warnings[0]?.trait, 'energy');
 
         harness.poller.stop();
     });

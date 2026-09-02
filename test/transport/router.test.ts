@@ -466,6 +466,7 @@ describe('TransportRouter', () => {
     });
 
     it('retries a truncated Control.Multiple as singles', async () => {
+        let packedFallback = 0;
         const { router, lanCalls } = createRouted({
             lan: async (sent) => {
                 if (sent.header.namespace === MULTIPLE_NAMESPACE) {
@@ -485,12 +486,16 @@ describe('TransportRouter', () => {
             uuid: UUID,
             ip: IP,
             maxCmdNum: 3,
+            onPackedFallback: () => {
+                packedFallback += 1;
+            },
             gets: [
                 { namespace: TOGGLEX_NAMESPACE },
                 { namespace: ELECTRICITY }
             ]
         });
 
+        assert.equal(packedFallback, 1);
         assert.equal(lanCalls.length, 3);
         assert.equal(
             decodeMessage(String(lanCalls[0]!.init.body), KEY).header.namespace,
@@ -508,7 +513,7 @@ describe('TransportRouter', () => {
         assert.equal(replies[0]?.header.method, 'GETACK');
     });
 
-    it('retries a Control.Multiple device ERROR as singles', async () => {
+    it('retries a Control.Multiple device ERROR as singles without reporting truncation', async () => {
         let packedFallback = 0;
         const { router, lanCalls } = createRouted({
             lan: async (sent) => {
@@ -533,7 +538,7 @@ describe('TransportRouter', () => {
             ]
         });
 
-        assert.equal(packedFallback, 1);
+        assert.equal(packedFallback, 0);
         assert.equal(lanCalls.length, 3);
         assert.equal(replies.length, 2);
         assert.equal(replies[0]?.header.namespace, TOGGLEX_NAMESPACE);

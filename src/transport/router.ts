@@ -174,6 +174,7 @@ export class TransportRouter {
         chunk: GetCommand[],
         options: RequestGetsOptions
     ): Promise<MerossMessage[]> {
+        let decodingPackedReply = false;
         try {
             const packed = await this.request({
                 uuid: options.uuid,
@@ -187,6 +188,7 @@ export class TransportRouter {
                 encryptionKey: options.encryptionKey,
                 priority: options.priority
             });
+            decodingPackedReply = true;
             const subs = decodeMultipleAck(packed.payload);
             if (subs.length !== chunk.length) {
                 throw new ProtocolError(
@@ -201,8 +203,10 @@ export class TransportRouter {
                 },
                 payload: sub.payload
             }));
-        } catch {
-            options.onPackedFallback?.();
+        } catch (error) {
+            if (decodingPackedReply && error instanceof ProtocolError) {
+                options.onPackedFallback?.();
+            }
             // Retry a failed Multiple as singles, then continue when one of
             // those also fails so later namespaces in the chunk still run.
             const results: MerossMessage[] = [];

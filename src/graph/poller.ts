@@ -211,6 +211,8 @@ export class DevicePoller {
      * cycle packs less.
      */
     private shrunkResponseMax: number | undefined;
+    /** Changes whenever an in-flight packed request reports truncation. */
+    private responseBudgetRevision = 0;
     private timer: ReturnType<typeof setTimeout> | undefined;
     private running = false;
 
@@ -335,6 +337,11 @@ export class DevicePoller {
     shrinkResponseBudget(): void {
         const current = this.getResponseSizeMax();
         this.shrunkResponseMax = Math.floor((current + POLL_RESPONSE_SIZE_MIN) / 2);
+        this.responseBudgetRevision += 1;
+    }
+
+    private resetResponseBudget(): void {
+        this.shrunkResponseMax = undefined;
     }
 
     private getResponseSizeMax(): number {
@@ -477,6 +484,7 @@ export class DevicePoller {
      */
     private async sendJobs(sending: JobState[], pack: boolean): Promise<void> {
         this.markJobsRequested(sending);
+        const responseBudgetRevision = this.responseBudgetRevision;
         if (this.tickCloudPath) {
             this.tickQueuedCloud += 1;
         }
@@ -490,6 +498,13 @@ export class DevicePoller {
                 pack ? this.tickMaxCmdNum : 1
             );
             this.lastResponseMs = this.tickEpoch;
+            if (
+                pack
+                && replies.length === sending.length
+                && this.responseBudgetRevision === responseBudgetRevision
+            ) {
+                this.resetResponseBudget();
+            }
             for (const reply of replies) {
                 this.updateResponseSizeFromReply(reply);
                 this.onAck(reply);

@@ -167,10 +167,19 @@ describe('ElectricityX codec', () => {
         );
     });
 
+    it('skips null and primitive ElectricityX rows', () => {
+        assert.deepEqual(
+            decodeElectricityXGetAck({
+                electricity: [null, false, 42, 'invalid', { channel: 2, power: 600 }]
+            }),
+            [{ channel: 2, power: 0.6 }]
+        );
+    });
+
     it('keeps partial ElectricityX metrics', () => {
         assert.deepEqual(
             decodeElectricityXGetAck({
-                electricity: [{ channel: 2, power: 600 }]
+                electricity: [{ channel: 2, power: 600, current: 'invalid' }]
             }),
             [{ channel: 2, power: 0.6 }]
         );

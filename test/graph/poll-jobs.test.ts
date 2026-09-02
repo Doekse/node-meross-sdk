@@ -966,6 +966,30 @@ describe('buildPollJobs', () => {
         ]);
     });
 
+    it('maps only populated diffuser digest lists to their namespaces', () => {
+        const digest = {
+            togglex: [],
+            light: [],
+            garageDoor: [],
+            rollerShutter: [],
+            spray: [],
+            fan: []
+        };
+
+        assert.deepEqual([...getDigestNamespaces({
+            ...digest,
+            diffuser: { light: [], spray: [] }
+        })], []);
+        assert.deepEqual([...getDigestNamespaces({
+            ...digest,
+            diffuser: { light: [0], spray: [] }
+        })], [DIFFUSER_LIGHT_NAMESPACE]);
+        assert.deepEqual([...getDigestNamespaces({
+            ...digest,
+            diffuser: { light: [], spray: [0] }
+        })], [DIFFUSER_SPRAY_NAMESPACE]);
+    });
+
     it('does not treat rollerShutter as a digest poller', () => {
         const namespaces = getDigestNamespaces({
             togglex: [],

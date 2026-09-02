@@ -603,8 +603,12 @@ export function getDigestNamespaces(digest: SystemAll['digest']): Set<string> {
         namespaces.add(FAN_NAMESPACE);
     }
     if (digest.diffuser) {
-        namespaces.add(DIFFUSER_LIGHT_NAMESPACE);
-        namespaces.add(DIFFUSER_SPRAY_NAMESPACE);
+        if (digest.diffuser.light.length > 0) {
+            namespaces.add(DIFFUSER_LIGHT_NAMESPACE);
+        }
+        if (digest.diffuser.spray.length > 0) {
+            namespaces.add(DIFFUSER_SPRAY_NAMESPACE);
+        }
     }
     if (digest.thermostat) {
         if (digest.thermostat.mode !== undefined) {
