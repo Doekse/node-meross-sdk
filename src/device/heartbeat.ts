@@ -28,6 +28,14 @@ export class Heartbeat {
     private pollingDelay: number;
 
     constructor(options: HeartbeatOptions) {
+        if (
+            options.intervalMs !== undefined
+            && !(Number.isFinite(options.intervalMs) && options.intervalMs > 0)
+        ) {
+            throw new RangeError(
+                `Heartbeat intervalMs must be a positive finite number, got ${options.intervalMs}`
+            );
+        }
         this.intervalMs = options.intervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
         this.isOnline = options.isOnline;
         this.pollOnline = options.pollOnline;

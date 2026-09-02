@@ -201,6 +201,30 @@ describe('Heartbeat silence detection', () => {
         assert.equal(pollOnline.mock.callCount(), 2);
         heartbeat.stop();
     });
+
+    it('rejects a zero intervalMs', () => {
+        assert.throws(
+            () => new Heartbeat({
+                intervalMs: 0,
+                isOnline: () => true,
+                pollOnline: async () => {},
+                onSilenceOffline: () => {}
+            }),
+            RangeError
+        );
+    });
+
+    it('rejects a negative intervalMs', () => {
+        assert.throws(
+            () => new Heartbeat({
+                intervalMs: -1,
+                isOnline: () => true,
+                pollOnline: async () => {},
+                onSilenceOffline: () => {}
+            }),
+            RangeError
+        );
+    });
 });
 
 describe('DeviceAvailability', () => {
