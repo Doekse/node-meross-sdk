@@ -40,7 +40,6 @@ export {
 } from './poller';
 export type { DevicePollerOptions, PollJob, PollStrategy } from './poller';
 export { buildPollJobs, getDigestNamespaces } from './poll-jobs';
-export type { PollEndpoint } from './poll-jobs';
 export { getDeviceResponseSizeMax, estimateResponseSize } from './poll-response-size';
 export { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from './system-all';
 export type { SystemAll } from './system-all';

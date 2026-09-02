@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { TraitName } from '../../src/endpoint';
+import type { AbilityMap } from '../../src/graph/ability';
+import type { GraphEndpoint } from '../../src/graph';
 import { buildPollJobs, getDigestNamespaces } from '../../src/graph/poll-jobs';
 import {
     CLOUDMQTT_PERIOD_MS,
@@ -16,7 +19,6 @@ import {
 } from '../../src/graph/poller';
 import { estimateResponseSize } from '../../src/graph/poll-response-size';
 import { SYSTEM_ALL_NAMESPACE } from '../../src/graph/system-all';
-import type { AbilityMap } from '../../src/graph/ability';
 import { CONTROL_ALERT_CONFIG_NAMESPACE } from '../../src/protocol/codecs/alertconfig';
 import { CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE } from '../../src/protocol/codecs/alarm';
 import { CONSUMPTION_CONFIG_NAMESPACE } from '../../src/protocol/codecs/consumptionconfig';
@@ -109,11 +111,25 @@ function namespaces(jobs: PollJob[]): string[] {
     return jobs.map((entry) => entry.namespace);
 }
 
+function endpoints(
+    rows: Array<{ channel?: number; subDeviceId?: string; traits: readonly TraitName[] }>
+): GraphEndpoint[] {
+    return rows.map((row) => ({
+        id: row.subDeviceId !== undefined ? `uuid#${row.subDeviceId}` : `uuid:${row.channel ?? 0}`,
+        uuid: 'uuid',
+        name: 'test',
+        model: 'mss310',
+        classHint: 'socket',
+        online: true,
+        ...row
+    }));
+}
+
 describe('buildPollJobs', () => {
     it('registers Electricity as smart fast', () => {
         const jobs = buildPollJobs(
             ability(ELECTRICITY_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['energy'] }]
+            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
         );
         assert.deepEqual(job(jobs, ELECTRICITY_NAMESPACE), {
             namespace: ELECTRICITY_NAMESPACE,
@@ -127,7 +143,7 @@ describe('buildPollJobs', () => {
     it('registers ConsumptionX as smart energy', () => {
         const jobs = buildPollJobs(
             ability(CONSUMPTIONX_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['energy'] }]
+            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
         );
         const { calibrate: _, ...rest } = job(jobs, CONSUMPTIONX_NAMESPACE) ?? {};
         assert.deepEqual(rest, {
@@ -142,7 +158,7 @@ describe('buildPollJobs', () => {
     it('calibrates ConsumptionX packing from GETACK days', () => {
         const jobs = buildPollJobs(
             ability(CONSUMPTIONX_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['energy'] }]
+            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
         );
         const calibrate = job(jobs, CONSUMPTIONX_NAMESPACE)?.calibrate;
         assert.equal(calibrate?.({}), undefined);
@@ -155,7 +171,7 @@ describe('buildPollJobs', () => {
     it('registers ElectricityX when classic Electricity is absent', () => {
         const jobs = buildPollJobs(
             ability(ELECTRICITYX_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['energy'] }]
+            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
         );
         assert.deepEqual(job(jobs, ELECTRICITYX_NAMESPACE), {
             namespace: ELECTRICITYX_NAMESPACE,
@@ -169,7 +185,7 @@ describe('buildPollJobs', () => {
     it('registers ConsumptionH when classic ConsumptionX is absent', () => {
         const jobs = buildPollJobs(
             ability(CONSUMPTIONH_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['energy'] }]
+            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
         );
         assert.deepEqual(job(jobs, CONSUMPTIONH_NAMESPACE), {
             namespace: CONSUMPTIONH_NAMESPACE,
@@ -183,7 +199,7 @@ describe('buildPollJobs', () => {
     it('does not include ConsumptionConfig', () => {
         const jobs = buildPollJobs(
             ability(ELECTRICITY_NAMESPACE, CONSUMPTIONX_NAMESPACE, CONSUMPTION_CONFIG_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['energy'] }]
+            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
         );
         assert.equal(namespaces(jobs).includes(CONSUMPTION_CONFIG_NAMESPACE), false);
     });
@@ -191,7 +207,7 @@ describe('buildPollJobs', () => {
     it('registers ToggleX when advertised', () => {
         const jobs = buildPollJobs(
             ability(TOGGLEX_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['switch'] }]
+            endpoints([{ channel: CHANNEL, traits: ['switch'] }])
         );
         assert.deepEqual(job(jobs, TOGGLEX_NAMESPACE), {
             namespace: TOGGLEX_NAMESPACE,
@@ -205,7 +221,7 @@ describe('buildPollJobs', () => {
     it('registers Spray when advertised', () => {
         const jobs = buildPollJobs(
             ability(SPRAY_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['spray'] }]
+            endpoints([{ channel: CHANNEL, traits: ['spray'] }])
         );
         assert.deepEqual(job(jobs, SPRAY_NAMESPACE), {
             namespace: SPRAY_NAMESPACE,
@@ -219,7 +235,7 @@ describe('buildPollJobs', () => {
     it('registers Mp3 when advertised', () => {
         const jobs = buildPollJobs(
             ability(MP3_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['media'] }]
+            endpoints([{ channel: CHANNEL, traits: ['media'] }])
         );
         assert.deepEqual(job(jobs, MP3_NAMESPACE), {
             namespace: MP3_NAMESPACE,
@@ -233,7 +249,7 @@ describe('buildPollJobs', () => {
     it('registers DND when advertised', () => {
         const jobs = buildPollJobs(
             ability(DND_MODE_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['dnd'] }]
+            endpoints([{ channel: CHANNEL, traits: ['dnd'] }])
         );
         assert.deepEqual(job(jobs, DND_MODE_NAMESPACE), {
             namespace: DND_MODE_NAMESPACE,
@@ -247,7 +263,7 @@ describe('buildPollJobs', () => {
     it('registers Alarm when advertised', () => {
         const jobs = buildPollJobs(
             ability(CONTROL_ALARM_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['alarm'] }]
+            endpoints([{ channel: CHANNEL, traits: ['alarm'] }])
         );
         assert.deepEqual(job(jobs, CONTROL_ALARM_NAMESPACE), {
             namespace: CONTROL_ALARM_NAMESPACE,
@@ -261,7 +277,7 @@ describe('buildPollJobs', () => {
     it('registers Control.Beep as SMART_CONFIG with alarm-keyed channel list', () => {
         const jobs = buildPollJobs(
             ability(CONTROL_BEEP_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['alarm'] }]
+            endpoints([{ channel: CHANNEL, traits: ['alarm'] }])
         );
         assert.deepEqual(job(jobs, CONTROL_BEEP_NAMESPACE), {
             namespace: CONTROL_BEEP_NAMESPACE,
@@ -275,7 +291,7 @@ describe('buildPollJobs', () => {
     it('registers Diffuser.Light when advertised', () => {
         const jobs = buildPollJobs(
             ability(DIFFUSER_LIGHT_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['diffuser'] }]
+            endpoints([{ channel: CHANNEL, traits: ['diffuser'] }])
         );
         assert.deepEqual(job(jobs, DIFFUSER_LIGHT_NAMESPACE), {
             namespace: DIFFUSER_LIGHT_NAMESPACE,
@@ -289,7 +305,7 @@ describe('buildPollJobs', () => {
     it('registers Diffuser.Spray when advertised', () => {
         const jobs = buildPollJobs(
             ability(DIFFUSER_SPRAY_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['diffuser'] }]
+            endpoints([{ channel: CHANNEL, traits: ['diffuser'] }])
         );
         assert.deepEqual(job(jobs, DIFFUSER_SPRAY_NAMESPACE), {
             namespace: DIFFUSER_SPRAY_NAMESPACE,
@@ -303,7 +319,7 @@ describe('buildPollJobs', () => {
     it('registers Diffuser.Sensor as smart slow when advertised', () => {
         const jobs = buildPollJobs(
             ability(DIFFUSER_SENSOR_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['diffuser'] }]
+            endpoints([{ channel: CHANNEL, traits: ['diffuser'] }])
         );
         assert.deepEqual(job(jobs, DIFFUSER_SENSOR_NAMESPACE), {
             namespace: DIFFUSER_SENSOR_NAMESPACE,
@@ -317,7 +333,7 @@ describe('buildPollJobs', () => {
     it('skips Diffuser.Sensor when not advertised', () => {
         const jobs = buildPollJobs(
             ability(DIFFUSER_LIGHT_NAMESPACE, DIFFUSER_SPRAY_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['diffuser'] }]
+            endpoints([{ channel: CHANNEL, traits: ['diffuser'] }])
         );
         assert.equal(namespaces(jobs).includes(DIFFUSER_SENSOR_NAMESPACE), false);
     });
@@ -325,7 +341,7 @@ describe('buildPollJobs', () => {
     it('registers Fan when advertised', () => {
         const jobs = buildPollJobs(
             ability(FAN_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['fan'] }]
+            endpoints([{ channel: CHANNEL, traits: ['fan'] }])
         );
         assert.deepEqual(job(jobs, FAN_NAMESPACE), {
             namespace: FAN_NAMESPACE,
@@ -339,7 +355,7 @@ describe('buildPollJobs', () => {
     it('registers ToggleX when advertised on a fan', () => {
         const jobs = buildPollJobs(
             ability(TOGGLEX_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['fan'] }]
+            endpoints([{ channel: CHANNEL, traits: ['fan'] }])
         );
         assert.ok(namespaces(jobs).includes(TOGGLEX_NAMESPACE));
     });
@@ -347,7 +363,7 @@ describe('buildPollJobs', () => {
     it('registers Fan.Config as smart config', () => {
         const jobs = buildPollJobs(
             ability(FAN_CONFIG_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['fan'] }]
+            endpoints([{ channel: CHANNEL, traits: ['fan'] }])
         );
         assert.deepEqual(job(jobs, FAN_CONFIG_NAMESPACE), {
             namespace: FAN_CONFIG_NAMESPACE,
@@ -361,7 +377,7 @@ describe('buildPollJobs', () => {
     it('registers FilterMaintenance as PUSH-query', () => {
         const jobs = buildPollJobs(
             ability(FILTER_MAINTENANCE_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['fan'] }]
+            endpoints([{ channel: CHANNEL, traits: ['fan'] }])
         );
         assert.deepEqual(job(jobs, FILTER_MAINTENANCE_NAMESPACE), {
             namespace: FILTER_MAINTENANCE_NAMESPACE,
@@ -376,7 +392,7 @@ describe('buildPollJobs', () => {
     it('does not register Fan.Btn.Config even when advertised', () => {
         const jobs = buildPollJobs(
             ability(FAN_NAMESPACE, FAN_BTN_CONFIG_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['fan'] }]
+            endpoints([{ channel: CHANNEL, traits: ['fan'] }])
         );
         assert.equal(namespaces(jobs).includes(FAN_BTN_CONFIG_NAMESPACE), false);
     });
@@ -384,7 +400,7 @@ describe('buildPollJobs', () => {
     it('registers Light.Effect as smart config when advertised', () => {
         const jobs = buildPollJobs(
             ability(LIGHT_EFFECT_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['light'] }]
+            endpoints([{ channel: CHANNEL, traits: ['light'] }])
         );
         assert.deepEqual(job(jobs, LIGHT_EFFECT_NAMESPACE), {
             namespace: LIGHT_EFFECT_NAMESPACE,
@@ -398,7 +414,7 @@ describe('buildPollJobs', () => {
     it('registers Hub.Sensor.All as smart all', () => {
         const jobs = buildPollJobs(
             ability(HUB_SENSOR_ALL_NAMESPACE),
-            [{ subDeviceId: SUB_ID, traits: ['sensor'] }]
+            endpoints([{ subDeviceId: SUB_ID, traits: ['sensor'] }])
         );
         assert.deepEqual(job(jobs, HUB_SENSOR_ALL_NAMESPACE), {
             namespace: HUB_SENSOR_ALL_NAMESPACE,
@@ -412,7 +428,7 @@ describe('buildPollJobs', () => {
     it('skips Hub.Sensor.TempHum when Hub.Sensor.All is advertised', () => {
         const jobs = buildPollJobs(
             ability(HUB_SENSOR_ALL_NAMESPACE, HUB_SENSOR_TEMPHUM_NAMESPACE),
-            [{ subDeviceId: SUB_ID, traits: ['sensor'] }]
+            endpoints([{ subDeviceId: SUB_ID, traits: ['sensor'] }])
         );
         assert.equal(namespaces(jobs).includes(HUB_SENSOR_TEMPHUM_NAMESPACE), false);
     });
@@ -420,7 +436,7 @@ describe('buildPollJobs', () => {
     it('still registers Hub.Battery when Hub.Sensor.All is advertised', () => {
         const jobs = buildPollJobs(
             ability(HUB_SENSOR_ALL_NAMESPACE, HUB_BATTERY_NAMESPACE),
-            [{ subDeviceId: SUB_ID, traits: ['sensor'] }]
+            endpoints([{ subDeviceId: SUB_ID, traits: ['sensor'] }])
         );
         assert.ok(namespaces(jobs).includes(HUB_BATTERY_NAMESPACE));
     });
@@ -428,7 +444,7 @@ describe('buildPollJobs', () => {
     it('registers Hub.Sensor.TempHum when Hub.Sensor.All is absent', () => {
         const jobs = buildPollJobs(
             ability(HUB_SENSOR_TEMPHUM_NAMESPACE),
-            [{ subDeviceId: SUB_ID, traits: ['sensor'] }]
+            endpoints([{ subDeviceId: SUB_ID, traits: ['sensor'] }])
         );
         assert.deepEqual(job(jobs, HUB_SENSOR_TEMPHUM_NAMESPACE), {
             namespace: HUB_SENSOR_TEMPHUM_NAMESPACE,
@@ -442,7 +458,7 @@ describe('buildPollJobs', () => {
     it('registers Hub.Battery when Hub.Sensor.All is absent', () => {
         const jobs = buildPollJobs(
             ability(HUB_BATTERY_NAMESPACE),
-            [{ subDeviceId: SUB_ID, traits: ['sensor'] }]
+            endpoints([{ subDeviceId: SUB_ID, traits: ['sensor'] }])
         );
         assert.deepEqual(job(jobs, HUB_BATTERY_NAMESPACE), {
             namespace: HUB_BATTERY_NAMESPACE,
@@ -456,7 +472,7 @@ describe('buildPollJobs', () => {
     it('registers Hub.SubDevice.Version as once with idList', () => {
         const jobs = buildPollJobs(
             ability(HUB_SUBDEVICE_VERSION_NAMESPACE),
-            [{ subDeviceId: SUB_ID, traits: ['sensor'] }]
+            endpoints([{ subDeviceId: SUB_ID, traits: ['sensor'] }])
         );
         assert.deepEqual(job(jobs, HUB_SUBDEVICE_VERSION_NAMESPACE), {
             namespace: HUB_SUBDEVICE_VERSION_NAMESPACE,
@@ -470,7 +486,7 @@ describe('buildPollJobs', () => {
     it('registers Hub.Sensor.Smoke when advertised', () => {
         const jobs = buildPollJobs(
             ability(HUB_SENSOR_SMOKE_NAMESPACE),
-            [{ subDeviceId: SUB_ID, traits: ['sensor'] }]
+            endpoints([{ subDeviceId: SUB_ID, traits: ['sensor'] }])
         );
         assert.deepEqual(job(jobs, HUB_SENSOR_SMOKE_NAMESPACE), {
             namespace: HUB_SENSOR_SMOKE_NAMESPACE,
@@ -484,7 +500,7 @@ describe('buildPollJobs', () => {
     it('registers Smoke.Config when advertised', () => {
         const jobs = buildPollJobs(
             ability(SMOKE_CONFIG_NAMESPACE),
-            [{ subDeviceId: SUB_ID, traits: ['sensor'] }]
+            endpoints([{ subDeviceId: SUB_ID, traits: ['sensor'] }])
         );
         assert.deepEqual(job(jobs, SMOKE_CONFIG_NAMESPACE), {
             namespace: SMOKE_CONFIG_NAMESPACE,
@@ -498,7 +514,7 @@ describe('buildPollJobs', () => {
     it('registers Hub.Sensor.Motion as default when All is absent', () => {
         const jobs = buildPollJobs(
             ability(HUB_SENSOR_MOTION_NAMESPACE),
-            [{ subDeviceId: SUB_ID, traits: ['sensor'] }]
+            endpoints([{ subDeviceId: SUB_ID, traits: ['sensor'] }])
         );
         assert.deepEqual(job(jobs, HUB_SENSOR_MOTION_NAMESPACE), {
             namespace: HUB_SENSOR_MOTION_NAMESPACE,
@@ -512,7 +528,7 @@ describe('buildPollJobs', () => {
     it('skips Hub.Sensor.Motion when Hub.Sensor.All is advertised', () => {
         const jobs = buildPollJobs(
             ability(HUB_SENSOR_ALL_NAMESPACE, HUB_SENSOR_MOTION_NAMESPACE),
-            [{ subDeviceId: SUB_ID, traits: ['sensor'] }]
+            endpoints([{ subDeviceId: SUB_ID, traits: ['sensor'] }])
         );
         assert.equal(namespaces(jobs).includes(HUB_SENSOR_MOTION_NAMESPACE), false);
     });
@@ -520,7 +536,7 @@ describe('buildPollJobs', () => {
     it('registers Digest.TimerX as once', () => {
         const jobs = buildPollJobs(
             ability(DIGEST_TIMERX_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['timer'] }]
+            endpoints([{ channel: CHANNEL, traits: ['timer'] }])
         );
         assert.deepEqual(job(jobs, DIGEST_TIMERX_NAMESPACE), {
             namespace: DIGEST_TIMERX_NAMESPACE,
@@ -534,7 +550,7 @@ describe('buildPollJobs', () => {
     it('registers Digest.TriggerX as once', () => {
         const jobs = buildPollJobs(
             ability(DIGEST_TRIGGERX_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['trigger'] }]
+            endpoints([{ channel: CHANNEL, traits: ['trigger'] }])
         );
         assert.deepEqual(job(jobs, DIGEST_TRIGGERX_NAMESPACE), {
             namespace: DIGEST_TRIGGERX_NAMESPACE,
@@ -548,7 +564,7 @@ describe('buildPollJobs', () => {
     it('registers Control.Timer when TimerX is absent', () => {
         const jobs = buildPollJobs(
             ability(CONTROL_TIMER_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['timer'] }]
+            endpoints([{ channel: CHANNEL, traits: ['timer'] }])
         );
         assert.deepEqual(job(jobs, CONTROL_TIMER_NAMESPACE), {
             namespace: CONTROL_TIMER_NAMESPACE,
@@ -562,7 +578,7 @@ describe('buildPollJobs', () => {
     it('registers Control.Trigger when TriggerX is absent', () => {
         const jobs = buildPollJobs(
             ability(CONTROL_TRIGGER_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['trigger'] }]
+            endpoints([{ channel: CHANNEL, traits: ['trigger'] }])
         );
         assert.deepEqual(job(jobs, CONTROL_TRIGGER_NAMESPACE), {
             namespace: CONTROL_TRIGGER_NAMESPACE,
@@ -576,7 +592,7 @@ describe('buildPollJobs', () => {
     it('skips Control.Timer when TimerX is advertised', () => {
         const jobs = buildPollJobs(
             ability(CONTROL_TIMER_NAMESPACE, TIMERX_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['timer'] }]
+            endpoints([{ channel: CHANNEL, traits: ['timer'] }])
         );
         assert.equal(namespaces(jobs).includes(CONTROL_TIMER_NAMESPACE), false);
     });
@@ -584,7 +600,7 @@ describe('buildPollJobs', () => {
     it('skips Control.Trigger when TriggerX is advertised', () => {
         const jobs = buildPollJobs(
             ability(CONTROL_TRIGGER_NAMESPACE, TRIGGERX_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['trigger'] }]
+            endpoints([{ channel: CHANNEL, traits: ['trigger'] }])
         );
         assert.equal(namespaces(jobs).includes(CONTROL_TRIGGER_NAMESPACE), false);
     });
@@ -592,7 +608,7 @@ describe('buildPollJobs', () => {
     it('registers Presence LatestX', () => {
         const jobs = buildPollJobs(
             ability(SENSOR_LATESTX_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['presence'] }]
+            endpoints([{ channel: CHANNEL, traits: ['presence'] }])
         );
         assert.deepEqual(job(jobs, SENSOR_LATESTX_NAMESPACE), {
             namespace: SENSOR_LATESTX_NAMESPACE,
@@ -608,7 +624,7 @@ describe('buildPollJobs', () => {
     it('registers Presence Config', () => {
         const jobs = buildPollJobs(
             ability(PRESENCE_CONFIG_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['presence'] }]
+            endpoints([{ channel: CHANNEL, traits: ['presence'] }])
         );
         assert.deepEqual(job(jobs, PRESENCE_CONFIG_NAMESPACE), {
             namespace: PRESENCE_CONFIG_NAMESPACE,
@@ -622,10 +638,10 @@ describe('buildPollJobs', () => {
     it('registers hub LatestX for sensor children only', () => {
         const jobs = buildPollJobs(
             ability(SENSOR_LATESTX_NAMESPACE),
-            [
+            endpoints([
                 { subDeviceId: SUB_ID, traits: ['sensor'] },
                 { subDeviceId: 'mts100', traits: ['climate'] }
-            ]
+            ])
         );
         assert.deepEqual(job(jobs, SENSOR_LATESTX_NAMESPACE)?.payload, {
             latest: [{ channel: 0, subId: SUB_ID, data: ['light', 'temp', 'humi'] }]
@@ -635,7 +651,7 @@ describe('buildPollJobs', () => {
     it('registers Sprinkler Water when advertised', () => {
         const jobs = buildPollJobs(
             ability(CONTROL_WATER_NAMESPACE),
-            [{ subDeviceId: SUB_ID, traits: ['sprinkler'] }]
+            endpoints([{ subDeviceId: SUB_ID, traits: ['sprinkler'] }])
         );
         assert.deepEqual(job(jobs, CONTROL_WATER_NAMESPACE), {
             namespace: CONTROL_WATER_NAMESPACE,
@@ -649,7 +665,7 @@ describe('buildPollJobs', () => {
     it('registers Sprinkler DeviceCfg when advertised', () => {
         const jobs = buildPollJobs(
             ability(DEVICE_CFG_NAMESPACE),
-            [{ subDeviceId: SUB_ID, traits: ['sprinkler'] }]
+            endpoints([{ subDeviceId: SUB_ID, traits: ['sprinkler'] }])
         );
         assert.deepEqual(job(jobs, DEVICE_CFG_NAMESPACE), {
             namespace: DEVICE_CFG_NAMESPACE,
@@ -663,7 +679,7 @@ describe('buildPollJobs', () => {
     it('does not register WaterPlan even when advertised', () => {
         const jobs = buildPollJobs(
             ability(WATER_PLAN_NAMESPACE),
-            [{ subDeviceId: SUB_ID, traits: ['sprinkler'] }]
+            endpoints([{ subDeviceId: SUB_ID, traits: ['sprinkler'] }])
         );
         assert.equal(namespaces(jobs).includes(WATER_PLAN_NAMESPACE), false);
     });
@@ -682,7 +698,7 @@ describe('buildPollJobs', () => {
     it('registers Sensor.Latest as smart fast when advertised', () => {
         const jobs = buildPollJobs(
             ability(SENSOR_LATEST_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['climate'] }]
+            endpoints([{ channel: CHANNEL, traits: ['climate'] }])
         );
         assert.deepEqual(job(jobs, SENSOR_LATEST_NAMESPACE), {
             namespace: SENSOR_LATEST_NAMESPACE,
@@ -696,7 +712,7 @@ describe('buildPollJobs', () => {
     it('registers garage Config when advertised', () => {
         const jobs = buildPollJobs(
             ability(GARAGE_CONFIG_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['cover'] }]
+            endpoints([{ channel: CHANNEL, traits: ['cover'] }])
         );
         assert.deepEqual(job(jobs, GARAGE_CONFIG_NAMESPACE), {
             namespace: GARAGE_CONFIG_NAMESPACE,
@@ -710,7 +726,7 @@ describe('buildPollJobs', () => {
     it('registers garage MultipleConfig when advertised', () => {
         const jobs = buildPollJobs(
             ability(GARAGE_MULTIPLE_CONFIG_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['cover'] }]
+            endpoints([{ channel: CHANNEL, traits: ['cover'] }])
         );
         assert.deepEqual(job(jobs, GARAGE_MULTIPLE_CONFIG_NAMESPACE), {
             namespace: GARAGE_MULTIPLE_CONFIG_NAMESPACE,
@@ -724,7 +740,7 @@ describe('buildPollJobs', () => {
     it('registers shutter Config when advertised', () => {
         const jobs = buildPollJobs(
             ability(SHUTTER_CONFIG_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['cover'] }]
+            endpoints([{ channel: CHANNEL, traits: ['cover'] }])
         );
         assert.deepEqual(job(jobs, SHUTTER_CONFIG_NAMESPACE), {
             namespace: SHUTTER_CONFIG_NAMESPACE,
@@ -738,7 +754,7 @@ describe('buildPollJobs', () => {
     it('registers shutter Adjust when advertised', () => {
         const jobs = buildPollJobs(
             ability(SHUTTER_ADJUST_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['cover'] }]
+            endpoints([{ channel: CHANNEL, traits: ['cover'] }])
         );
         assert.deepEqual(job(jobs, SHUTTER_ADJUST_NAMESPACE), {
             namespace: SHUTTER_ADJUST_NAMESPACE,
@@ -752,7 +768,7 @@ describe('buildPollJobs', () => {
     it('does not register Sensor.HistoryX even when advertised', () => {
         const jobs = buildPollJobs(
             ability(SENSOR_HISTORYX_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['climate'] }]
+            endpoints([{ channel: CHANNEL, traits: ['climate'] }])
         );
         assert.deepEqual(jobs, []);
     });
@@ -760,7 +776,7 @@ describe('buildPollJobs', () => {
     it('registers System.Runtime as smart config', () => {
         const jobs = buildPollJobs(
             ability(SYSTEM_RUNTIME_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['energy'] }]
+            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
         );
         assert.deepEqual(job(jobs, SYSTEM_RUNTIME_NAMESPACE), {
             namespace: SYSTEM_RUNTIME_NAMESPACE,
@@ -774,7 +790,7 @@ describe('buildPollJobs', () => {
     it('registers Config.OverTemp as smart config', () => {
         const jobs = buildPollJobs(
             ability(CONFIG_OVERTEMP_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['energy'] }]
+            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
         );
         assert.deepEqual(job(jobs, CONFIG_OVERTEMP_NAMESPACE), {
             namespace: CONFIG_OVERTEMP_NAMESPACE,
@@ -788,7 +804,7 @@ describe('buildPollJobs', () => {
     it('registers Control.OverTemp as smart config', () => {
         const jobs = buildPollJobs(
             ability(CONTROL_OVERTEMP_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['energy'] }]
+            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
         );
         assert.deepEqual(job(jobs, CONTROL_OVERTEMP_NAMESPACE), {
             namespace: CONTROL_OVERTEMP_NAMESPACE,
@@ -802,7 +818,7 @@ describe('buildPollJobs', () => {
     it('registers Sensor.Association as smart config', () => {
         const jobs = buildPollJobs(
             ability(CONFIG_SENSOR_ASSOCIATION_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['energy'] }]
+            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
         );
         assert.deepEqual(job(jobs, CONFIG_SENSOR_ASSOCIATION_NAMESPACE), {
             namespace: CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
@@ -816,7 +832,7 @@ describe('buildPollJobs', () => {
     it('registers AlertConfig as smart config', () => {
         const jobs = buildPollJobs(
             ability(CONTROL_ALERT_CONFIG_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['energy'] }]
+            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
         );
         assert.deepEqual(job(jobs, CONTROL_ALERT_CONFIG_NAMESPACE), {
             namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
@@ -830,7 +846,7 @@ describe('buildPollJobs', () => {
     it('registers StandbyKiller as smart config', () => {
         const jobs = buildPollJobs(
             ability(CONFIG_STANDBY_KILLER_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['energy'] }]
+            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
         );
         assert.deepEqual(job(jobs, CONFIG_STANDBY_KILLER_NAMESPACE), {
             namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
@@ -844,7 +860,7 @@ describe('buildPollJobs', () => {
     it('skips System.Time when System.All is advertised', () => {
         const jobs = buildPollJobs(
             ability(SYSTEM_TIME_NAMESPACE, SYSTEM_ALL_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['system'] }]
+            endpoints([{ channel: CHANNEL, traits: ['system'] }])
         );
         assert.equal(job(jobs, SYSTEM_TIME_NAMESPACE), undefined);
     });
@@ -852,7 +868,7 @@ describe('buildPollJobs', () => {
     it('skips System.Firmware when System.All is advertised', () => {
         const jobs = buildPollJobs(
             ability(SYSTEM_FIRMWARE_NAMESPACE, SYSTEM_ALL_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['system'] }]
+            endpoints([{ channel: CHANNEL, traits: ['system'] }])
         );
         assert.equal(job(jobs, SYSTEM_FIRMWARE_NAMESPACE), undefined);
     });
@@ -860,7 +876,7 @@ describe('buildPollJobs', () => {
     it('skips System.Hardware when System.All is advertised', () => {
         const jobs = buildPollJobs(
             ability(SYSTEM_HARDWARE_NAMESPACE, SYSTEM_ALL_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['system'] }]
+            endpoints([{ channel: CHANNEL, traits: ['system'] }])
         );
         assert.equal(job(jobs, SYSTEM_HARDWARE_NAMESPACE), undefined);
     });
@@ -868,7 +884,7 @@ describe('buildPollJobs', () => {
     it('registers System.Position as once when System.All is advertised', () => {
         const jobs = buildPollJobs(
             ability(SYSTEM_POSITION_NAMESPACE, SYSTEM_ALL_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['system'] }]
+            endpoints([{ channel: CHANNEL, traits: ['system'] }])
         );
         assert.deepEqual(job(jobs, SYSTEM_POSITION_NAMESPACE), {
             namespace: SYSTEM_POSITION_NAMESPACE,
@@ -882,7 +898,7 @@ describe('buildPollJobs', () => {
     it('registers System.Debug as once when System.All is advertised', () => {
         const jobs = buildPollJobs(
             ability(SYSTEM_DEBUG_NAMESPACE, SYSTEM_ALL_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['system'] }]
+            endpoints([{ channel: CHANNEL, traits: ['system'] }])
         );
         assert.deepEqual(job(jobs, SYSTEM_DEBUG_NAMESPACE), {
             namespace: SYSTEM_DEBUG_NAMESPACE,
@@ -896,7 +912,7 @@ describe('buildPollJobs', () => {
     it('registers System.Time as smart config when System.All is absent', () => {
         const jobs = buildPollJobs(
             ability(SYSTEM_TIME_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['system'] }]
+            endpoints([{ channel: CHANNEL, traits: ['system'] }])
         );
         assert.deepEqual(job(jobs, SYSTEM_TIME_NAMESPACE), {
             namespace: SYSTEM_TIME_NAMESPACE,
@@ -910,7 +926,7 @@ describe('buildPollJobs', () => {
     it('registers System.Firmware once when System.All is absent', () => {
         const jobs = buildPollJobs(
             ability(SYSTEM_FIRMWARE_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['system'] }]
+            endpoints([{ channel: CHANNEL, traits: ['system'] }])
         );
         assert.deepEqual(job(jobs, SYSTEM_FIRMWARE_NAMESPACE), {
             namespace: SYSTEM_FIRMWARE_NAMESPACE,
@@ -924,7 +940,7 @@ describe('buildPollJobs', () => {
     it('registers System.Hardware once when System.All is absent', () => {
         const jobs = buildPollJobs(
             ability(SYSTEM_HARDWARE_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['system'] }]
+            endpoints([{ channel: CHANNEL, traits: ['system'] }])
         );
         assert.deepEqual(job(jobs, SYSTEM_HARDWARE_NAMESPACE), {
             namespace: SYSTEM_HARDWARE_NAMESPACE,
@@ -938,7 +954,7 @@ describe('buildPollJobs', () => {
     it('promotes ToggleX to digest when it appears in System.All digest', () => {
         const jobs = buildPollJobs(
             ability(TOGGLEX_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['switch'] }],
+            endpoints([{ channel: CHANNEL, traits: ['switch'] }]),
             new Set([TOGGLEX_NAMESPACE])
         );
         assert.deepEqual(job(jobs, TOGGLEX_NAMESPACE), {
@@ -953,7 +969,7 @@ describe('buildPollJobs', () => {
     it('promotes Fan to digest when digest.fan is present', () => {
         const jobs = buildPollJobs(
             ability(FAN_NAMESPACE),
-            [{ channel: CHANNEL, traits: ['fan'] }],
+            endpoints([{ channel: CHANNEL, traits: ['fan'] }]),
             new Set([FAN_NAMESPACE])
         );
         assert.deepEqual(job(jobs, FAN_NAMESPACE), {

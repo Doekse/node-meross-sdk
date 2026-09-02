@@ -105,6 +105,7 @@ import {
 import { CONTROL_WATER_NAMESPACE, DEVICE_CFG_NAMESPACE } from '../protocol/codecs/water';
 import type { MerossPayload } from '../protocol/message';
 import type { AbilityMap } from './ability';
+import type { GraphEndpoint } from '.';
 import {
     CLOUDMQTT_PERIOD_MS,
     ENERGY_CLOUD_PERIOD_MS,
@@ -121,13 +122,6 @@ import {
 import { estimateResponseSize } from './poll-response-size';
 import { SYSTEM_ALL_NAMESPACE } from './system-all';
 import type { SystemAll } from './system-all';
-
-/** LIST GETs need enrolled channels/ids, not just Ability keys. */
-export interface PollEndpoint {
-    channel?: number;
-    subDeviceId?: string;
-    traits: readonly TraitName[];
-}
 
 interface PollPeriods {
     strategy: PollStrategy;
@@ -642,7 +636,7 @@ export function getDigestNamespaces(digest: SystemAll['digest']): Set<string> {
  */
 export function buildPollJobs(
     ability: AbilityMap,
-    endpoints: readonly PollEndpoint[],
+    endpoints: readonly GraphEndpoint[],
     digestNamespaces?: ReadonlySet<string>
 ): PollJob[] {
     const jobs: PollJob[] = [];
@@ -667,7 +661,7 @@ export function buildPollJobs(
     return jobs;
 }
 
-function encodePayload(spec: PayloadSpec, endpoints: readonly PollEndpoint[]): MerossPayload {
+function encodePayload(spec: PayloadSpec, endpoints: readonly GraphEndpoint[]): MerossPayload {
     if ('dict' in spec) {
         return {
             [spec.dict]: spec.channel === undefined ? {} : { channel: spec.channel }
@@ -678,7 +672,7 @@ function encodePayload(spec: PayloadSpec, endpoints: readonly PollEndpoint[]): M
 
 function encodeList(
     spec: Extract<PayloadSpec, { list: string }>,
-    endpoints: readonly PollEndpoint[]
+    endpoints: readonly GraphEndpoint[]
 ): unknown[] {
     if (spec.by === undefined) {
         return [];
@@ -721,9 +715,9 @@ function encodeList(
  * matching trait so a mixed hub does not GET LatestX for MTS100 children.
  */
 function preferTrait(
-    endpoints: readonly PollEndpoint[],
+    endpoints: readonly GraphEndpoint[],
     trait: TraitName
-): PollEndpoint[] {
+): GraphEndpoint[] {
     const matched = endpoints.filter((endpoint) => endpoint.traits.includes(trait));
     return matched.length > 0 ? matched : [...endpoints];
 }
