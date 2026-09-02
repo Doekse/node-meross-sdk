@@ -18,6 +18,7 @@ import { abilityMaxCmdNum, decodeAbilityGetAck } from './ability';
 import type { AbilityMap } from './ability';
 import { decodeSystemAllGetAck } from './system-all';
 import type { DigestToggle, SystemAll } from './system-all';
+import { getDigestNamespaces } from './poll-jobs';
 
 export { ABILITY_NAMESPACE, abilityMaxCmdNum, decodeAbilityGetAck } from './ability';
 export type { AbilityMap } from './ability';
@@ -36,7 +37,7 @@ export {
     SYSTEM_ALL_PERIOD_MS
 } from './poller';
 export type { DevicePollerOptions, PollJob, PollStrategy } from './poller';
-export { buildPollJobs } from './poll-jobs';
+export { buildPollJobs, getDigestNamespaces } from './poll-jobs';
 export type { PollEndpoint } from './poll-jobs';
 export { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from './system-all';
 export type { SystemAll } from './system-all';
@@ -112,6 +113,11 @@ export interface PhysicalDevice {
         hardware: SystemHardwareState;
         time?: SystemTimeState;
     };
+    /**
+     * Namespaces carried in the System.All digest so DevicePoller GETs them
+     * only as the All fallback, not beside it.
+     */
+    digestNamespaces: ReadonlySet<string>;
     endpoints: readonly GraphEndpoint[];
 }
 
@@ -148,6 +154,7 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
             hardware: all.hardware,
             ...(all.time ? { time: all.time } : {})
         },
+        digestNamespaces: getDigestNamespaces(all.digest),
         endpoints: isHub
             ? enrollHub(uuid, name, model, online, hasDnd, hasAlarm, all, input.subDevices ?? [])
             : enrollBoard(
