@@ -33,7 +33,12 @@ export interface SystemAll {
         fan: number[];
         diffuser?: { light: number[]; spray: number[] };
         hub?: { subdevice: Array<{ id: string; status?: number; model?: string; on?: boolean }> };
-        thermostat?: unknown;
+        thermostat?: {
+            mode?: number[];
+            modeB?: number[];
+            summerMode?: number[];
+            windowOpened?: number[];
+        };
     };
 }
 
@@ -82,7 +87,7 @@ export function decodeSystemAllGetAck(payload: MerossPayload): SystemAll {
             fan: channelList(d.fan, 'fan'),
             diffuser: d.diffuser !== undefined ? decodeDiffuser(d.diffuser) : undefined,
             hub: d.hub !== undefined ? decodeHub(d.hub) : undefined,
-            thermostat: d.thermostat && typeof d.thermostat === 'object' ? d.thermostat : undefined
+            thermostat: d.thermostat !== undefined ? decodeThermostat(d.thermostat) : undefined
         }
     };
 }
@@ -132,6 +137,31 @@ function decodeDiffuser(raw: unknown): { light: number[]; spray: number[] } {
         light: channelList(entry.light, 'diffuser.light'),
         spray: channelList(entry.spray, 'diffuser.spray')
     };
+}
+
+/**
+ * Typed keys so enrollment can treat Mode/ModeB/SummerMode/WindowOpened as
+ * digest jobs instead of polling them beside System.All.
+ */
+function decodeThermostat(raw: unknown): NonNullable<SystemAll['digest']['thermostat']> {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        throw new ProtocolError('System.All digest.thermostat must be an object');
+    }
+    const entry = raw as Record<string, unknown>;
+    const thermostat: NonNullable<SystemAll['digest']['thermostat']> = {};
+    if (entry.mode !== undefined) {
+        thermostat.mode = channelList(entry.mode, 'thermostat.mode');
+    }
+    if (entry.modeB !== undefined) {
+        thermostat.modeB = channelList(entry.modeB, 'thermostat.modeB');
+    }
+    if (entry.summerMode !== undefined) {
+        thermostat.summerMode = channelList(entry.summerMode, 'thermostat.summerMode');
+    }
+    if (entry.windowOpened !== undefined) {
+        thermostat.windowOpened = channelList(entry.windowOpened, 'thermostat.windowOpened');
+    }
+    return thermostat;
 }
 
 function decodeHub(raw: unknown): {
