@@ -66,7 +66,8 @@ if (tsFiles.length === 0 && cjsFiles.length === 0) {
 }
 
 if (tsFiles.length > 0) {
-    run('npx', ['tsx', '--test', ...tsFiles]);
+    // Run tsx's own CLI with this node binary. Spawning `npx` fails on Windows.
+    run(process.execPath, [require.resolve('tsx/cli'), '--test', ...tsFiles]);
 }
 
 if (cjsFiles.length > 0) {
