@@ -411,13 +411,28 @@ function enrollBoard(
         add(channel, 'light', ['light']);
     }
 
-    const coverChannels = all.digest.garageDoor.length > 0
-        ? all.digest.garageDoor
-        : all.digest.rollerShutter.length > 0
+    if (all.digest.garageDoor.length > 0) {
+        // Seed open/closed from the digest so hosts have state before the first
+        // PUSH or poll; on cloud MQTT that poll can be ~20 minutes away.
+        // Channels the installer never wired report doorEnable 0 and are not
+        // user-visible devices, so they are skipped (MSG200 ships three doors).
+        for (const door of all.digest.garageDoor) {
+            if (door.doorEnable === false) {
+                // Claim the channel without creating an endpoint, so the
+                // ToggleX pass below does not re-add the disabled door as a
+                // plain socket.
+                taken.add(door.channel);
+                continue;
+            }
+            add(door.channel, 'cover', ['cover'], door.open);
+        }
+    } else {
+        const coverChannels = all.digest.rollerShutter.length > 0
             ? all.digest.rollerShutter
             : ('Appliance.GarageDoor.State' in ability || 'Appliance.RollerShutter.State' in ability ? [0] : []);
-    for (const channel of coverChannels) {
-        add(channel, 'cover', ['cover']);
+        for (const channel of coverChannels) {
+            add(channel, 'cover', ['cover']);
+        }
     }
 
     if (
@@ -475,7 +490,7 @@ function enrollBoard(
     ) {
         toggles = [{ channel: 0 }];
     }
-    if (all.digest.garageDoor.some((channel) => channel !== 0)) {
+    if (all.digest.garageDoor.some((door) => door.channel !== 0)) {
         toggles = toggles.filter((entry) => entry.channel !== 0);
     }
     const masterId = `${uuid}:0`;

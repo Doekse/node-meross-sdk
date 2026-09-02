@@ -114,6 +114,24 @@ describe('System.All GETACK', () => {
         );
     });
 
+    it('rejects a non-array garageDoor digest', () => {
+        const allPayload = systemAllWithDigest({ garageDoor: { channel: 1 } });
+
+        assert.throws(
+            () => decodeSystemAllGetAck(allPayload),
+            (err: unknown) => err instanceof ProtocolError
+        );
+    });
+
+    it('rejects a garageDoor digest row without a numeric channel', () => {
+        const allPayload = systemAllWithDigest({ garageDoor: [{ channel: '1', open: 1 }] });
+
+        assert.throws(
+            () => decodeSystemAllGetAck(allPayload),
+            (err: unknown) => err instanceof ProtocolError
+        );
+    });
+
     it('decodes spray, fan, and diffuser digest channel lists', () => {
         const all = decodeSystemAllGetAck(systemAllWithDigest({
             spray: [{ channel: 0, mode: 0 }],
@@ -708,6 +726,79 @@ describe('enrollPhysicalDevice', () => {
                 }))
             ]
         );
+    });
+
+    it('seeds cover open state from the System.All garage digest', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.GarageDoor.State': {}
+            }),
+            allPayload: systemAllWithDigest({
+                garageDoor: [
+                    { channel: 1, open: 1, lmTime: 1756500000 },
+                    { channel: 2, open: 0, lmTime: 1756500000 }
+                ]
+            })
+        });
+
+        const covers = device.endpoints
+            .filter((endpoint) => endpoint.traits.includes('cover'))
+            .map((endpoint) => ({ channel: endpoint.channel, on: endpoint.on }));
+
+        assert.deepEqual(covers, [
+            { channel: 1, on: true },
+            { channel: 2, on: false }
+        ]);
+    });
+
+    it('leaves cover state undefined when the digest omits open', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.GarageDoor.State': {}
+            }),
+            allPayload: systemAllWithDigest({
+                garageDoor: [{ channel: 1 }, { channel: 2 }]
+            })
+        });
+
+        for (const endpoint of device.endpoints) {
+            assert.equal(endpoint.on, undefined);
+        }
+    });
+
+    it('skips garage channels the installer never wired (doorEnable 0)', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.GarageDoor.State': {},
+                'Appliance.GarageDoor.MultipleConfig': {}
+            }),
+            allPayload: systemAllWithDigest({
+                garageDoor: [
+                    { channel: 1, open: 0, doorEnable: 1 },
+                    { channel: 2, open: 1, doorEnable: 1 },
+                    { channel: 3, open: 0, doorEnable: 0 }
+                ],
+                togglex: [
+                    { channel: 0, onoff: 0 },
+                    { channel: 1, onoff: 0 },
+                    { channel: 2, onoff: 0 },
+                    { channel: 3, onoff: 0 }
+                ]
+            })
+        });
+
+        // Channel 3 must not come back as a cover, and must not fall through to
+        // the ToggleX pass as a plain socket either: a switch bound to a garage
+        // door relay is worse than a missing device.
+        const endpoints = device.endpoints.map((endpoint) => ({
+            channel: endpoint.channel,
+            classHint: endpoint.classHint
+        }));
+
+        assert.deepEqual(endpoints, [
+            { channel: 1, classHint: 'cover' },
+            { channel: 2, classHint: 'cover' }
+        ]);
     });
 
     it('sets classHint light when Control.Light is in Ability', () => {
