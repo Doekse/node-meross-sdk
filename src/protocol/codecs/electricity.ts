@@ -25,12 +25,16 @@ export function parseElectricityConfig(raw: unknown): ElectricityConfig | undefi
     return config;
 }
 
-/** Instantaneous metrics in host units (W, A, V, Wh). */
+/**
+ * Instantaneous metrics in host units (W, A, V, Wh). Decode keeps whichever
+ * of power/current/voltage are present; channel is omitted on board-level
+ * Electricity.
+ */
 export interface ElectricitySample {
-    channel: number;
-    power: number;
-    current: number;
-    voltage: number;
+    channel?: number;
+    power?: number;
+    current?: number;
+    voltage?: number;
     consume?: number;
     powerFactor?: number;
     config?: ElectricityConfig;
@@ -45,35 +49,64 @@ export function encodeElectricityGet(options: ElectricityGetOptions): MerossPayl
     return { electricity: { channel: options.channel } };
 }
 
-/** GETACK (and PUSH when present) carry one channel as an object. */
+function scaledField(value: unknown, scale: number): number | undefined {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return undefined;
+    }
+    return value / scale;
+}
+
+/**
+ * Board Electricity omits channel and any of power/current/voltage; keep
+ * whichever fields are present rather than rejecting the sample.
+ */
+function sampleFromFields(
+    raw: Record<string, unknown>,
+    scales: { power: number; current: number; voltage: number }
+): ElectricitySample {
+    const sample: ElectricitySample = {};
+    if (typeof raw.channel === 'number') {
+        sample.channel = raw.channel;
+    }
+    const power = scaledField(raw.power, scales.power);
+    if (power !== undefined) {
+        sample.power = power;
+    }
+    const current = scaledField(raw.current, scales.current);
+    if (current !== undefined) {
+        sample.current = current;
+    }
+    const voltage = scaledField(raw.voltage, scales.voltage);
+    if (voltage !== undefined) {
+        sample.voltage = voltage;
+    }
+    if (typeof raw.consume === 'number') {
+        sample.consume = raw.consume;
+    }
+    if (typeof raw.mConsume === 'number') {
+        sample.consume = raw.mConsume;
+    }
+    if (typeof raw.factor === 'number') {
+        sample.powerFactor = raw.factor / 100;
+    }
+    const parsedConfig = parseElectricityConfig(raw.config);
+    if (parsedConfig) {
+        sample.config = parsedConfig;
+    }
+    return sample;
+}
+
+/** One object; missing power/current/voltage stay omitted rather than failing decode. */
 export function decodeElectricityGetAck(payload: MerossPayload): ElectricitySample {
     const raw = payload.electricity;
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
         throw new ProtocolError('Electricity GETACK electricity must be an object');
     }
-    const { channel, power, current, voltage, consume, config } = raw as Record<string, unknown>;
-    if (
-        typeof channel !== 'number'
-        || typeof power !== 'number'
-        || typeof current !== 'number'
-        || typeof voltage !== 'number'
-    ) {
-        throw new ProtocolError('Electricity channel, power, current, and voltage are required');
-    }
-    const sample: ElectricitySample = {
-        channel,
-        power: power / 1000,
-        current: current / 1000,
-        voltage: voltage / 10
-    };
-    if (typeof consume === 'number') {
-        sample.consume = consume;
-    }
-    const parsedConfig = parseElectricityConfig(config);
-    if (parsedConfig) {
-        sample.config = parsedConfig;
-    }
-    return sample;
+    return sampleFromFields(raw as Record<string, unknown>, {
+        power: 1000,
+        current: 1000,
+        voltage: 10
+    });
 }
 
 export const ELECTRICITYX_NAMESPACE = 'Appliance.Control.ElectricityX';
@@ -98,31 +131,21 @@ export function decodeElectricityXGetAck(payload: MerossPayload): ElectricitySam
     if (!items) {
         throw new ProtocolError('ElectricityX GETACK electricity must be an object or array');
     }
-    return items.map((entry) => {
+    const samples: ElectricitySample[] = [];
+    for (const entry of items) {
         if (typeof entry !== 'object' || entry === null) {
-            throw new ProtocolError('ElectricityX channel entry must be an object');
+            continue;
         }
-        const { channel, power, current, voltage, mConsume, factor } = entry as Record<string, unknown>;
-        if (
-            typeof channel !== 'number'
-            || typeof power !== 'number'
-            || typeof current !== 'number'
-            || typeof voltage !== 'number'
-        ) {
-            throw new ProtocolError('ElectricityX channel, power, current, and voltage are required');
+        const sample = sampleFromFields(entry as Record<string, unknown>, {
+            power: 1000,
+            current: 1000,
+            voltage: 1000
+        });
+        // A row without a channel cannot be routed to an endpoint.
+        if (sample.channel === undefined) {
+            continue;
         }
-        const sample: ElectricitySample = {
-            channel,
-            power: power / 1000,
-            current: current / 1000,
-            voltage: voltage / 1000
-        };
-        if (typeof mConsume === 'number') {
-            sample.consume = mConsume;
-        }
-        if (typeof factor === 'number') {
-            sample.powerFactor = factor / 100;
-        }
-        return sample;
-    });
+        samples.push(sample);
+    }
+    return samples;
 }
