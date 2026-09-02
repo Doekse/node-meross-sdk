@@ -235,15 +235,21 @@ describe('EnergyTrait.poll', () => {
         ]);
     });
 
-    it('does not emit when a second poll repeats the same readings', async () => {
-        const { endpoint, trait } = createEnergyHarness();
+    it('emits electricity on every poll including repeated readings', async () => {
+        const { endpoint, trait } = createEnergyHarness({ hasConsumptionX: false });
         const changes: unknown[] = [];
         endpoint.on('change', (change) => changes.push(change));
 
         await trait.poll();
-        await trait.poll();
+        assert.deepEqual(changes, [
+            { trait: 'energy', values: { power: 11, current: 0.05, voltage: 230, consume: 42 } }
+        ]);
 
-        assert.equal(changes.length, 2);
+        await trait.poll();
+        assert.deepEqual(changes, [
+            { trait: 'energy', values: { power: 11, current: 0.05, voltage: 230, consume: 42 } },
+            { trait: 'energy', values: { power: 11, current: 0.05, voltage: 230, consume: 42 } }
+        ]);
     });
 
     it('skips namespaces the bind does not advertise', async () => {
@@ -337,7 +343,7 @@ describe('EnergyTrait PUSH', () => {
         ]);
     });
 
-    it('ignores Electricity PUSH for other channels', () => {
+    it('applies board Electricity PUSH regardless of payload channel', () => {
         const { endpoint, trait } = createEnergyHarness({ hasConsumptionX: false });
         const changes: unknown[] = [];
         endpoint.on('change', (change) => changes.push(change));
@@ -346,7 +352,51 @@ describe('EnergyTrait PUSH', () => {
         push.header.method = 'PUSH';
         trait.handlePush(push);
 
-        assert.deepEqual(changes, []);
+        assert.deepEqual(changes, [
+            { trait: 'energy', values: { power: 11, current: 0.05, voltage: 230, consume: 42 } }
+        ]);
+    });
+
+    it('applies Electricity GETACK that omits channel', () => {
+        const { endpoint, trait } = createEnergyHarness({ hasConsumptionX: false });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        trait.handlePush(encodeMessage({
+            namespace: ELECTRICITY_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                electricity: { power: 11_000, current: 50, voltage: 2300 }
+            }
+        }));
+
+        assert.deepEqual(changes, [
+            { trait: 'energy', values: { power: 11, current: 0.05, voltage: 230 } }
+        ]);
+    });
+
+    it('applies Electricity GETACK that only carries power', () => {
+        const { endpoint, trait } = createEnergyHarness({ hasConsumptionX: false });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        trait.handlePush(encodeMessage({
+            namespace: ELECTRICITY_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                electricity: { channel: 0, power: 11_000 }
+            }
+        }));
+
+        assert.deepEqual(changes, [
+            { trait: 'energy', values: { power: 11 } }
+        ]);
     });
 
     it('applies Electricity GETACK that omits uuid and echoes the app from', () => {
