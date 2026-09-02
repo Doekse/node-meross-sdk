@@ -162,6 +162,14 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(endpoint?.parentId, undefined);
     });
 
+    it('records digest namespaces from System.All', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility(),
+            allPayload: payload('system-all-getack.json')
+        });
+        assert.deepEqual([...device.digestNamespaces], ['Appliance.Control.ToggleX']);
+    });
+
     it('adds the energy trait when only ConsumptionH is advertised', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: socketAbility({
