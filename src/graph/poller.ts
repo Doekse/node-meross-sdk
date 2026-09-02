@@ -1,9 +1,7 @@
-import { CONSUMPTIONX_NAMESPACE } from '../protocol/codecs/consumptionx';
 import { canPackInMultiple } from '../protocol/codecs/multiple';
 import type { MerossMessage, MerossPayload } from '../protocol/message';
 import type { GetCommand } from '../transport/router';
 import {
-    getConsumptionXResponseSize,
     getDeviceResponseSizeMax,
     estimateResponseSize,
     POLL_RESPONSE_HEADER_SIZE,
@@ -16,7 +14,6 @@ export {
     POLL_RESPONSE_HEADER_SIZE,
     POLL_RESPONSE_SIZE_MIN,
     POLL_RESPONSE_SIZE_PER_CMD,
-    getConsumptionXResponseSize,
     getDeviceResponseSizeMax,
     estimateResponseSize
 } from './poll-response-size';
@@ -94,6 +91,8 @@ export interface PollJob {
      * 30 days).
      */
     responseSize?: number;
+    /** ConsumptionX GETACK day count replaces the 30-day packing reserve. */
+    calibrate?: (payload: MerossPayload) => number | undefined;
     /** FilterMaintenance (and other PUSHQ ns) must not GET. */
     method?: 'GET' | 'PUSH';
 }
@@ -134,6 +133,7 @@ interface JobState {
     payload: MerossPayload;
     method: 'GET' | 'PUSH';
     responseSize: number;
+    calibrate?: (payload: MerossPayload) => number | undefined;
     /** `null` means cold start / re-online — must poll even under MQTT skip. */
     nextMs: number | null;
     /** `null` until the first request, so epoch 0 cannot read as "long ago". */
@@ -271,6 +271,7 @@ export class DevicePoller {
                 responseSize: job.responseSize
                     ?? prior?.responseSize
                     ?? estimateResponseSize(job.namespace, payload),
+                calibrate: job.calibrate,
                 nextMs: prior?.nextMs ?? null,
                 lastRequestMs: prior?.lastRequestMs ?? null
             });
@@ -353,16 +354,10 @@ export class DevicePoller {
     }
 
     private updateResponseSizeFromReply(message: MerossMessage): void {
-        if (message.header.namespace !== CONSUMPTIONX_NAMESPACE) {
-            return;
-        }
-        const days = message.payload.consumptionx;
-        if (!Array.isArray(days)) {
-            return;
-        }
-        const job = this.jobs.get(CONSUMPTIONX_NAMESPACE);
-        if (job) {
-            job.responseSize = getConsumptionXResponseSize(days.length);
+        const job = this.jobs.get(message.header.namespace);
+        const size = job?.calibrate?.(message.payload);
+        if (job && size !== undefined) {
+            job.responseSize = size;
         }
     }
 

@@ -9,6 +9,7 @@ import {
     encodeConsumptionHGet
 } from '../../../src/protocol/codecs/consumptionh';
 import {
+    consumptionXDays,
     decodeConsumptionXGetAck,
     encodeConsumptionXDelete,
     encodeConsumptionXGet
@@ -211,6 +212,13 @@ describe('ConsumptionX codec', () => {
             () => decodeConsumptionXGetAck({ consumptionx: {} }),
             (err: unknown) => err instanceof ProtocolError
         );
+    });
+
+    it('exposes GETACK day rows without requiring a full decode', () => {
+        assert.equal(consumptionXDays({}), undefined);
+        assert.equal(consumptionXDays({ consumptionx: {} }), undefined);
+        const fixture = loadFixture('consumptionx-getack.json');
+        assert.equal(consumptionXDays(fixture.payload)?.length, 2);
     });
 });
 

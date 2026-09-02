@@ -117,6 +117,7 @@ export {
 export type { ConsumptionHChannel, ConsumptionHHour } from './codecs/consumptionh';
 export {
     CONSUMPTIONX_NAMESPACE,
+    consumptionXDays,
     decodeConsumptionXGetAck,
     encodeConsumptionXDelete,
     encodeConsumptionXGet

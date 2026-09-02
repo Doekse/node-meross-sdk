@@ -20,10 +20,19 @@ export function encodeConsumptionXDelete(): MerossPayload {
     return {};
 }
 
+/**
+ * Daily GETACK rows, or undefined when firmware omitted the list so callers
+ * can tell that apart from an empty history.
+ */
+export function consumptionXDays(payload: MerossPayload): unknown[] | undefined {
+    const raw = payload.consumptionx;
+    return Array.isArray(raw) ? raw : undefined;
+}
+
 /** GETACK `consumptionx` is an array of daily records. */
 export function decodeConsumptionXGetAck(payload: MerossPayload): ConsumptionXDay[] {
-    const raw = payload.consumptionx;
-    if (!Array.isArray(raw)) {
+    const raw = consumptionXDays(payload);
+    if (raw === undefined) {
         throw new ProtocolError('ConsumptionX GETACK consumptionx must be an array');
     }
     return raw.map((entry) => {

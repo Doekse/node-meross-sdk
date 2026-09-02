@@ -1,5 +1,5 @@
 import { CONSUMPTIONH_NAMESPACE } from '../protocol/codecs/consumptionh';
-import { CONSUMPTIONX_NAMESPACE } from '../protocol/codecs/consumptionx';
+import { CONSUMPTIONX_NAMESPACE, consumptionXDays } from '../protocol/codecs/consumptionx';
 import {
     DIFFUSER_SENSOR_NAMESPACE
 } from '../protocol/codecs/diffuser';
@@ -98,8 +98,8 @@ const RESPONSE_SIZE: Record<string, PollResponseParts> = {
 };
 
 /**
- * Shared by estimate and ConsumptionX calibration so unknown namespaces still
- * charge the Multiple envelope rather than packing as free.
+ * Table lookup used by estimate. Missing rows still charge the Multiple
+ * envelope rather than packing as free.
  */
 export function getResponseSizeParts(namespace: string): PollResponseParts {
     return RESPONSE_SIZE[namespace] ?? { base: POLL_RESPONSE_HEADER_SIZE, item: 0 };
@@ -127,19 +127,10 @@ export function estimateResponseSize(
     if (item === 0) {
         return base;
     }
-    if (namespace === CONSUMPTIONX_NAMESPACE && !Array.isArray(payload.consumptionx)) {
+    if (namespace === CONSUMPTIONX_NAMESPACE && consumptionXDays(payload) === undefined) {
         return base + item * CONSUMPTIONX_DEFAULT_DAYS;
     }
     return base + item * Math.max(getPayloadItemCount(payload), 1);
-}
-
-/**
- * After a ConsumptionX GETACK, charge the real day count so later cycles
- * stop reserving a full month when the device reports fewer rows.
- */
-export function getConsumptionXResponseSize(days: number): number {
-    const { base, item } = getResponseSizeParts(CONSUMPTIONX_NAMESPACE);
-    return base + item * days;
 }
 
 /**

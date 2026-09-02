@@ -34,7 +34,7 @@ import {
     WINDOW_OPENED_NAMESPACE
 } from '../protocol/codecs/climate';
 import { CONSUMPTIONH_NAMESPACE } from '../protocol/codecs/consumptionh';
-import { CONSUMPTIONX_NAMESPACE } from '../protocol/codecs/consumptionx';
+import { CONSUMPTIONX_NAMESPACE, consumptionXDays } from '../protocol/codecs/consumptionx';
 import {
     GARAGE_CONFIG_NAMESPACE,
     GARAGE_MULTIPLE_CONFIG_NAMESPACE,
@@ -118,6 +118,7 @@ import {
     type PollJob,
     type PollStrategy
 } from './poller';
+import { estimateResponseSize } from './poll-response-size';
 import { SYSTEM_ALL_NAMESPACE } from './system-all';
 import type { SystemAll } from './system-all';
 
@@ -155,6 +156,7 @@ interface PollSpec extends PollPeriods {
     skipIf?: string;
     payload?: PayloadSpec;
     method?: 'GET' | 'PUSH';
+    calibrate?: (payload: MerossPayload) => number | undefined;
 }
 
 const DEFAULT: PollPeriods = {
@@ -362,7 +364,14 @@ const POLL: Record<string, PollSpec> = {
         ...SMART_FAST,
         payload: { dict: 'electricity', channel: ELECTRICITYX_ALL_CHANNELS }
     },
-    [CONSUMPTIONX_NAMESPACE]: SMART_ENERGY,
+    [CONSUMPTIONX_NAMESPACE]: {
+        ...SMART_ENERGY,
+        calibrate: (payload) => (
+            consumptionXDays(payload) === undefined
+                ? undefined
+                : estimateResponseSize(CONSUMPTIONX_NAMESPACE, payload)
+        )
+    },
     [CONSUMPTIONH_NAMESPACE]: {
         ...SMART_ENERGY,
         payload: channelList('consumptionH', 'energy')
@@ -651,7 +660,8 @@ export function buildPollJobs(
             periodMs: inDigest ? 0 : spec.periodMs,
             periodCloudMs: spec.periodCloudMs,
             payload: spec.payload ? encodePayload(spec.payload, endpoints) : {},
-            ...(spec.method ? { method: spec.method } : {})
+            ...(spec.method ? { method: spec.method } : {}),
+            ...(spec.calibrate ? { calibrate: spec.calibrate } : {})
         });
     }
     return jobs;

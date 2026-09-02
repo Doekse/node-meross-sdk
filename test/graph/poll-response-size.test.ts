@@ -7,7 +7,6 @@ import { ELECTRICITY_NAMESPACE } from '../../src/protocol/codecs/electricity';
 import { TOGGLEX_NAMESPACE } from '../../src/protocol/codecs/togglex';
 import {
     CONSUMPTIONX_DEFAULT_DAYS,
-    getConsumptionXResponseSize,
     getDeviceResponseSizeMax,
     estimateResponseSize,
     POLL_RESPONSE_HEADER_SIZE,
@@ -40,8 +39,13 @@ describe('poll response size', () => {
         assert.equal(estimateResponseSize(TOGGLEX_NAMESPACE), POLL_RESPONSE_HEADER_SIZE);
     });
 
-    it('calibrates ConsumptionX from the GETACK day count', () => {
-        assert.equal(getConsumptionXResponseSize(40), 320 + 53 * 40);
+    it('counts ConsumptionX list days', () => {
+        assert.equal(
+            estimateResponseSize(CONSUMPTIONX_NAMESPACE, {
+                consumptionx: [{ date: '2018-03-05' }, { date: '2018-03-06' }]
+            }),
+            320 + 53 * 2
+        );
     });
 
     it('floors packed budget at 1000 when maxCmdNum is 0', () => {

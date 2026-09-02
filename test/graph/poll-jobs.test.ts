@@ -14,6 +14,7 @@ import {
     SYSTEM_ALL_PERIOD_MS,
     type PollJob
 } from '../../src/graph/poller';
+import { estimateResponseSize } from '../../src/graph/poll-response-size';
 import { SYSTEM_ALL_NAMESPACE } from '../../src/graph/system-all';
 import type { AbilityMap } from '../../src/graph/ability';
 import { CONTROL_ALERT_CONFIG_NAMESPACE } from '../../src/protocol/codecs/alertconfig';
@@ -128,13 +129,27 @@ describe('buildPollJobs', () => {
             ability(CONSUMPTIONX_NAMESPACE),
             [{ channel: CHANNEL, traits: ['energy'] }]
         );
-        assert.deepEqual(job(jobs, CONSUMPTIONX_NAMESPACE), {
+        const { calibrate: _, ...rest } = job(jobs, CONSUMPTIONX_NAMESPACE) ?? {};
+        assert.deepEqual(rest, {
             namespace: CONSUMPTIONX_NAMESPACE,
             strategy: 'smart',
             periodMs: ENERGY_PERIOD_MS,
             periodCloudMs: ENERGY_CLOUD_PERIOD_MS,
             payload: {}
         });
+    });
+
+    it('calibrates ConsumptionX packing from GETACK days', () => {
+        const jobs = buildPollJobs(
+            ability(CONSUMPTIONX_NAMESPACE),
+            [{ channel: CHANNEL, traits: ['energy'] }]
+        );
+        const calibrate = job(jobs, CONSUMPTIONX_NAMESPACE)?.calibrate;
+        assert.equal(calibrate?.({}), undefined);
+        assert.equal(
+            calibrate?.({ consumptionx: [{}, {}] }),
+            estimateResponseSize(CONSUMPTIONX_NAMESPACE, { consumptionx: [{}, {}] })
+        );
     });
 
     it('registers ElectricityX when classic Electricity is absent', () => {

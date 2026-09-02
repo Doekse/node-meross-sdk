@@ -694,6 +694,57 @@ describe('DevicePoller', () => {
         harness.poller.stop();
     });
 
+    it('applies job.calibrate from GETACK so a later cycle can pack what previously overflowed', async (t) => {
+        const harness = createHarness(t, {
+            maxCmdNum: 3,
+            jobs: [
+                {
+                    namespace: ELECTRICITY_NAMESPACE,
+                    strategy: 'smart',
+                    periodMs: SENSOR_FAST_PERIOD_MS,
+                    periodCloudMs: SENSOR_FAST_CLOUD_PERIOD_MS
+                },
+                {
+                    namespace: CONSUMPTIONX_NAMESPACE,
+                    strategy: 'smart',
+                    periodMs: ENERGY_PERIOD_MS,
+                    periodCloudMs: ENERGY_CLOUD_PERIOD_MS,
+                    responseSize: 2_000,
+                    calibrate: (payload) => (
+                        Array.isArray(payload.consumptionx) ? 100 : undefined
+                    )
+                }
+            ]
+        });
+        harness.requestGets.mock.mockImplementation(async (gets: GetCommand[]) => {
+            harness.getsHistory.push(gets.map((get) => ({
+                namespace: get.namespace,
+                payload: get.payload ?? {}
+            })));
+            return gets.map((get) => {
+                if (get.namespace === CONSUMPTIONX_NAMESPACE) {
+                    return ack(CONSUMPTIONX_NAMESPACE, { consumptionx: [{ date: '20240101' }] });
+                }
+                return ack(get.namespace, get.payload ?? {});
+            });
+        });
+
+        harness.poller.start();
+        await harness.advance(0);
+        assert.deepEqual(harness.getsHistory, [
+            [{ namespace: ELECTRICITY_NAMESPACE, payload: {} }],
+            [{ namespace: CONSUMPTIONX_NAMESPACE, payload: {} }]
+        ]);
+
+        await harness.advance(INTERVAL_MS);
+        assert.deepEqual(harness.getsHistory[2], [
+            { namespace: ELECTRICITY_NAMESPACE, payload: {} },
+            { namespace: CONSUMPTIONX_NAMESPACE, payload: {} }
+        ]);
+
+        harness.poller.stop();
+    });
+
     it('doubles the offline System.All delay after a failed probe', async (t) => {
         const harness = createHarness(t, {
             online: false,
