@@ -178,12 +178,15 @@ function sameMembers(a: readonly string[], b: readonly string[]): boolean {
 
 /**
  * Whether two enrollments are interchangeable. Traits capture an ability
- * snapshot and a channel at construction, so a device matching on abilities and
- * on every endpoint's traits can be refreshed in place; anything else needs its
- * endpoints rebuilt against the new shape.
+ * snapshot and a channel at construction. A change to abilities, digest
+ * membership, or endpoint traits needs the device's endpoints rebuilt against
+ * the new shape.
  */
 function sameShape(a: PhysicalDevice, b: PhysicalDevice): boolean {
     if (!sameMembers(Object.keys(a.ability), Object.keys(b.ability))) {
+        return false;
+    }
+    if (!sameMembers([...a.digestNamespaces], [...b.digestNamespaces])) {
         return false;
     }
     if (a.endpoints.length !== b.endpoints.length) {
