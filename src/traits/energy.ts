@@ -225,10 +225,9 @@ export class EnergyTrait {
 
     handlePush(message: MerossMessage): void {
         if (message.header.namespace === ELECTRICITY_NAMESPACE && this.bind.hasElectricity) {
-            const sample = decodeElectricityGetAck(message.payload);
-            if (sample.channel === this.bind.channel) {
-                this.applyElectricity(sample);
-            }
+            // Board Electricity is not channel-scoped; do not drop the sample
+            // when the payload omits channel.
+            this.applyElectricity(decodeElectricityGetAck(message.payload));
             return;
         }
         if (message.header.namespace === ELECTRICITYX_NAMESPACE && this.bind.hasElectricityX) {
@@ -297,9 +296,7 @@ export class EnergyTrait {
                     payload: encodeElectricityGet({ channel: this.bind.channel })
                 });
                 const sample = decodeElectricityGetAck(reply.payload);
-                if (sample.channel === this.bind.channel) {
-                    this.applyElectricity(sample);
-                }
+                this.applyElectricity(sample);
                 return;
             }
             const reply = await this.bind.request({
@@ -347,25 +344,28 @@ export class EnergyTrait {
         }
     }
 
+    /**
+     * Skip-on-equal would hide a successful live poll from hosts when watts
+     * are unchanged.
+     */
     private applyElectricity(sample: ElectricitySample): void {
-        const values: EnergyValues = {
-            power: sample.power,
-            current: sample.current,
-            voltage: sample.voltage
-        };
+        const values: EnergyValues = {};
+        if (sample.power !== undefined) {
+            values.power = sample.power;
+        }
+        if (sample.current !== undefined) {
+            values.current = sample.current;
+        }
+        if (sample.voltage !== undefined) {
+            values.voltage = sample.voltage;
+        }
         if (sample.consume !== undefined) {
             values.consume = sample.consume;
         }
         if (sample.powerFactor !== undefined) {
             values.powerFactor = sample.powerFactor;
         }
-        if (
-            this.last.power === values.power
-            && this.last.current === values.current
-            && this.last.voltage === values.voltage
-            && this.last.consume === values.consume
-            && this.last.powerFactor === values.powerFactor
-        ) {
+        if (Object.keys(values).length === 0) {
             return;
         }
         this.last = { ...this.last, ...values };

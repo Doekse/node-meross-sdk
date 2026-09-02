@@ -9,6 +9,7 @@ import { Inventory } from '../../src/inventory';
 import {
     DeviceGraph,
     abilityMaxCmdNum,
+    buildPollJobs,
     decodeAbilityGetAck,
     decodeSystemAllGetAck,
     enrollPhysicalDevice
@@ -160,6 +161,14 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(endpoint?.online, true);
         assert.equal(endpoint?.on, true);
         assert.equal(endpoint?.parentId, undefined);
+    });
+
+    it('records digest namespaces from System.All', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility(),
+            allPayload: payload('system-all-getack.json')
+        });
+        assert.deepEqual([...device.digestNamespaces], ['Appliance.Control.ToggleX']);
     });
 
     it('adds the energy trait when only ConsumptionH is advertised', () => {
@@ -1125,6 +1134,29 @@ describe('enrollPhysicalDevice', () => {
 });
 
 describe('DeviceGraph and Inventory', () => {
+    it('reshapes when digest membership changes so poll scheduling is refreshed', () => {
+        const graph = new DeviceGraph();
+        const first = graph.enroll({
+            abilityPayload: socketAbility(),
+            allPayload: payload('system-all-getack.json')
+        });
+        const firstToggleJob = buildPollJobs(
+            first.device.ability, first.device.endpoints, first.device.digestNamespaces
+        ).find((job) => job.namespace === 'Appliance.Control.ToggleX');
+
+        const second = graph.enroll({
+            abilityPayload: socketAbility(),
+            allPayload: systemAllWithDigest({})
+        });
+        const secondToggleJob = buildPollJobs(
+            second.device.ability, second.device.endpoints, second.device.digestNamespaces
+        ).find((job) => job.namespace === 'Appliance.Control.ToggleX');
+
+        assert.equal(firstToggleJob?.strategy, 'digest');
+        assert.equal(second.reshaped, true);
+        assert.equal(secondToggleJob?.strategy, 'default');
+    });
+
     it('keeps endpoint id across re-enroll when Ability grows', () => {
         const graph = new DeviceGraph();
         const { device: first } = graph.enroll({

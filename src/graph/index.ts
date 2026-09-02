@@ -18,6 +18,7 @@ import { abilityMaxCmdNum, decodeAbilityGetAck } from './ability';
 import type { AbilityMap } from './ability';
 import { decodeSystemAllGetAck } from './system-all';
 import type { DigestToggle, SystemAll } from './system-all';
+import { getDigestNamespaces } from './poll-jobs';
 
 export { ABILITY_NAMESPACE, abilityMaxCmdNum, decodeAbilityGetAck } from './ability';
 export type { AbilityMap } from './ability';
@@ -29,6 +30,8 @@ export {
     ENERGY_PERIOD_MS,
     HUB_BATTERY_PERIOD_MS,
     POLL_START_STAGGER_MS,
+    POLL_RESPONSE_HEADER_SIZE,
+    POLL_RESPONSE_SIZE_MIN,
     SENSOR_FAST_CLOUD_PERIOD_MS,
     SENSOR_FAST_PERIOD_MS,
     SENSOR_SLOW_CLOUD_PERIOD_MS,
@@ -36,8 +39,9 @@ export {
     SYSTEM_ALL_PERIOD_MS
 } from './poller';
 export type { DevicePollerOptions, PollJob, PollStrategy } from './poller';
-export { buildPollJobs } from './poll-jobs';
+export { buildPollJobs, getDigestNamespaces } from './poll-jobs';
 export type { PollEndpoint } from './poll-jobs';
+export { getDeviceResponseSizeMax, estimateResponseSize } from './poll-response-size';
 export { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from './system-all';
 export type { SystemAll } from './system-all';
 
@@ -112,6 +116,11 @@ export interface PhysicalDevice {
         hardware: SystemHardwareState;
         time?: SystemTimeState;
     };
+    /**
+     * Namespaces carried in the System.All digest so DevicePoller GETs them
+     * only as the All fallback, not beside it.
+     */
+    digestNamespaces: ReadonlySet<string>;
     endpoints: readonly GraphEndpoint[];
 }
 
@@ -148,6 +157,7 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
             hardware: all.hardware,
             ...(all.time ? { time: all.time } : {})
         },
+        digestNamespaces: getDigestNamespaces(all.digest),
         endpoints: isHub
             ? enrollHub(uuid, name, model, online, hasDnd, hasAlarm, all, input.subDevices ?? [])
             : enrollBoard(
@@ -168,12 +178,15 @@ function sameMembers(a: readonly string[], b: readonly string[]): boolean {
 
 /**
  * Whether two enrollments are interchangeable. Traits capture an ability
- * snapshot and a channel at construction, so a device matching on abilities and
- * on every endpoint's traits can be refreshed in place; anything else needs its
- * endpoints rebuilt against the new shape.
+ * snapshot and a channel at construction. A change to abilities, digest
+ * membership, or endpoint traits needs the device's endpoints rebuilt against
+ * the new shape.
  */
 function sameShape(a: PhysicalDevice, b: PhysicalDevice): boolean {
     if (!sameMembers(Object.keys(a.ability), Object.keys(b.ability))) {
+        return false;
+    }
+    if (!sameMembers([...a.digestNamespaces], [...b.digestNamespaces])) {
         return false;
     }
     if (a.endpoints.length !== b.endpoints.length) {

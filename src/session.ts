@@ -295,7 +295,14 @@ export class Session extends EventEmitter<SessionEvents> {
             mqttDomain: this.token.mqttDomain,
             dispatcher,
             connect: this.mqttConnect,
-            onConnectionChange: (connected) => this.emit('connection', connected),
+            onConnectionChange: (connected) => {
+                if (!connected) {
+                    for (const runtime of this.devices.values()) {
+                        runtime.poller.clearMqtt();
+                    }
+                }
+                this.emit('connection', connected);
+            },
             onRateLimit: (uuid, dropped) => this.emit('ratelimit', uuid, dropped)
         });
         const lan = new LanHttpTransport({
@@ -348,16 +355,17 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * meross_lan HTTP applies on the Device that POSTed; MQTT looks up by
-     * header/`from`. Namespace handlers then apply without a second uuid check.
+     * HTTP applies on the Device that POSTed; MQTT looks up by header/`from`.
+     * SETACK and ERROR are skipped so they are not parsed as GETACK.
      */
     private handlePush(message: MerossMessage, originUuid?: string): void {
         const runtime = this.deviceRuntime(message, originUuid);
         if (!runtime) {
             return;
         }
-        if (message.header.method === 'PUSH') {
-            runtime.poller.recordPush();
+        const method = message.header.method;
+        if (method === 'ERROR' || method === 'SETACK') {
+            return;
         }
         for (const endpoint of runtime.endpoints) {
             endpoint.handlePush(message);
@@ -366,9 +374,18 @@ export class Session extends EventEmitter<SessionEvents> {
 
     /**
      * Same lookup as {@link handlePush} so LAN GETACK still counts as liveness.
+     * MQTT inbound (no POST uuid) marks the broker live, including GETACK;
+     * LAN always passes the POST uuid so HTTP replies do not.
      */
     private handleInbound(message: MerossMessage, originUuid?: string): void {
-        this.deviceRuntime(message, originUuid)?.availability.handleMessage(message);
+        const runtime = this.deviceRuntime(message, originUuid);
+        if (!runtime) {
+            return;
+        }
+        if (originUuid === undefined) {
+            runtime.poller.recordPush();
+        }
+        runtime.availability.handleMessage(message);
     }
 
     private deviceRuntime(
@@ -472,7 +489,6 @@ export class Session extends EventEmitter<SessionEvents> {
             // Mutually referential with `availability`; both only read each
             // other from callbacks, so declaration order is safe.
             const poller: DevicePoller = new DevicePoller({
-                uuid,
                 isOnline: () => availability.isOnline(),
                 isCloudPath: () => this.connectedRouter.isCloudPath(uuid, physical.innerIp),
                 httpDown: () => this.connectedRouter.isHttpDown(uuid),
@@ -482,10 +498,11 @@ export class Session extends EventEmitter<SessionEvents> {
                     gets,
                     maxCmdNum,
                     priority: 'background',
-                    ...this.lanBind(physical)
+                    ...this.lanBind(physical),
+                    onPackedFallback: () => poller.shrinkResponseBudget()
                 }),
                 onAck: (message) => this.handlePush(message, uuid),
-                jobs: buildPollJobs(physical.ability, physical.endpoints),
+                jobs: buildPollJobs(physical.ability, physical.endpoints, physical.digestNamespaces),
                 startDelayMs
             });
             this.devices.set(uuid, { availability, poller, endpoints });

@@ -14,13 +14,12 @@ export interface MultipleSubCommand {
 }
 
 /**
- * Firmware forbids nesting System.All / Control.Multiple, and Hub.ToggleX
- * has a valve bug that requires a standalone request sent first.
+ * Nested Control.Multiple is invalid. System.All and Hub.ToggleX pack like
+ * any other GET: excluding either spends a whole cloud-MQTT publish on that
+ * namespace alone, which can starve a same-tick smart poll of its cycle budget.
  */
 export function canPackInMultiple(namespace: string): boolean {
-    return namespace !== MULTIPLE_NAMESPACE
-        && namespace !== SYSTEM_ALL_NAMESPACE
-        && namespace !== HUB_TOGGLEX_NAMESPACE;
+    return namespace !== MULTIPLE_NAMESPACE;
 }
 
 /**

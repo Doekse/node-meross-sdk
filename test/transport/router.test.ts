@@ -402,7 +402,7 @@ describe('TransportRouter', () => {
         assert.equal(replies[3]!.header.namespace, 'Appliance.System.Runtime');
     });
 
-    it('sends Hub.ToggleX and System.All individually first, then packs the rest', async () => {
+    it('packs System.All and Hub.ToggleX with the rest, chunked by maxCmdNum', async () => {
         const { router, lanCalls } = createRouted();
         await router.connect();
 
@@ -418,15 +418,18 @@ describe('TransportRouter', () => {
             ]
         });
 
-        assert.equal(lanCalls.length, 3);
-        assert.equal(decodeMessage(String(lanCalls[0]!.init.body), KEY).header.namespace, HUB_TOGGLEX_NAMESPACE);
-        assert.equal(decodeMessage(String(lanCalls[1]!.init.body), KEY).header.namespace, SYSTEM_ALL_NAMESPACE);
-        const packed = decodeMessage(String(lanCalls[2]!.init.body), KEY);
+        // Four packable GETs at maxCmdNum 3 become one Multiple of 3 plus a
+        // leftover sent unwrapped. System.All and Hub.ToggleX pack with the
+        // others so they do not each spend their own request.
+        assert.equal(lanCalls.length, 2);
+        const packed = decodeMessage(String(lanCalls[0]!.init.body), KEY);
         assert.equal(packed.header.namespace, MULTIPLE_NAMESPACE);
         assert.deepEqual(decodeMultipleAck(packed.payload).map((sub) => sub.header.namespace), [
             TOGGLEX_NAMESPACE,
-            ELECTRICITY
+            HUB_TOGGLEX_NAMESPACE,
+            SYSTEM_ALL_NAMESPACE
         ]);
+        assert.equal(decodeMessage(String(lanCalls[1]!.init.body), KEY).header.namespace, ELECTRICITY);
     });
 
     it('does not wrap a single leftover GET in Control.Multiple', async () => {
@@ -463,6 +466,7 @@ describe('TransportRouter', () => {
     });
 
     it('retries a truncated Control.Multiple as singles', async () => {
+        let packedFallback = 0;
         const { router, lanCalls } = createRouted({
             lan: async (sent) => {
                 if (sent.header.namespace === MULTIPLE_NAMESPACE) {
@@ -482,12 +486,16 @@ describe('TransportRouter', () => {
             uuid: UUID,
             ip: IP,
             maxCmdNum: 3,
+            onPackedFallback: () => {
+                packedFallback += 1;
+            },
             gets: [
                 { namespace: TOGGLEX_NAMESPACE },
                 { namespace: ELECTRICITY }
             ]
         });
 
+        assert.equal(packedFallback, 1);
         assert.equal(lanCalls.length, 3);
         assert.equal(
             decodeMessage(String(lanCalls[0]!.init.body), KEY).header.namespace,
@@ -503,6 +511,38 @@ describe('TransportRouter', () => {
         );
         assert.equal(replies.length, 2);
         assert.equal(replies[0]?.header.method, 'GETACK');
+    });
+
+    it('retries a Control.Multiple device ERROR as singles without reporting truncation', async () => {
+        let packedFallback = 0;
+        const { router, lanCalls } = createRouted({
+            lan: async (sent) => {
+                if (sent.header.namespace === MULTIPLE_NAMESPACE) {
+                    return jsonResponse(ackFor(sent, 'ERROR', { error: { code: 5000 } }));
+                }
+                return defaultLanOk(sent);
+            }
+        });
+        await router.connect();
+
+        const replies = await router.requestGets({
+            uuid: UUID,
+            ip: IP,
+            maxCmdNum: 3,
+            onPackedFallback: () => {
+                packedFallback += 1;
+            },
+            gets: [
+                { namespace: TOGGLEX_NAMESPACE },
+                { namespace: ELECTRICITY }
+            ]
+        });
+
+        assert.equal(packedFallback, 0);
+        assert.equal(lanCalls.length, 3);
+        assert.equal(replies.length, 2);
+        assert.equal(replies[0]?.header.namespace, TOGGLEX_NAMESPACE);
+        assert.equal(replies[1]?.header.namespace, ELECTRICITY);
     });
 
     it('sends PUSH-query jobs individually and does not pack them', async () => {
@@ -588,5 +628,32 @@ describe('TransportRouter', () => {
         assert.equal(reply.header.method, 'SETACK');
 
         await router.disconnect();
+    });
+
+    it('keeps later GETs when a Control.Multiple fallback single fails', async () => {
+        const { router } = createRouted({
+            lan: async (sent) => {
+                if (sent.header.namespace === MULTIPLE_NAMESPACE) {
+                    throw new TransportError('truncated', 'LAN_UNREACHABLE');
+                }
+                if (sent.header.namespace === TOGGLEX_NAMESPACE) {
+                    throw new TransportError('busy', 'LAN_UNREACHABLE');
+                }
+                return defaultLanOk(sent);
+            }
+        });
+
+        const replies = await router.requestGets({
+            uuid: UUID,
+            ip: IP,
+            maxCmdNum: 3,
+            gets: [
+                { namespace: TOGGLEX_NAMESPACE },
+                { namespace: ELECTRICITY }
+            ]
+        });
+
+        assert.equal(replies.length, 1);
+        assert.equal(replies[0]?.header.namespace, ELECTRICITY);
     });
 });

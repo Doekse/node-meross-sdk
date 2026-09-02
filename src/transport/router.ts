@@ -41,6 +41,11 @@ export interface RequestGetsOptions {
      * one at a time.
      */
     maxCmdNum?: number;
+    /**
+     * Called after a truncated Multiple so DevicePoller can shrink the HTTP
+     * packing budget for the next cycle.
+     */
+    onPackedFallback?: () => void;
     priority?: PublishPriority;
 }
 
@@ -57,7 +62,7 @@ export class TransportRouter {
     readonly mqtt: MqttTransport;
     readonly lan: LanHttpTransport;
 
-    /** meross_lan `_http_active is None` — HTTP was reachable, then System.All missed. */
+    /** Prefer MQTT until a later System.All succeeds; other LAN failures do not set this. */
     private readonly httpDown = new Set<string>();
 
     constructor(options: TransportRouterOptions) {
@@ -119,8 +124,8 @@ export class TransportRouter {
                 if (error instanceof CommandError || error instanceof ProtocolError) {
                     throw error;
                 }
-                // meross_lan clears `_http_active` only on Appliance.System.All
-                // HTTP failure; other namespaces still retry LAN next cycle.
+                // Mark HTTP down only on Appliance.System.All failure; other
+                // namespaces still retry LAN next cycle.
                 if (options.namespace === SYSTEM_ALL_NAMESPACE) {
                     this.httpDown.add(options.uuid);
                 }
@@ -133,8 +138,9 @@ export class TransportRouter {
     /**
      * Pack GETs into `Appliance.Control.Multiple` batches of `maxCmdNum`.
      * Unpacks the SETACK so callers still see one GETACK (or ERROR) per GET.
-     * PUSH-query and System.All / Hub.ToggleX stay unscoped. When a packed
-     * Multiple fails, the chunk is retried as singles (HTTP truncation).
+     * PUSH-query stays unscoped: Control.Multiple sub-commands are always
+     * method GET. A packed Multiple that fails is retried as singles so HTTP
+     * truncation cannot drop the rest of the chunk.
      */
     async requestGets(options: RequestGetsOptions): Promise<MerossMessage[]> {
         const maxCmdNum = options.maxCmdNum ?? 0;
@@ -168,6 +174,7 @@ export class TransportRouter {
         chunk: GetCommand[],
         options: RequestGetsOptions
     ): Promise<MerossMessage[]> {
+        let decodingPackedReply = false;
         try {
             const packed = await this.request({
                 uuid: options.uuid,
@@ -181,6 +188,7 @@ export class TransportRouter {
                 encryptionKey: options.encryptionKey,
                 priority: options.priority
             });
+            decodingPackedReply = true;
             const subs = decodeMultipleAck(packed.payload);
             if (subs.length !== chunk.length) {
                 throw new ProtocolError(
@@ -196,25 +204,39 @@ export class TransportRouter {
                 payload: sub.payload
             }));
         } catch (error) {
-            if (error instanceof CommandError) {
-                throw error;
+            if (decodingPackedReply && error instanceof ProtocolError) {
+                options.onPackedFallback?.();
             }
-            return this.sendGets(chunk, options);
+            // Retry a failed Multiple as singles, then continue when one of
+            // those also fails so later namespaces in the chunk still run.
+            const results: MerossMessage[] = [];
+            for (const get of chunk) {
+                try {
+                    results.push(await this.sendGet(get, options));
+                } catch {
+                    // Remaining namespaces in this chunk still run.
+                }
+            }
+            return results;
         }
+    }
+
+    private sendGet(get: GetCommand, options: RequestGetsOptions): Promise<MerossMessage> {
+        return this.request({
+            uuid: options.uuid,
+            namespace: get.namespace,
+            method: get.method ?? 'GET',
+            payload: get.payload,
+            ip: options.ip,
+            encryptionKey: options.encryptionKey,
+            priority: options.priority
+        });
     }
 
     private async sendGets(gets: GetCommand[], options: RequestGetsOptions): Promise<MerossMessage[]> {
         const results: MerossMessage[] = [];
         for (const get of gets) {
-            results.push(await this.request({
-                uuid: options.uuid,
-                namespace: get.namespace,
-                method: get.method ?? 'GET',
-                payload: get.payload,
-                ip: options.ip,
-                encryptionKey: options.encryptionKey,
-                priority: options.priority
-            }));
+            results.push(await this.sendGet(get, options));
         }
         return results;
     }

@@ -87,6 +87,15 @@ describe('Electricity codec', () => {
         );
     });
 
+    it('keeps whichever of power, current, and voltage are present', () => {
+        assert.deepEqual(
+            decodeElectricityGetAck({
+                electricity: { power: 11_000 }
+            }),
+            { power: 11 }
+        );
+    });
+
     it('rejects a missing or array electricity field', () => {
         assert.throws(
             () => decodeElectricityGetAck({}),
@@ -143,6 +152,36 @@ describe('ElectricityX codec', () => {
                 current: 0.5,
                 voltage: 120
             }]
+        );
+    });
+
+    it('skips ElectricityX rows without a channel', () => {
+        assert.deepEqual(
+            decodeElectricityXGetAck({
+                electricity: [
+                    { power: 1500, current: 2000, voltage: 230000 },
+                    { channel: 2, power: 600 }
+                ]
+            }),
+            [{ channel: 2, power: 0.6 }]
+        );
+    });
+
+    it('skips null and primitive ElectricityX rows', () => {
+        assert.deepEqual(
+            decodeElectricityXGetAck({
+                electricity: [null, false, 42, 'invalid', { channel: 2, power: 600 }]
+            }),
+            [{ channel: 2, power: 0.6 }]
+        );
+    });
+
+    it('keeps partial ElectricityX metrics', () => {
+        assert.deepEqual(
+            decodeElectricityXGetAck({
+                electricity: [{ channel: 2, power: 600, current: 'invalid' }]
+            }),
+            [{ channel: 2, power: 0.6 }]
         );
     });
 });

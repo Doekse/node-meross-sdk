@@ -119,6 +119,7 @@ import {
     type PollStrategy
 } from './poller';
 import { SYSTEM_ALL_NAMESPACE } from './system-all';
+import type { SystemAll } from './system-all';
 
 /** LIST GETs need enrolled channels/ids, not just Ability keys. */
 export interface PollEndpoint {
@@ -246,7 +247,7 @@ const POLL: Record<string, PollSpec> = {
     [SYSTEM_ALL_NAMESPACE]: {
         strategy: 'all',
         periodMs: SYSTEM_ALL_PERIOD_MS,
-        periodCloudMs: CLOUDMQTT_PERIOD_MS
+        periodCloudMs: 0
     },
     'Appliance.System.Runtime': SMART_CONFIG,
     // Firmware / Hardware / Time ride System.All; standalone GET is the fallback.
@@ -581,12 +582,59 @@ const POLL: Record<string, PollSpec> = {
 };
 
 /**
+ * Namespaces whose state is already in the System.All digest, so they GET
+ * only when All is skipped, not beside it.
+ */
+export function getDigestNamespaces(digest: SystemAll['digest']): Set<string> {
+    const namespaces = new Set<string>();
+    if (digest.togglex.length > 0) {
+        namespaces.add(TOGGLEX_NAMESPACE);
+    }
+    if (digest.light.length > 0) {
+        namespaces.add(LIGHT_NAMESPACE);
+    }
+    if (digest.garageDoor.length > 0) {
+        namespaces.add(GARAGE_STATE_NAMESPACE);
+    }
+    if (digest.spray.length > 0) {
+        namespaces.add(SPRAY_NAMESPACE);
+    }
+    if (digest.fan.length > 0) {
+        namespaces.add(FAN_NAMESPACE);
+    }
+    if (digest.diffuser) {
+        if (digest.diffuser.light.length > 0) {
+            namespaces.add(DIFFUSER_LIGHT_NAMESPACE);
+        }
+        if (digest.diffuser.spray.length > 0) {
+            namespaces.add(DIFFUSER_SPRAY_NAMESPACE);
+        }
+    }
+    if (digest.thermostat) {
+        if (digest.thermostat.mode !== undefined) {
+            namespaces.add(THERMOSTAT_MODE_NAMESPACE);
+        }
+        if (digest.thermostat.modeB !== undefined) {
+            namespaces.add(THERMOSTAT_MODEB_NAMESPACE);
+        }
+        if (digest.thermostat.summerMode !== undefined) {
+            namespaces.add(SUMMER_MODE_NAMESPACE);
+        }
+        if (digest.thermostat.windowOpened !== undefined) {
+            namespaces.add(WINDOW_OPENED_NAMESPACE);
+        }
+    }
+    return namespaces;
+}
+
+/**
  * Builds the device poll table from Ability. LIST payloads come from enrolled
  * endpoints so a strip or hub issues one GET per namespace.
  */
 export function buildPollJobs(
     ability: AbilityMap,
-    endpoints: readonly PollEndpoint[]
+    endpoints: readonly PollEndpoint[],
+    digestNamespaces?: ReadonlySet<string>
 ): PollJob[] {
     const jobs: PollJob[] = [];
     for (const [namespace, spec] of Object.entries(POLL)) {
@@ -596,10 +644,11 @@ export function buildPollJobs(
         if (spec.skipIf !== undefined && spec.skipIf in ability) {
             continue;
         }
+        const inDigest = digestNamespaces?.has(namespace);
         jobs.push({
             namespace,
-            strategy: spec.strategy,
-            periodMs: spec.periodMs,
+            strategy: inDigest ? 'digest' : spec.strategy,
+            periodMs: inDigest ? 0 : spec.periodMs,
             periodCloudMs: spec.periodCloudMs,
             payload: spec.payload ? encodePayload(spec.payload, endpoints) : {},
             ...(spec.method ? { method: spec.method } : {})
