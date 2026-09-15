@@ -16,9 +16,8 @@ import { TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
 import type { MerossPayload } from '../protocol/message';
 import { abilityMaxCmdNum, decodeAbilityGetAck } from '../protocol/codecs/ability';
 import type { AbilityMap } from '../protocol/codecs/ability';
-import { decodeSystemAllGetAck } from '../protocol/codecs/system-all';
+import { decodeSystemAllGetAck, getDigestNamespaces } from '../protocol/codecs/system-all';
 import type { DigestToggle, SystemAll } from '../protocol/codecs/system-all';
-import { getDigestNamespaces } from '../poll';
 
 export { ABILITY_NAMESPACE, abilityMaxCmdNum, decodeAbilityGetAck } from '../protocol/codecs/ability';
 export type { AbilityMap } from '../protocol/codecs/ability';

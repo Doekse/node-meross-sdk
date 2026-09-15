@@ -23,7 +23,7 @@ import {
     type WaterEventState,
     type WaterPlanEntry
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 /** Completed watering cycle from Control.WaterEvent. */
 export interface SprinklerCycleSummary {
@@ -58,7 +58,7 @@ export interface SprinklerTraitBind {
     subDeviceId: string;
     /** Ability keys; DeviceCfg, Battery, WaterPlan, and WaterEvent no-op when absent. */
     namespaces?: ReadonlySet<string>;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: SprinklerValues) => void;
 }
 

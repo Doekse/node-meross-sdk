@@ -11,7 +11,7 @@ import {
     encodeToggleXSet,
     type MerossMessage
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 export interface SwitchValues {
     on?: boolean;
@@ -28,7 +28,7 @@ export interface SwitchTraitBoardBind {
     uuid: string;
     channel: number;
     namespace: typeof TOGGLEX_NAMESPACE | 'Appliance.Control.Toggle';
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: SwitchValues) => void;
     /** System.All digest `onoff` so hosts can read on/off before the first PUSH. */
     initialOn?: boolean;
@@ -43,7 +43,7 @@ export interface SwitchTraitHubBind {
     subDeviceId: string;
     /** Ability keys; Exception / Version no-op when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: SwitchValues) => void;
     /** Hub digest `onoff` so hosts can read on/off before the first PUSH. */
     initialOn?: boolean;

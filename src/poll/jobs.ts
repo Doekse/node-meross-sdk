@@ -105,10 +105,20 @@ import {
 import { CONTROL_WATER_NAMESPACE, DEVICE_CFG_NAMESPACE } from '../protocol/codecs/water';
 import type { MerossPayload } from '../protocol/message';
 import type { AbilityMap } from '../protocol/codecs/ability';
-import type { GraphEndpoint } from '../device';
 import type { PollJob, PollStrategy } from './poller';
 import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
-import type { SystemAll } from '../protocol/codecs/system-all';
+
+/**
+ * Channel, sub-device, and traits used to pack LIST GET payloads.
+ * meross_lan `polling_request_channels` is device-scoped; `digestNamespaces` is
+ * not on this type (physical-device scoped, already a separate
+ * {@link buildPollJobs} argument); `model` is hub chunking (later).
+ */
+export interface PollTarget {
+    channel?: number;
+    subDeviceId?: string;
+    traits: readonly TraitName[];
+}
 
 /**
  * Firmware heartbeat window. HTTP is also probed on this interval while MQTT
@@ -710,58 +720,12 @@ export function estimateResponseSize(
 }
 
 /**
- * Namespaces whose state is already in the System.All digest, so they GET
- * only when All is skipped, not beside it.
- */
-export function getDigestNamespaces(digest: SystemAll['digest']): Set<string> {
-    const namespaces = new Set<string>();
-    if (digest.togglex.length > 0) {
-        namespaces.add(TOGGLEX_NAMESPACE);
-    }
-    if (digest.light.length > 0) {
-        namespaces.add(LIGHT_NAMESPACE);
-    }
-    if (digest.garageDoor.length > 0) {
-        namespaces.add(GARAGE_STATE_NAMESPACE);
-    }
-    if (digest.spray.length > 0) {
-        namespaces.add(SPRAY_NAMESPACE);
-    }
-    if (digest.fan.length > 0) {
-        namespaces.add(FAN_NAMESPACE);
-    }
-    if (digest.diffuser) {
-        if (digest.diffuser.light.length > 0) {
-            namespaces.add(DIFFUSER_LIGHT_NAMESPACE);
-        }
-        if (digest.diffuser.spray.length > 0) {
-            namespaces.add(DIFFUSER_SPRAY_NAMESPACE);
-        }
-    }
-    if (digest.thermostat) {
-        if (digest.thermostat.mode !== undefined) {
-            namespaces.add(THERMOSTAT_MODE_NAMESPACE);
-        }
-        if (digest.thermostat.modeB !== undefined) {
-            namespaces.add(THERMOSTAT_MODEB_NAMESPACE);
-        }
-        if (digest.thermostat.summerMode !== undefined) {
-            namespaces.add(SUMMER_MODE_NAMESPACE);
-        }
-        if (digest.thermostat.windowOpened !== undefined) {
-            namespaces.add(WINDOW_OPENED_NAMESPACE);
-        }
-    }
-    return namespaces;
-}
-
-/**
  * Builds the device poll table from Ability. LIST payloads come from enrolled
  * endpoints so a strip or hub issues one GET per namespace.
  */
 export function buildPollJobs(
     ability: AbilityMap,
-    endpoints: readonly GraphEndpoint[],
+    endpoints: readonly PollTarget[],
     digestNamespaces?: ReadonlySet<string>
 ): PollJob[] {
     const jobs: PollJob[] = [];
@@ -786,7 +750,7 @@ export function buildPollJobs(
     return jobs;
 }
 
-function encodePayload(spec: PayloadSpec, endpoints: readonly GraphEndpoint[]): MerossPayload {
+function encodePayload(spec: PayloadSpec, endpoints: readonly PollTarget[]): MerossPayload {
     if ('dict' in spec) {
         return {
             [spec.dict]: spec.channel === undefined ? {} : { channel: spec.channel }
@@ -797,7 +761,7 @@ function encodePayload(spec: PayloadSpec, endpoints: readonly GraphEndpoint[]): 
 
 function encodeList(
     spec: Extract<PayloadSpec, { list: string }>,
-    endpoints: readonly GraphEndpoint[]
+    endpoints: readonly PollTarget[]
 ): unknown[] {
     if (spec.by === undefined) {
         return [];
@@ -840,9 +804,9 @@ function encodeList(
  * matching trait so a mixed hub does not GET LatestX for MTS100 children.
  */
 function preferTrait(
-    endpoints: readonly GraphEndpoint[],
+    endpoints: readonly PollTarget[],
     trait: TraitName
-): GraphEndpoint[] {
+): PollTarget[] {
     const matched = endpoints.filter((endpoint) => endpoint.traits.includes(trait));
     return matched.length > 0 ? matched : [...endpoints];
 }

@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Endpoint.protocol()` and a `protocol` event report whether the next request will use LAN HTTP or cloud MQTT. Hosts can display this; they cannot pick a protocol.
 
+### Changed
+
+- Internal composition: endpoint trait binding moves to `attachEndpoint`, traits take a device-scoped `DeviceRequest` port, digest namespaces live next to System.All decode, and poll jobs accept `PollTarget`. No host-visible API or behavior change.
+
 ### Fixed
 
 - Device polling follows meross_lan's handler walk: HTTP flushes `Control.Multiple` as it fills and applies each GETACK immediately, so a later timeout cannot drop Electricity already received. Cloud MQTT uses `async_request_smartpoll` (one publish per cycle unless `polling_period_cloud` has elapsed). A failed GET or namespace parse no longer aborts the rest of the cycle. Packing also uses meross_lan's HTTP response-size budget (header + per-namespace estimate, ConsumptionX starts at 30 days) so a large ConsumptionX GETACK cannot truncate live power.

@@ -28,7 +28,7 @@ import type {
     ShutterConfig,
     ShutterConfigSetOptions
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 export interface CoverValues {
     open?: boolean;
@@ -52,7 +52,7 @@ export interface CoverTraitBind {
     namespaces?: ReadonlySet<string>;
     /** System.All digest `open` so hosts can read open/closed before the first PUSH. */
     initialOpen?: boolean;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: CoverValues) => void;
 }
 

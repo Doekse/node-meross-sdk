@@ -560,16 +560,7 @@ describe('DevicePoller', () => {
                 [CONSUMPTIONX_NAMESPACE]: {},
                 [DND_MODE_NAMESPACE]: {}
             },
-            [{
-                id: `${UUID}:0`,
-                uuid: UUID,
-                channel: 0,
-                name: 'plug',
-                model: 'mss310',
-                classHint: 'socket',
-                traits: ['switch', 'energy', 'dnd'],
-                online: true
-            }],
+            [{ channel: 0, traits: ['switch', 'energy', 'dnd'] }],
             new Set([TOGGLEX_NAMESPACE])
         );
         // Firmware without Control.Multiple sends one publish per GET, so this

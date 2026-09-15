@@ -14,7 +14,7 @@ import {
     type MerossMessage,
     type TimerXEntry
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 export type TimerEntry = TimerXEntry;
 
@@ -49,7 +49,7 @@ export interface TimerTraitBind {
      * Ability keys advertised by the device. Digest.TimerX listing no-ops when absent.
      */
     namespaces?: ReadonlySet<string>;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: TimerValues) => void;
 }
 

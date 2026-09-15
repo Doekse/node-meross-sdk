@@ -4,7 +4,7 @@ import {
     encodeDndSet,
     type MerossMessage
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 /**
  * Transport bind for one device's System.DNDMode surface. Session supplies this;
@@ -12,7 +12,7 @@ import type { RoutedRequestOptions } from '../transport/router';
  */
 export interface DndTraitBind {
     uuid: string;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (on: boolean) => void;
 }
 

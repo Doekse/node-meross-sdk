@@ -1,5 +1,19 @@
 import { ProtocolError } from '../../errors';
 import {
+    SUMMER_MODE_NAMESPACE,
+    THERMOSTAT_MODE_NAMESPACE,
+    THERMOSTAT_MODEB_NAMESPACE,
+    WINDOW_OPENED_NAMESPACE
+} from './climate';
+import { GARAGE_STATE_NAMESPACE } from './cover';
+import {
+    DIFFUSER_LIGHT_NAMESPACE,
+    DIFFUSER_SPRAY_NAMESPACE
+} from './diffuser';
+import { FAN_NAMESPACE } from './fan';
+import { LIGHT_NAMESPACE } from './light';
+import { SPRAY_NAMESPACE } from './spray';
+import {
     decodeSystemFirmwareGetAck,
     decodeSystemHardwareGetAck,
     decodeSystemTimeGetAck,
@@ -7,6 +21,7 @@ import {
     type SystemHardwareState,
     type SystemTimeState
 } from './system';
+import { TOGGLEX_NAMESPACE } from './togglex';
 import type { MerossPayload } from '../message';
 
 export const SYSTEM_ALL_NAMESPACE = 'Appliance.System.All';
@@ -52,6 +67,61 @@ export interface SystemAll {
             windowOpened?: number[];
         };
     };
+}
+
+/**
+ * Namespaces whose state is already in the System.All digest, so they GET
+ * only when All is skipped, not beside it.
+ *
+ * meross_lan analog: `digest_pollers`, without constructing `NamespaceHandler`s.
+ * Keys meross_lan does not treat as All-fallback (do not add here): `timer` /
+ * `timerx` / `trigger` / `triggerx` (`digest_init_empty`), `hub` (returns
+ * `()`), `light.effect` (often `()`), `rollerShutter` (goes through
+ * `NAMESPACE_INIT` for `RollerShutter.State`, not digest_init). Thermostat
+ * uses key presence including empty lists (`DIGEST_KEY_TO_NAMESPACE`); other
+ * keys use `.length > 0`. meross_lan would still register a poller for
+ * `togglex: []`; this does not.
+ */
+export function getDigestNamespaces(digest: SystemAll['digest']): Set<string> {
+    const namespaces = new Set<string>();
+    if (digest.togglex.length > 0) {
+        namespaces.add(TOGGLEX_NAMESPACE);
+    }
+    if (digest.light.length > 0) {
+        namespaces.add(LIGHT_NAMESPACE);
+    }
+    if (digest.garageDoor.length > 0) {
+        namespaces.add(GARAGE_STATE_NAMESPACE);
+    }
+    if (digest.spray.length > 0) {
+        namespaces.add(SPRAY_NAMESPACE);
+    }
+    if (digest.fan.length > 0) {
+        namespaces.add(FAN_NAMESPACE);
+    }
+    if (digest.diffuser) {
+        if (digest.diffuser.light.length > 0) {
+            namespaces.add(DIFFUSER_LIGHT_NAMESPACE);
+        }
+        if (digest.diffuser.spray.length > 0) {
+            namespaces.add(DIFFUSER_SPRAY_NAMESPACE);
+        }
+    }
+    if (digest.thermostat) {
+        if (digest.thermostat.mode !== undefined) {
+            namespaces.add(THERMOSTAT_MODE_NAMESPACE);
+        }
+        if (digest.thermostat.modeB !== undefined) {
+            namespaces.add(THERMOSTAT_MODEB_NAMESPACE);
+        }
+        if (digest.thermostat.summerMode !== undefined) {
+            namespaces.add(SUMMER_MODE_NAMESPACE);
+        }
+        if (digest.thermostat.windowOpened !== undefined) {
+            namespaces.add(WINDOW_OPENED_NAMESPACE);
+        }
+    }
+    return namespaces;
 }
 
 /**
