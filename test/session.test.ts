@@ -536,6 +536,33 @@ describe('Session.connect', () => {
         assert.deepEqual(connections, [false]);
     });
 
+    it('reports mqtt protocol when the device has no LAN IP', async () => {
+        const { session } = await loginConnected();
+        assert.equal(session.endpoint(`${UUID}:0`).protocol(), 'mqtt');
+        await session.disconnect();
+    });
+
+    it('reports http protocol when LAN is up', async () => {
+        const lanFetch: typeof fetch = async (_url, init) => {
+            const sent = decodeMessage(String(init?.body), KEY);
+            const ack = enrollmentAck(sent, { innerIp: true });
+            return {
+                status: 200,
+                statusText: 'OK',
+                ok: true,
+                async text() {
+                    return JSON.stringify(ack);
+                }
+            } as Response;
+        };
+        const { session } = await loginConnected({
+            lanFetch,
+            ack: { innerIp: true }
+        });
+        assert.equal(session.endpoint(`${UUID}:0`).protocol(), 'http');
+        await session.disconnect();
+    });
+
     it('emits ratelimit when the MQTT publish window is exhausted', async () => {
         const { session, client } = await loginConnected();
         const drops: Array<[string, number]> = [];

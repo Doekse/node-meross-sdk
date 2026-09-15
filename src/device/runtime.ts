@@ -44,11 +44,13 @@ export interface DeviceRuntimeOptions {
  */
 export class DeviceRuntime {
     readonly endpoints: readonly Endpoint[];
+    private readonly isCloudPath: () => boolean;
     private readonly availability: DeviceAvailability;
     private readonly poller: DevicePoller;
 
     constructor(options: DeviceRuntimeOptions) {
         this.endpoints = options.endpoints;
+        this.isCloudPath = options.isCloudPath;
 
         const availability = new DeviceAvailability({
             uuid: options.uuid,
@@ -56,7 +58,10 @@ export class DeviceRuntime {
             endpoints: options.endpoints,
             request: options.request,
             onOnlineChange: (online) => poller.setOnline(online),
-            onInnerIp: options.onInnerIp,
+            onInnerIp: (innerIp) => {
+                options.onInnerIp?.(innerIp);
+                this.publishProtocol();
+            },
             heartbeatIntervalMs: options.heartbeatIntervalMs,
             now: options.now
         });
@@ -71,7 +76,9 @@ export class DeviceRuntime {
                 gets,
                 maxCmdNum,
                 () => poller.shrinkResponseBudget()
-            ),
+            ).finally(() => {
+                this.publishProtocol();
+            }),
             onAck: options.onAck,
             jobs: options.jobs,
             intervalMs: options.pollIntervalMs,
@@ -86,6 +93,7 @@ export class DeviceRuntime {
     start(): void {
         this.availability.start();
         this.poller.start();
+        this.publishProtocol(true);
     }
 
     stop(): void {
@@ -104,5 +112,16 @@ export class DeviceRuntime {
 
     clearMqtt(): void {
         this.poller.clearMqtt();
+    }
+
+    /**
+     * Endpoint does not choose a path; this copies the router's current LAN vs
+     * MQTT decision after that decision may have changed.
+     */
+    publishProtocol(force = false): void {
+        const protocol = this.isCloudPath() ? 'mqtt' : 'http';
+        for (const endpoint of this.endpoints) {
+            endpoint.setProtocol(protocol, force);
+        }
     }
 }

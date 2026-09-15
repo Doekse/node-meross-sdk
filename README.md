@@ -49,7 +49,7 @@ The first published release is `0.1.0-alpha`.
 - Ability-based enrollment: traits attach from firmware `Ability` + `System.All`, not a hardcoded model list
 - One `Endpoint` per user-visible device (strip outlets and hub children included)
 - LAN HTTP preferred automatically, with MQTT failover
-- PUSH updates plus background polling; hosts listen on endpoint `availability` and `change`, and session `connection`, `ratelimit`, and `warning`
+- PUSH updates plus background polling; hosts listen on endpoint `availability`, `change`, and `protocol`, and session `connection`, `ratelimit`, and `warning`
 - The cloud publish window is respected per device: one publish per poll cycle, packed into `Appliance.Control.Multiple`, with publishes held back so polling cannot starve a user command
 - TypeScript types shipped next to CommonJS `dist/` so `require()` hosts (including Homey) load without a bundler
 
@@ -199,6 +199,10 @@ const endpoint = session.endpoint(row.id);
 
 endpoint.on('availability', (online) => {
   // boolean; current value is endpoint.isOnline()
+});
+
+endpoint.on('protocol', (protocol) => {
+  // 'http' | 'mqtt'; current value is endpoint.protocol()
 });
 
 endpoint.on('change', ({ trait, values }) => {

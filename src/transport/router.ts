@@ -56,7 +56,7 @@ export interface TransportRouterOptions {
 
 /**
  * Prefer LAN when an IP is known; MQTT is the fallback for that request.
- * There is no public `transportMode` — hosts should not choose a path.
+ * Hosts cannot choose a path.
  */
 export class TransportRouter {
     readonly mqtt: MqttTransport;

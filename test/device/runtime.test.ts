@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it, type TestContext } from 'node:test';
 
 import { DeviceRuntime, type DeviceRuntimeOptions } from '../../src/device/runtime';
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint, type Protocol } from '../../src/endpoint';
 import { encodeMessage, type MerossMessage } from '../../src/protocol';
 import type { GetCommand } from '../../src/transport/router';
 
@@ -27,6 +27,7 @@ function flushMicrotasks(): Promise<void> {
 
 interface Harness {
     runtime: DeviceRuntime;
+    endpoint: Endpoint;
     requestGets: ReturnType<TestContext['mock']['fn']>;
     request: ReturnType<TestContext['mock']['fn']>;
     advance: (ms: number) => Promise<void>;
@@ -81,6 +82,7 @@ function createHarness(t: TestContext, overrides: Partial<DeviceRuntimeOptions> 
 
     return {
         runtime,
+        endpoint,
         requestGets,
         request,
         advance: async (ms: number) => {
@@ -178,6 +180,22 @@ describe('DeviceRuntime', () => {
         assert.equal(typeof capturedFallback, 'function');
         capturedFallback?.();
 
+        harness.runtime.stop();
+    });
+
+    it('publishes LAN vs MQTT protocol from isCloudPath', async (t: TestContext) => {
+        let cloud = false;
+        const harness = createHarness(t, { isCloudPath: () => cloud });
+        const seen: Protocol[] = [];
+        harness.endpoint.on('protocol', (protocol) => seen.push(protocol));
+
+        harness.runtime.start();
+        assert.equal(harness.endpoint.protocol(), 'http');
+
+        cloud = true;
+        await harness.advance(INTERVAL_MS);
+        assert.equal(harness.endpoint.protocol(), 'mqtt');
+        assert.deepEqual(seen, ['http', 'mqtt']);
         harness.runtime.stop();
     });
 });

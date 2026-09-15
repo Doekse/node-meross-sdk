@@ -797,6 +797,8 @@ export class Session extends EventEmitter<SessionEvents> {
                 uuid: physical.uuid,
                 ...this.lanBind(physical),
                 ...options
+            }).finally(() => {
+                this.devices.get(physical.uuid)?.publishProtocol();
             });
     }
 }

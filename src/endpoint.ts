@@ -29,6 +29,9 @@ export interface EndpointChange {
     values: Record<string, unknown>;
 }
 
+/** LAN HTTP or cloud MQTT. Hosts display this; they cannot pick which path a request uses. */
+export type Protocol = 'http' | 'mqtt';
+
 export interface EndpointOptions {
     id: string;
     traits?: readonly TraitName[];
@@ -55,6 +58,7 @@ export interface EndpointOptions {
 interface EndpointEvents {
     change: [change: EndpointChange];
     availability: [online: boolean];
+    protocol: [protocol: Protocol];
     /**
      * One trait's handlePush threw; the rest of the batch still ran, same as
      * {@link SessionEvents.warning}.
@@ -92,6 +96,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     readonly trigger?: TriggerTrait;
 
     private online: boolean;
+    private currentProtocol: Protocol;
 
     constructor(options: EndpointOptions) {
         super();
@@ -115,6 +120,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         this.timer = options.timer;
         this.trigger = options.trigger;
         this.online = options.initialOnline ?? true;
+        this.currentProtocol = 'mqtt';
     }
 
     /**
@@ -123,6 +129,14 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
      */
     isOnline(): boolean {
         return this.online;
+    }
+
+    /**
+     * Current request protocol. Inventory omits this so hosts cannot read a
+     * snapshot frozen at enroll.
+     */
+    protocol(): Protocol {
+        return this.currentProtocol;
     }
 
     /**
@@ -155,5 +169,17 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         }
         this.online = online;
         this.emit('availability', online);
+    }
+
+    /**
+     * `force` is for the initial fan-out so hosts get a first protocol
+     * event even when the value matches the constructor default.
+     */
+    setProtocol(protocol: Protocol, force = false): void {
+        if (!force && this.currentProtocol === protocol) {
+            return;
+        }
+        this.currentProtocol = protocol;
+        this.emit('protocol', protocol);
     }
 }
