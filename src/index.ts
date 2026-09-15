@@ -2,9 +2,12 @@
  * Public exports only. Transports, namespace codecs, and the device graph
  * stay unexported so hosts program against Session, Endpoint, and traits.
  */
-export { MerossError, NotImplementedError, AuthError, CloudError } from './errors';
+export {
+    MerossError, AuthError, CloudError,
+    CommandError, TransportError, ProtocolError
+} from './errors';
 export { Session } from './session';
-export type { LoginOptions, TokenData } from './session';
+export type { LoginOptions, TokenData, SessionOptions } from './session';
 export { Inventory } from './inventory';
 export type { ClassHint, InventoryRow } from './inventory';
 export { Endpoint } from './endpoint';

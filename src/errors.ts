@@ -12,7 +12,8 @@ export class MerossError extends Error {
 }
 
 /**
- * Unimplemented public API surface.
+ * Unimplemented public surface. Kept in-tree but not on the public barrel so
+ * hosts do not depend on a placeholder they cannot hit.
  */
 export class NotImplementedError extends MerossError {
     constructor(feature: string) {
@@ -22,7 +23,8 @@ export class NotImplementedError extends MerossError {
 }
 
 /**
- * Malformed envelope or signature mismatch. Not a public export yet.
+ * Malformed envelope or signature mismatch. There is no LAN→MQTT failover for
+ * this error, so hosts can distinguish a bad reply from a connect/publish miss.
  */
 export class ProtocolError extends MerossError {
     constructor(message: string, code = 'PROTOCOL_ERROR') {
@@ -34,7 +36,6 @@ export class ProtocolError extends MerossError {
 /**
  * Command timeout, device ERROR method, or a cancelled pending request.
  * Wrong-key replies use code `INVALID_KEY` with `deviceCode` 5001.
- * Not a public export until Session surfaces command failures to hosts.
  */
 export class CommandError extends MerossError {
     /** Firmware `payload.error.code` when the device replied with method ERROR. */
@@ -89,7 +90,9 @@ export class CloudError extends MerossError {
 }
 
 /**
- * MQTT or LAN HTTP connect/publish failure. Not a public export yet.
+ * MQTT or LAN HTTP connect/publish failure after failover has finished.
+ * Distinct from {@link CommandError} so hosts can retry transport without
+ * treating a device ERROR as unreachable.
  */
 export class TransportError extends MerossError {
     constructor(message: string, code = 'TRANSPORT_ERROR') {
