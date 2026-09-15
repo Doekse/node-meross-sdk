@@ -6,6 +6,10 @@ import {
 } from '../protocol';
 import type { DeviceRequest } from '../request';
 
+export interface DndValues {
+    on?: boolean;
+}
+
 /**
  * Transport bind for one device's System.DNDMode surface. Session supplies this;
  * trait tests inject a fake request/emit pair.
