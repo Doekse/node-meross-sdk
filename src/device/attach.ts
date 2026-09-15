@@ -1,4 +1,4 @@
-import { Endpoint, type TraitName } from '../endpoint';
+import { Endpoint } from '../endpoint';
 import type { DeviceRequest } from '../request';
 import {
     CONSUMPTIONH_NAMESPACE,
@@ -10,23 +10,23 @@ import {
     TOGGLEX_NAMESPACE,
     TRIGGERX_NAMESPACE
 } from '../protocol';
-import { AlarmTrait } from '../traits/alarm';
-import { ClimateTrait, type ThermostatGeneration } from '../traits/climate';
-import { CoverTrait } from '../traits/cover';
-import { DiffuserTrait } from '../traits/diffuser';
-import { DndTrait } from '../traits/dnd';
-import { EnergyTrait } from '../traits/energy';
-import { FanTrait } from '../traits/fan';
-import { LightTrait } from '../traits/light';
-import { MediaTrait } from '../traits/media';
-import { PresenceTrait } from '../traits/presence';
-import { SENSOR_FAMILY_MAP, SensorTrait } from '../traits/sensor';
-import { SprayTrait } from '../traits/spray';
-import { SprinklerTrait } from '../traits/sprinkler';
-import { SwitchTrait } from '../traits/switch';
-import { SystemTrait } from '../traits/system';
-import { TimerTrait, type TimerGeneration } from '../traits/timer';
-import { TriggerTrait, type TriggerGeneration } from '../traits/trigger';
+import { AlarmTrait, type AlarmValues } from '../traits/alarm';
+import { ClimateTrait, type ClimateValues, type ThermostatGeneration } from '../traits/climate';
+import { CoverTrait, type CoverValues } from '../traits/cover';
+import { DiffuserTrait, type DiffuserValues } from '../traits/diffuser';
+import { DndTrait, type DndValues } from '../traits/dnd';
+import { EnergyTrait, type EnergyValues } from '../traits/energy';
+import { FanTrait, type FanValues } from '../traits/fan';
+import { LightTrait, type LightValues } from '../traits/light';
+import { MediaTrait, type MediaValues } from '../traits/media';
+import { PresenceTrait, type PresenceValues } from '../traits/presence';
+import { SENSOR_FAMILY_MAP, SensorTrait, type SensorValues } from '../traits/sensor';
+import { SprayTrait, type SprayValues } from '../traits/spray';
+import { SprinklerTrait, type SprinklerValues } from '../traits/sprinkler';
+import { SwitchTrait, type SwitchValues } from '../traits/switch';
+import { SystemTrait, type SystemValues } from '../traits/system';
+import { TimerTrait, type TimerGeneration, type TimerValues } from '../traits/timer';
+import { TriggerTrait, type TriggerGeneration, type TriggerValues } from '../traits/trigger';
 import type { GraphEndpoint, PhysicalDevice } from './index';
 
 /**
@@ -48,14 +48,62 @@ export function attachEndpoint(
     // Assigned after traits so emitChange closures can capture the binding.
     // eslint-disable-next-line prefer-const -- definite assignment; constructed below
     let endpoint!: Endpoint;
-    /**
-     * Each trait declares its own `Values` interface, so the parameter is
-     * widened to `object`; the spread is what gives {@link EndpointChange}
-     * an indexable type.
-     */
-    const changeEmitter = (trait: TraitName) => (values: object) => {
-        endpoint.emit('change', { trait, values: { ...values } });
-    };
+    // Literal keys so each arm's `values` stays that trait's snapshot type.
+    // A shared factory would widen and need `as EndpointChange`.
+    // Spread copies so hosts cannot mutate trait `last` through the event.
+    const emit = {
+        switch: (values: SwitchValues) => {
+            endpoint.emit('change', { trait: 'switch', values: { ...values } });
+        },
+        energy: (values: EnergyValues) => {
+            endpoint.emit('change', { trait: 'energy', values: { ...values } });
+        },
+        light: (values: LightValues) => {
+            endpoint.emit('change', { trait: 'light', values: { ...values } });
+        },
+        cover: (values: CoverValues) => {
+            endpoint.emit('change', { trait: 'cover', values: { ...values } });
+        },
+        climate: (values: ClimateValues) => {
+            endpoint.emit('change', { trait: 'climate', values: { ...values } });
+        },
+        sensor: (values: SensorValues) => {
+            endpoint.emit('change', { trait: 'sensor', values: { ...values } });
+        },
+        presence: (values: PresenceValues) => {
+            endpoint.emit('change', { trait: 'presence', values: { ...values } });
+        },
+        sprinkler: (values: SprinklerValues) => {
+            endpoint.emit('change', { trait: 'sprinkler', values: { ...values } });
+        },
+        spray: (values: SprayValues) => {
+            endpoint.emit('change', { trait: 'spray', values: { ...values } });
+        },
+        fan: (values: FanValues) => {
+            endpoint.emit('change', { trait: 'fan', values: { ...values } });
+        },
+        diffuser: (values: DiffuserValues) => {
+            endpoint.emit('change', { trait: 'diffuser', values: { ...values } });
+        },
+        media: (values: MediaValues) => {
+            endpoint.emit('change', { trait: 'media', values: { ...values } });
+        },
+        alarm: (values: AlarmValues) => {
+            endpoint.emit('change', { trait: 'alarm', values: { ...values } });
+        },
+        dnd: (values: DndValues) => {
+            endpoint.emit('change', { trait: 'dnd', values: { ...values } });
+        },
+        system: (values: SystemValues) => {
+            endpoint.emit('change', { trait: 'system', values: { ...values } });
+        },
+        timer: (values: TimerValues) => {
+            endpoint.emit('change', { trait: 'timer', values: { ...values } });
+        },
+        trigger: (values: TriggerValues) => {
+            endpoint.emit('change', { trait: 'trigger', values: { ...values } });
+        }
+    } as const;
     let switchTrait: SwitchTrait | undefined;
     let energyTrait: EnergyTrait | undefined;
     let lightTrait: LightTrait | undefined;
@@ -82,7 +130,7 @@ export function attachEndpoint(
                 initialOn: graphEndpoint.on,
                 namespaces,
                 request,
-                emitChange: changeEmitter('switch')
+                emitChange: emit.switch
             });
         } else {
             switchTrait = new SwitchTrait({
@@ -94,7 +142,7 @@ export function attachEndpoint(
                     : TOGGLEX_NAMESPACE,
                 initialOn: graphEndpoint.on,
                 request,
-                emitChange: changeEmitter('switch')
+                emitChange: emit.switch
             });
         }
     }
@@ -109,7 +157,7 @@ export function attachEndpoint(
             hasConsumptionH: CONSUMPTIONH_NAMESPACE in physical.ability,
             namespaces,
             request,
-            emitChange: changeEmitter('energy')
+            emitChange: emit.energy
         });
     }
 
@@ -133,7 +181,7 @@ export function attachEndpoint(
             hasLightEffect,
             lightCapacity: guessedCapacity,
             request,
-            emitChange: changeEmitter('light')
+            emitChange: emit.light
         });
     }
     if (graphEndpoint.traits.includes('cover')) {
@@ -147,7 +195,7 @@ export function attachEndpoint(
             namespaces,
             initialOpen: graphEndpoint.on,
             request,
-            emitChange: changeEmitter('cover')
+            emitChange: emit.cover
         });
     }
     if (graphEndpoint.traits.includes('climate')) {
@@ -158,7 +206,7 @@ export function attachEndpoint(
                 subDeviceId: graphEndpoint.subDeviceId,
                 namespaces,
                 request,
-                emitChange: changeEmitter('climate')
+                emitChange: emit.climate
             });
         } else {
             const generation: ThermostatGeneration =
@@ -172,7 +220,7 @@ export function attachEndpoint(
                 generation,
                 namespaces,
                 request,
-                emitChange: changeEmitter('climate')
+                emitChange: emit.climate
             });
         }
     }
@@ -185,7 +233,7 @@ export function attachEndpoint(
                 family,
                 namespaces,
                 request,
-                emitChange: changeEmitter('sensor')
+                emitChange: emit.sensor
             });
         }
     }
@@ -195,7 +243,7 @@ export function attachEndpoint(
             channel,
             namespaces,
             request,
-            emitChange: changeEmitter('presence')
+            emitChange: emit.presence
         });
     }
     if (graphEndpoint.traits.includes('sprinkler') && graphEndpoint.subDeviceId) {
@@ -204,7 +252,7 @@ export function attachEndpoint(
             subDeviceId: graphEndpoint.subDeviceId,
             namespaces,
             request,
-            emitChange: changeEmitter('sprinkler')
+            emitChange: emit.sprinkler
         });
     }
     if (graphEndpoint.traits.includes('spray')) {
@@ -212,7 +260,7 @@ export function attachEndpoint(
             uuid: physical.uuid,
             channel,
             request,
-            emitChange: changeEmitter('spray')
+            emitChange: emit.spray
         });
     }
     if (graphEndpoint.traits.includes('fan')) {
@@ -224,7 +272,7 @@ export function attachEndpoint(
             hasToggle: !(TOGGLEX_NAMESPACE in physical.ability)
                 && 'Appliance.Control.Toggle' in physical.ability,
             request,
-            emitChange: changeEmitter('fan')
+            emitChange: emit.fan
         });
     }
     if (graphEndpoint.traits.includes('diffuser')) {
@@ -233,7 +281,7 @@ export function attachEndpoint(
             channel,
             namespaces,
             request,
-            emitChange: changeEmitter('diffuser')
+            emitChange: emit.diffuser
         });
     }
     if (graphEndpoint.traits.includes('media')) {
@@ -241,7 +289,7 @@ export function attachEndpoint(
             uuid: physical.uuid,
             channel,
             request,
-            emitChange: changeEmitter('media')
+            emitChange: emit.media
         });
     }
     if (graphEndpoint.traits.includes('alarm')) {
@@ -250,14 +298,14 @@ export function attachEndpoint(
             channel,
             namespaces,
             request,
-            emitChange: changeEmitter('alarm')
+            emitChange: emit.alarm
         });
     }
     if (graphEndpoint.traits.includes('dnd')) {
         dndTrait = new DndTrait({
             uuid: physical.uuid,
             request,
-            emitChange: (on) => endpoint.emit('change', { trait: 'dnd', values: { on } })
+            emitChange: (on: boolean): void => emit.dnd({ on })
         });
     }
     if (graphEndpoint.traits.includes('system')) {
@@ -267,7 +315,7 @@ export function attachEndpoint(
             initialHardware: physical.system.hardware,
             initialTime: physical.system.time,
             request,
-            emitChange: changeEmitter('system')
+            emitChange: emit.system
         });
     }
     if (graphEndpoint.traits.includes('timer')) {
@@ -280,7 +328,7 @@ export function attachEndpoint(
             generation,
             namespaces,
             request,
-            emitChange: changeEmitter('timer')
+            emitChange: emit.timer
         });
     }
     if (graphEndpoint.traits.includes('trigger')) {
@@ -293,7 +341,7 @@ export function attachEndpoint(
             generation,
             namespaces,
             request,
-            emitChange: changeEmitter('trigger')
+            emitChange: emit.trigger
         });
     }
     endpoint = new Endpoint({
