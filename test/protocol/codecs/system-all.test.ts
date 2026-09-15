@@ -1,0 +1,86 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import {
+    THERMOSTAT_MODE_NAMESPACE,
+    WINDOW_OPENED_NAMESPACE
+} from '../../../src/protocol/codecs/climate';
+import { SHUTTER_STATE_NAMESPACE } from '../../../src/protocol/codecs/cover';
+import {
+    DIFFUSER_LIGHT_NAMESPACE,
+    DIFFUSER_SPRAY_NAMESPACE
+} from '../../../src/protocol/codecs/diffuser';
+import { FAN_NAMESPACE } from '../../../src/protocol/codecs/fan';
+import { LIGHT_NAMESPACE } from '../../../src/protocol/codecs/light';
+import { getDigestNamespaces } from '../../../src/protocol/codecs/system-all';
+import { TOGGLEX_NAMESPACE } from '../../../src/protocol/codecs/togglex';
+
+describe('getDigestNamespaces', () => {
+    it('maps populated digest lists to their namespaces', () => {
+        const namespaces = getDigestNamespaces({
+            togglex: [{ channel: 0, on: true }],
+            light: [0],
+            garageDoor: [],
+            rollerShutter: [],
+            spray: [],
+            fan: [0]
+        });
+        assert.deepEqual([...namespaces], [
+            TOGGLEX_NAMESPACE,
+            LIGHT_NAMESPACE,
+            FAN_NAMESPACE
+        ]);
+    });
+
+    it('maps only populated diffuser digest lists to their namespaces', () => {
+        const digest = {
+            togglex: [],
+            light: [],
+            garageDoor: [],
+            rollerShutter: [],
+            spray: [],
+            fan: []
+        };
+
+        assert.deepEqual([...getDigestNamespaces({
+            ...digest,
+            diffuser: { light: [], spray: [] }
+        })], []);
+        assert.deepEqual([...getDigestNamespaces({
+            ...digest,
+            diffuser: { light: [0], spray: [] }
+        })], [DIFFUSER_LIGHT_NAMESPACE]);
+        assert.deepEqual([...getDigestNamespaces({
+            ...digest,
+            diffuser: { light: [], spray: [0] }
+        })], [DIFFUSER_SPRAY_NAMESPACE]);
+    });
+
+    it('does not treat rollerShutter as a digest poller', () => {
+        const namespaces = getDigestNamespaces({
+            togglex: [],
+            light: [],
+            garageDoor: [],
+            rollerShutter: [0],
+            spray: [],
+            fan: []
+        });
+        assert.equal(namespaces.has(SHUTTER_STATE_NAMESPACE), false);
+    });
+
+    it('includes thermostat keys that are present, including empty lists', () => {
+        const namespaces = getDigestNamespaces({
+            togglex: [],
+            light: [],
+            garageDoor: [],
+            rollerShutter: [],
+            spray: [],
+            fan: [],
+            thermostat: { mode: [], windowOpened: [] }
+        });
+        assert.deepEqual([...namespaces], [
+            THERMOSTAT_MODE_NAMESPACE,
+            WINDOW_OPENED_NAMESPACE
+        ]);
+    });
+});

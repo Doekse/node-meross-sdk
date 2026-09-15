@@ -12,7 +12,6 @@ import {
     ENERGY_PERIOD_MS,
     estimateResponseSize,
     getDeviceResponseSizeMax,
-    getDigestNamespaces,
     HUB_BATTERY_PERIOD_MS,
     POLL_RESPONSE_HEADER_SIZE,
     POLL_RESPONSE_SIZE_MIN,
@@ -36,15 +35,10 @@ import {
     DIFFUSER_SPRAY_NAMESPACE
 } from '../../src/protocol/codecs/diffuser';
 import {
-    THERMOSTAT_MODE_NAMESPACE,
-    WINDOW_OPENED_NAMESPACE
-} from '../../src/protocol/codecs/climate';
-import {
     GARAGE_CONFIG_NAMESPACE,
     GARAGE_MULTIPLE_CONFIG_NAMESPACE,
     SHUTTER_ADJUST_NAMESPACE,
-    SHUTTER_CONFIG_NAMESPACE,
-    SHUTTER_STATE_NAMESPACE
+    SHUTTER_CONFIG_NAMESPACE
 } from '../../src/protocol/codecs/cover';
 import { DND_MODE_NAMESPACE } from '../../src/protocol/codecs/dnd';
 import { ELECTRICITY_NAMESPACE, ELECTRICITYX_NAMESPACE } from '../../src/protocol/codecs/electricity';
@@ -54,7 +48,7 @@ import {
     FAN_NAMESPACE,
     FILTER_MAINTENANCE_NAMESPACE
 } from '../../src/protocol/codecs/fan';
-import { LIGHT_EFFECT_NAMESPACE, LIGHT_NAMESPACE } from '../../src/protocol/codecs/light';
+import { LIGHT_EFFECT_NAMESPACE } from '../../src/protocol/codecs/light';
 import { MP3_NAMESPACE } from '../../src/protocol/codecs/mp3';
 import {
     CONFIG_OVERTEMP_NAMESPACE,
@@ -985,74 +979,6 @@ describe('buildPollJobs', () => {
             periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { fan: [{ channel: CHANNEL }] }
         });
-    });
-
-    it('maps populated digest lists to their namespaces', () => {
-        const namespaces = getDigestNamespaces({
-            togglex: [{ channel: 0, on: true }],
-            light: [0],
-            garageDoor: [],
-            rollerShutter: [],
-            spray: [],
-            fan: [0]
-        });
-        assert.deepEqual([...namespaces], [
-            TOGGLEX_NAMESPACE,
-            LIGHT_NAMESPACE,
-            FAN_NAMESPACE
-        ]);
-    });
-
-    it('maps only populated diffuser digest lists to their namespaces', () => {
-        const digest = {
-            togglex: [],
-            light: [],
-            garageDoor: [],
-            rollerShutter: [],
-            spray: [],
-            fan: []
-        };
-
-        assert.deepEqual([...getDigestNamespaces({
-            ...digest,
-            diffuser: { light: [], spray: [] }
-        })], []);
-        assert.deepEqual([...getDigestNamespaces({
-            ...digest,
-            diffuser: { light: [0], spray: [] }
-        })], [DIFFUSER_LIGHT_NAMESPACE]);
-        assert.deepEqual([...getDigestNamespaces({
-            ...digest,
-            diffuser: { light: [], spray: [0] }
-        })], [DIFFUSER_SPRAY_NAMESPACE]);
-    });
-
-    it('does not treat rollerShutter as a digest poller', () => {
-        const namespaces = getDigestNamespaces({
-            togglex: [],
-            light: [],
-            garageDoor: [],
-            rollerShutter: [0],
-            spray: [],
-            fan: []
-        });
-        assert.equal(namespaces.has(SHUTTER_STATE_NAMESPACE), false);
-    });
-
-    it('includes thermostat keys that are present, including empty lists', () => {
-        const namespaces = getDigestNamespaces({
-            togglex: [],
-            light: [],
-            garageDoor: [],
-            rollerShutter: [],
-            spray: [],
-            fan: [],
-            thermostat: { mode: [], windowOpened: [] }
-        });
-        assert.deepEqual([...namespaces], [
-            THERMOSTAT_MODE_NAMESPACE,
-            WINDOW_OPENED_NAMESPACE
-        ]);
     });
 });
 

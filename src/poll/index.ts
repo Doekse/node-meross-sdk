@@ -23,6 +23,5 @@ export {
     SYSTEM_ALL_PERIOD_MS,
     buildPollJobs,
     estimateResponseSize,
-    getDeviceResponseSizeMax,
-    getDigestNamespaces
+    getDeviceResponseSizeMax
 } from './jobs';
