@@ -171,6 +171,11 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
      * cannot leave it silently deaf to PUSH frames. Handler exceptions are
      * isolated so one namespace cannot drop the rest of a GETACK batch; the
      * failure is still surfaced via `warning` rather than swallowed.
+     *
+     * Session/runtime owns PUSH delivery; hosts subscribe to `change` instead.
+     *
+     * @internal
+     * @package
      */
     handlePush(message: MerossMessage): void {
         for (const trait of this.traits) {
@@ -189,6 +194,11 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     /**
      * `force` is for the initial fan-out so hosts get a first availability
      * event even when the value matches the constructor default.
+     *
+     * Session/runtime drives availability; hosts subscribe to `availability`.
+     *
+     * @internal
+     * @package
      */
     setAvailability(online: boolean, force = false): void {
         if (!force && this.online === online) {
@@ -201,6 +211,11 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     /**
      * `force` is for the initial fan-out so hosts get a first protocol
      * event even when the value matches the constructor default.
+     *
+     * Session/runtime drives protocol changes; hosts subscribe to `protocol`.
+     *
+     * @internal
+     * @package
      */
     setProtocol(protocol: Protocol, force = false): void {
         if (!force && this.currentProtocol === protocol) {

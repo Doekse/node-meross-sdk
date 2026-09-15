@@ -27,6 +27,10 @@ export class Inventory {
 
     /**
      * Full catalog swap after enroll or disconnect so ghost rows do not remain.
+     * Session owns this; hosts read {@link endpoints} copies.
+     *
+     * @internal
+     * @package
      */
     replace(rows: readonly InventoryRow[]): void {
         this.rows = rows;
