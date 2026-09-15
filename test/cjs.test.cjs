@@ -18,10 +18,13 @@ describe('CJS public surface', () => {
         assert.equal(typeof sdk.Endpoint, 'function');
         assert.equal(typeof sdk.Inventory, 'function');
         assert.equal(typeof sdk.SwitchTrait, 'function');
-        assert.equal(typeof sdk.NotImplementedError, 'function');
         assert.equal(typeof sdk.AuthError, 'function');
         assert.equal(typeof sdk.CloudError, 'function');
         assert.equal(typeof sdk.MerossError, 'function');
+        assert.equal(typeof sdk.CommandError, 'function');
+        assert.equal(typeof sdk.TransportError, 'function');
+        assert.equal(typeof sdk.ProtocolError, 'function');
+        assert.ok(new sdk.CommandError('x') instanceof sdk.MerossError);
     });
 
     it('does not export protocol or transport internals', () => {
@@ -33,15 +36,15 @@ describe('CJS public surface', () => {
         assert.equal(sdk.encodeToggleXSet, undefined);
         assert.equal(sdk.PendingRequests, undefined);
         assert.equal(sdk.ProtocolDispatcher, undefined);
-        assert.equal(sdk.CommandError, undefined);
         assert.equal(sdk.encryptPayload, undefined);
         assert.equal(sdk.EcdheHandshake, undefined);
         assert.equal(sdk.deriveEncryptionKey, undefined);
         assert.equal(sdk.CloudClient, undefined);
         assert.equal(sdk.MqttTransport, undefined);
-        assert.equal(sdk.TransportError, undefined);
         assert.equal(sdk.DeviceGraph, undefined);
         assert.equal(sdk.enrollPhysicalDevice, undefined);
         assert.equal(sdk.decodeAbilityGetAck, undefined);
+        assert.equal(sdk.NotImplementedError, undefined);
+        assert.equal(sdk.SessionOptions, undefined);
     });
 });

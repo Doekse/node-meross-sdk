@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint, type EndpointChange } from '../../src/endpoint';
 import { CommandError } from '../../src/errors';
 import {
     HUB_EXCEPTION_NAMESPACE,
@@ -94,7 +94,7 @@ describe('SwitchTrait.setOn', () => {
 
     it('emits a change patch on the endpoint after SETACK', async () => {
         const { endpoint, trait } = createSwitchHarness();
-        const changes: Array<{ trait: string; values: Record<string, unknown> }> = [];
+        const changes: EndpointChange[] = [];
         endpoint.on('change', (change) => changes.push(change));
 
         await trait.setOn(true);
@@ -244,7 +244,7 @@ describe('SwitchTrait hub bind', () => {
 
     it('applies fault from Hub.Exception PUSH for the bound subdevice', () => {
         const { endpoint, trait } = createHubSwitchHarness();
-        const changes: Array<{ values: Record<string, unknown> }> = [];
+        const changes: EndpointChange[] = [];
         endpoint.on('change', (change) => changes.push(change));
 
         trait.handlePush(encodeMessage({
@@ -261,7 +261,7 @@ describe('SwitchTrait hub bind', () => {
 
     it('applies firmware and hardware versions from Hub.SubDevice.Version PUSH', () => {
         const { endpoint, trait } = createHubSwitchHarness();
-        const changes: Array<{ values: Record<string, unknown> }> = [];
+        const changes: EndpointChange[] = [];
         endpoint.on('change', (change) => changes.push(change));
 
         trait.handlePush(encodeMessage({

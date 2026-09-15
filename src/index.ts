@@ -2,9 +2,12 @@
  * Public exports only. Transports, namespace codecs, and the device graph
  * stay unexported so hosts program against Session, Endpoint, and traits.
  */
-export { MerossError, NotImplementedError, AuthError, CloudError } from './errors';
+export {
+    MerossError, AuthError, CloudError,
+    CommandError, TransportError, ProtocolError
+} from './errors';
 export { Session } from './session';
-export type { LoginOptions, TokenData } from './session';
+export type { LoginOptions, TokenData, SessionOptions } from './session';
 export { Inventory } from './inventory';
 export type { ClassHint, InventoryRow } from './inventory';
 export { Endpoint } from './endpoint';
@@ -15,11 +18,12 @@ export {
     AlarmTrait, DndTrait, SystemTrait, TimerTrait, TriggerTrait
 } from './traits';
 export type {
-    ElectricityConfig,
+    SwitchValues, EnergyValues, ElectricityConfig, LightValues, LightRgb,
+    CoverValues, ClimateValues, ClimatePid,
     SensorFamily, SensorValues, SensorSmokeStatus, SensorAlertBand,
     PresenceValues, SprinklerValues, SprinklerScheduleEntry, SprinklerCycleSummary, SprayValues, SprayMode, FanValues,
     FanButtonConfig, FanButtonConfigSetOptions,
-    DiffuserValues, DiffuserLightMode, DiffuserSprayMode, MediaValues, AlarmValues,
+    DiffuserValues, DiffuserLightMode, DiffuserSprayMode, MediaValues, AlarmValues, DndValues,
     SystemValues, SystemDebugState, SystemFirmwareState, SystemHardwareState,
     SystemPositionState, SystemTimeState,
     TimerEntry, TimerSetInput, TimerValues,

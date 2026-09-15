@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 
 import type { AbilityMap, GraphEndpoint, PhysicalDevice } from '../../src/device';
 import { attachEndpoint } from '../../src/device/attach';
-import type { Endpoint, TraitName } from '../../src/endpoint';
+import type { Endpoint, EndpointChange, TraitName } from '../../src/endpoint';
 import {
     CONTROL_TIMER_NAMESPACE,
     CONTROL_TRIGGER_NAMESPACE,
@@ -200,12 +200,19 @@ describe('attachEndpoint dnd', () => {
             traits: ['dnd'],
             ability: { [DND_MODE_NAMESPACE]: {} }
         });
-        const changes: Array<{ trait: string; values: Record<string, unknown> }> = [];
-        endpoint.on('change', (change) => changes.push(change));
+        const changes: EndpointChange[] = [];
+        const narrowedOn: Array<boolean | undefined> = [];
+        endpoint.on('change', (change) => {
+            changes.push(change);
+            if (change.trait === 'dnd' || change.trait === 'switch') {
+                narrowedOn.push(change.values.on);
+            }
+        });
 
         endpoint.handlePush(pushMessage(DND_MODE_NAMESPACE, { DNDMode: { mode: 1 } }));
 
         assert.deepEqual(changes, [{ trait: 'dnd', values: { on: true } }]);
+        assert.deepEqual(narrowedOn, [true]);
     });
 });
 

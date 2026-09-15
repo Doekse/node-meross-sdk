@@ -1,33 +1,60 @@
 import { EventEmitter } from 'node:events';
 
 import type { MerossMessage } from './protocol';
-import type { AlarmTrait } from './traits/alarm';
-import type { ClimateTrait } from './traits/climate';
-import type { CoverTrait } from './traits/cover';
-import type { DiffuserTrait } from './traits/diffuser';
-import type { DndTrait } from './traits/dnd';
-import type { EnergyTrait } from './traits/energy';
-import type { FanTrait } from './traits/fan';
-import type { LightTrait } from './traits/light';
-import type { MediaTrait } from './traits/media';
-import type { PresenceTrait } from './traits/presence';
-import type { SensorTrait } from './traits/sensor';
-import type { SprayTrait } from './traits/spray';
-import type { SprinklerTrait } from './traits/sprinkler';
-import type { SwitchTrait } from './traits/switch';
-import type { SystemTrait } from './traits/system';
-import type { TimerTrait } from './traits/timer';
-import type { TriggerTrait } from './traits/trigger';
+import type { AlarmTrait, AlarmValues } from './traits/alarm';
+import type { ClimateTrait, ClimateValues } from './traits/climate';
+import type { CoverTrait, CoverValues } from './traits/cover';
+import type { DiffuserTrait, DiffuserValues } from './traits/diffuser';
+import type { DndTrait, DndValues } from './traits/dnd';
+import type { EnergyTrait, EnergyValues } from './traits/energy';
+import type { FanTrait, FanValues } from './traits/fan';
+import type { LightTrait, LightValues } from './traits/light';
+import type { MediaTrait, MediaValues } from './traits/media';
+import type { PresenceTrait, PresenceValues } from './traits/presence';
+import type { SensorTrait, SensorValues } from './traits/sensor';
+import type { SprayTrait, SprayValues } from './traits/spray';
+import type { SprinklerTrait, SprinklerValues } from './traits/sprinkler';
+import type { SwitchTrait, SwitchValues } from './traits/switch';
+import type { SystemTrait, SystemValues } from './traits/system';
+import type { TimerTrait, TimerValues } from './traits/timer';
+import type { TriggerTrait, TriggerValues } from './traits/trigger';
 
 export type TraitName =
     | 'switch' | 'energy' | 'light' | 'climate' | 'cover'
     | 'sensor' | 'presence' | 'sprinkler' | 'spray' | 'fan' | 'diffuser' | 'media' | 'alarm' | 'dnd'
     | 'system' | 'timer' | 'trigger';
 
-export interface EndpointChange {
-    trait: TraitName;
-    values: Record<string, unknown>;
+/**
+ * Per-trait snapshot shapes for {@link EndpointChange}. Kept off the public
+ * barrel so hosts narrow on `change.trait` instead of indexing this map.
+ */
+export interface TraitValues {
+    switch: SwitchValues;
+    energy: EnergyValues;
+    light: LightValues;
+    climate: ClimateValues;
+    cover: CoverValues;
+    sensor: SensorValues;
+    presence: PresenceValues;
+    sprinkler: SprinklerValues;
+    spray: SprayValues;
+    fan: FanValues;
+    diffuser: DiffuserValues;
+    media: MediaValues;
+    alarm: AlarmValues;
+    dnd: DndValues;
+    system: SystemValues;
+    timer: TimerValues;
+    trigger: TriggerValues;
 }
+
+/**
+ * Discriminated by `trait` so hosts can narrow `values` without a cast.
+ * A new {@link TraitName} without a {@link TraitValues} entry is a compile error.
+ */
+export type EndpointChange = {
+    [K in TraitName]: { trait: K; values: TraitValues[K] }
+}[TraitName];
 
 /** LAN HTTP or cloud MQTT. Hosts display this; they cannot pick which path a request uses. */
 export type Protocol = 'http' | 'mqtt';
@@ -144,6 +171,11 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
      * cannot leave it silently deaf to PUSH frames. Handler exceptions are
      * isolated so one namespace cannot drop the rest of a GETACK batch; the
      * failure is still surfaced via `warning` rather than swallowed.
+     *
+     * Session/runtime owns PUSH delivery; hosts subscribe to `change` instead.
+     *
+     * @internal
+     * @package
      */
     handlePush(message: MerossMessage): void {
         for (const trait of this.traits) {
@@ -162,6 +194,11 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     /**
      * `force` is for the initial fan-out so hosts get a first availability
      * event even when the value matches the constructor default.
+     *
+     * Session/runtime drives availability; hosts subscribe to `availability`.
+     *
+     * @internal
+     * @package
      */
     setAvailability(online: boolean, force = false): void {
         if (!force && this.online === online) {
@@ -174,6 +211,11 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     /**
      * `force` is for the initial fan-out so hosts get a first protocol
      * event even when the value matches the constructor default.
+     *
+     * Session/runtime drives protocol changes; hosts subscribe to `protocol`.
+     *
+     * @internal
+     * @package
      */
     setProtocol(protocol: Protocol, force = false): void {
         if (!force && this.currentProtocol === protocol) {
