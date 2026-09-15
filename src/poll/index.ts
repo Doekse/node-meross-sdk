@@ -1,7 +1,8 @@
 /**
  * Poll layer: the namespace catalog, job scheduling, and the packing engine.
  * Device (identity/enrollment) is a consumer of this, not the other way
- * around, aside from the digest/endpoint types poll needs to schedule jobs.
+ * around. {@link PollTarget} is the scheduling surface; poll does not import
+ * device types.
  */
 export {
     DEFAULT_POLL_INTERVAL_MS,
@@ -25,3 +26,4 @@ export {
     estimateResponseSize,
     getDeviceResponseSizeMax
 } from './jobs';
+export type { PollTarget } from './jobs';

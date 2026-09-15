@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { TraitName } from '../../src/endpoint';
 import type { AbilityMap } from '../../src/protocol/codecs/ability';
-import type { GraphEndpoint } from '../../src/device';
 import {
     buildPollJobs,
     CLOUDMQTT_PERIOD_MS,
@@ -20,7 +18,8 @@ import {
     SENSOR_FAST_PERIOD_MS,
     SENSOR_SLOW_CLOUD_PERIOD_MS,
     SENSOR_SLOW_PERIOD_MS,
-    SYSTEM_ALL_PERIOD_MS
+    SYSTEM_ALL_PERIOD_MS,
+    type PollTarget
 } from '../../src/poll/jobs';
 import type { PollJob } from '../../src/poll/poller';
 import { SYSTEM_ALL_NAMESPACE } from '../../src/protocol/codecs/system-all';
@@ -111,18 +110,8 @@ function namespaces(jobs: PollJob[]): string[] {
     return jobs.map((entry) => entry.namespace);
 }
 
-function endpoints(
-    rows: Array<{ channel?: number; subDeviceId?: string; traits: readonly TraitName[] }>
-): GraphEndpoint[] {
-    return rows.map((row) => ({
-        id: row.subDeviceId !== undefined ? `uuid#${row.subDeviceId}` : `uuid:${row.channel ?? 0}`,
-        uuid: 'uuid',
-        name: 'test',
-        model: 'mss310',
-        classHint: 'socket',
-        online: true,
-        ...row
-    }));
+function endpoints(rows: PollTarget[]): PollTarget[] {
+    return rows;
 }
 
 describe('buildPollJobs', () => {
