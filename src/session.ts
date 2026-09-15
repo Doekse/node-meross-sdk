@@ -12,13 +12,12 @@ import {
     decodeAbilityGetAck
 } from './device';
 import type { EnrollResult, GraphEndpoint, PhysicalDevice } from './device';
-import { DeviceAvailability } from './device/availability';
 import {
     DEFAULT_POLL_INTERVAL_MS,
     POLL_START_STAGGER_MS,
     buildPollJobs
 } from './poll';
-import { DevicePoller } from './poll/poller';
+import { DeviceRuntime } from './device/runtime';
 import { Inventory } from './inventory';
 import {
     CONSUMPTIONH_NAMESPACE,
@@ -110,13 +109,6 @@ interface SessionEvents {
  * GET on the wire at once.
  */
 const ENROLL_CONCURRENCY = 4;
-
-/** Timers and endpoints owned by one enrolled device, torn down as a unit. */
-interface DeviceRuntime {
-    availability: DeviceAvailability;
-    poller: DevicePoller;
-    endpoints: readonly Endpoint[];
-}
 
 /**
  * Cloud credentials plus live inventory. Hosts persist {@link TokenData}
@@ -300,7 +292,7 @@ export class Session extends EventEmitter<SessionEvents> {
             onConnectionChange: (connected) => {
                 if (!connected) {
                     for (const runtime of this.devices.values()) {
-                        runtime.poller.clearMqtt();
+                        runtime.clearMqtt();
                     }
                 }
                 this.emit('connection', connected);
@@ -385,9 +377,9 @@ export class Session extends EventEmitter<SessionEvents> {
             return;
         }
         if (originUuid === undefined) {
-            runtime.poller.recordPush();
+            runtime.recordPush();
         }
-        runtime.availability.handleMessage(message);
+        runtime.handleMessage(message);
     }
 
     private deviceRuntime(
@@ -413,8 +405,7 @@ export class Session extends EventEmitter<SessionEvents> {
         if (!runtime) {
             return;
         }
-        runtime.poller.stop();
-        runtime.availability.stop();
+        runtime.stop();
         for (const endpoint of runtime.endpoints) {
             this.endpoints.delete(endpoint.id);
         }
@@ -473,7 +464,7 @@ export class Session extends EventEmitter<SessionEvents> {
             const request = this.deviceRequest(physical);
             const startDelayMs = (this.startedDevices * POLL_START_STAGGER_MS) % DEFAULT_POLL_INTERVAL_MS;
             this.startedDevices += 1;
-            const availability = new DeviceAvailability({
+            const runtime = new DeviceRuntime({
                 uuid,
                 initialOnline: physical.online,
                 endpoints,
@@ -483,33 +474,26 @@ export class Session extends EventEmitter<SessionEvents> {
                     payload: payload ?? {},
                     priority: 'background'
                 }),
-                onOnlineChange: (online) => poller.setOnline(online),
                 onInnerIp: (innerIp) => {
                     physical.innerIp = innerIp;
-                }
-            });
-            // Mutually referential with `availability`; both only read each
-            // other from callbacks, so declaration order is safe.
-            const poller: DevicePoller = new DevicePoller({
-                isOnline: () => availability.isOnline(),
+                },
                 isCloudPath: () => this.connectedRouter.isCloudPath(uuid, physical.innerIp),
                 httpDown: () => this.connectedRouter.isHttpDown(uuid),
                 maxCmdNum: () => physical.maxCmdNum,
-                requestGets: (gets, maxCmdNum) => this.connectedRouter.requestGets({
+                requestGets: (gets, maxCmdNum, onPackedFallback) => this.connectedRouter.requestGets({
                     uuid,
                     gets,
                     maxCmdNum,
                     priority: 'background',
                     ...this.lanBind(physical),
-                    onPackedFallback: () => poller.shrinkResponseBudget()
+                    onPackedFallback
                 }),
                 onAck: (message) => this.handlePush(message, uuid),
                 jobs: buildPollJobs(physical.ability, physical.endpoints, physical.digestNamespaces),
                 startDelayMs
             });
-            this.devices.set(uuid, { availability, poller, endpoints });
-            availability.start();
-            poller.start();
+            this.devices.set(uuid, runtime);
+            runtime.start();
         }
     }
 
