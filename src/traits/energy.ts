@@ -39,7 +39,7 @@ import {
     type MerossMessage,
     type StandbyKillerEntry
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 export interface EnergyValues {
     power?: number;
@@ -75,7 +75,7 @@ export interface EnergyTraitBind {
     hasConsumptionH: boolean;
     /** Ability keys; extras no-op when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: EnergyValues) => void;
 }
 

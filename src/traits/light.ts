@@ -17,7 +17,7 @@ import {
     type LightEffectEntry,
     type MerossMessage
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 export interface LightRgb {
     r: number;
@@ -49,7 +49,7 @@ export interface LightTraitBind {
     hasLightEffect: boolean;
     /** Capacity bitmask from Ability; the trait updates it after the first GETACK. */
     lightCapacity: number;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: LightValues) => void;
 }
 

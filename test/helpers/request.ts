@@ -1,11 +1,8 @@
 import { encodeMessage, type MerossMessage, type MerossPayload } from '../../src/protocol';
-import type { RoutedRequestOptions } from '../../src/transport/router';
+import type { DeviceRequest, DeviceRequestOptions } from '../../src/request';
 
 const DEFAULT_KEY = 'stub-key';
 const FROM_APP = '/app/test/subscribe';
-
-/** Trait `request` bind: uuid / ip / encryptionKey are supplied by Session. */
-export type TraitRequestOptions = Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>;
 
 export interface RequestRecorderOptions {
     uuid: string;
@@ -16,7 +13,7 @@ export interface RequestRecorderOptions {
      * Throw to simulate a transport/command failure after the SET is recorded.
      */
     ack?: (
-        options: TraitRequestOptions,
+        options: DeviceRequestOptions,
         sent: MerossMessage
     ) => MerossMessage | Promise<MerossMessage>;
 }
@@ -29,7 +26,7 @@ export interface RequestRecorderOptions {
  */
 export function createRequestRecorder(options: RequestRecorderOptions): {
     requests: MerossMessage[];
-    request: (opts: TraitRequestOptions) => Promise<MerossMessage>;
+    request: DeviceRequest;
 } {
     const key = options.key ?? DEFAULT_KEY;
     const from = options.from ?? FROM_APP;

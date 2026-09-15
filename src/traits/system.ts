@@ -22,7 +22,7 @@ import {
     type SystemPositionState,
     type SystemTimeState
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 export type {
     SystemDebugState,
@@ -57,7 +57,7 @@ export interface SystemTraitBind {
     initialHardware?: SystemHardwareState;
     /** System.All time when the digest carried it. */
     initialTime?: SystemTimeState;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: SystemValues) => void;
     /** Injectable for clock-skew tests. */
     now?: () => number;

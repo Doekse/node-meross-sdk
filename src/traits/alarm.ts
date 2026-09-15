@@ -10,7 +10,7 @@ import {
     type BeepChannelState,
     type MerossMessage
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 export interface AlarmValues {
     on?: boolean;
@@ -29,7 +29,7 @@ export interface AlarmTraitBind {
     channel: number;
     /** Ability keys; setters and PUSH apply only for advertised namespaces. */
     namespaces?: ReadonlySet<string>;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: AlarmValues) => void;
 }
 

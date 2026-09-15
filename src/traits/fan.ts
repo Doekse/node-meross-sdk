@@ -17,7 +17,7 @@ import {
     type FanButtonConfigSetOptions,
     type MerossMessage
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 export interface FanValues {
     on?: boolean;
@@ -42,7 +42,7 @@ export interface FanTraitBind {
     /** ToggleX when advertised; classic Toggle only when ToggleX is absent. */
     hasToggleX: boolean;
     hasToggle: boolean;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: FanValues) => void;
 }
 

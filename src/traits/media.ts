@@ -6,7 +6,7 @@ import {
     type MerossMessage,
     type Mp3State
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 export interface MediaValues {
     muted?: boolean;
@@ -22,7 +22,7 @@ export interface MediaValues {
 export interface MediaTraitBind {
     uuid: string;
     channel: number;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: MediaValues) => void;
 }
 

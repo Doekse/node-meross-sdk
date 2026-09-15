@@ -15,7 +15,7 @@ import {
     type TriggerXEntry,
     type TriggerXRule
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 export type TriggerEntry = TriggerXEntry;
 export type TriggerRule = TriggerXRule;
@@ -49,7 +49,7 @@ export interface TriggerTraitBind {
      * Ability keys advertised by the device. Digest.TriggerX listing no-ops when absent.
      */
     namespaces?: ReadonlySet<string>;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: TriggerValues) => void;
 }
 

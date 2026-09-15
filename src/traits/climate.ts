@@ -125,7 +125,7 @@ import {
     type SensorHistoryXState,
     type SensorLatestState
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 export interface ClimatePid {
     grade: number;
@@ -215,7 +215,7 @@ export interface ClimateTraitBoardBind {
     generation: ThermostatGeneration;
     /** Ability keys; extra methods no-op when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: ClimateValues) => void;
 }
 
@@ -229,7 +229,7 @@ export interface ClimateTraitHubBind {
     subDeviceId: string;
     /** Ability keys; extra methods no-op when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: ClimateValues) => void;
 }
 

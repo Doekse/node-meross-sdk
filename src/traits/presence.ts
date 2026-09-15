@@ -12,7 +12,7 @@ import {
     type PresenceConfig,
     type PresenceConfigSetOptions
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 export interface PresenceValues {
     /** true when firmware reports present (wire 2). */
@@ -43,7 +43,7 @@ export interface PresenceTraitBind {
     channel: number;
     /** Ability keys; extra methods no-op when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: PresenceValues) => void;
 }
 

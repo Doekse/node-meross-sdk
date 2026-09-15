@@ -38,7 +38,7 @@ import {
     type SensorAllState,
     type SensorSmokeState
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 /** Hub child sensor families. Digest type strings do not match cloud subDeviceType. */
 export type SensorFamily = 'tempHum' | 'contact' | 'leak' | 'motion' | 'smoke';
@@ -107,7 +107,7 @@ export interface SensorTraitBind {
     family: SensorFamily;
     /** Ability keys; extra methods no-op when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: SensorValues) => void;
 }
 

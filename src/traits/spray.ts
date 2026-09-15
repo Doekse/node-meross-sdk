@@ -5,7 +5,7 @@ import {
     type MerossMessage,
     type SprayMode
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 
 export type { SprayMode };
 
@@ -20,7 +20,7 @@ export interface SprayValues {
 export interface SprayTraitBind {
     uuid: string;
     channel: number;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: SprayValues) => void;
 }
 

@@ -12,7 +12,7 @@ import {
     type DiffuserSprayMode,
     type MerossMessage
 } from '../protocol';
-import type { RoutedRequestOptions } from '../transport/router';
+import type { DeviceRequest } from '../request';
 import type { LightRgb } from './light';
 
 export type { DiffuserLightMode, DiffuserSprayMode };
@@ -36,7 +36,7 @@ export interface DiffuserTraitBind {
     channel: number;
     /** Ability keys; extra methods no-op when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
-    request: (options: Omit<RoutedRequestOptions, 'uuid' | 'ip' | 'encryptionKey'>) => Promise<MerossMessage>;
+    request: DeviceRequest;
     emitChange: (values: DiffuserValues) => void;
 }
 
