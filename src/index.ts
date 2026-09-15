@@ -18,11 +18,12 @@ export {
     AlarmTrait, DndTrait, SystemTrait, TimerTrait, TriggerTrait
 } from './traits';
 export type {
-    ElectricityConfig,
+    SwitchValues, EnergyValues, ElectricityConfig, LightValues, LightRgb,
+    CoverValues, ClimateValues, ClimatePid,
     SensorFamily, SensorValues, SensorSmokeStatus, SensorAlertBand,
     PresenceValues, SprinklerValues, SprinklerScheduleEntry, SprinklerCycleSummary, SprayValues, SprayMode, FanValues,
     FanButtonConfig, FanButtonConfigSetOptions,
-    DiffuserValues, DiffuserLightMode, DiffuserSprayMode, MediaValues, AlarmValues,
+    DiffuserValues, DiffuserLightMode, DiffuserSprayMode, MediaValues, AlarmValues, DndValues,
     SystemValues, SystemDebugState, SystemFirmwareState, SystemHardwareState,
     SystemPositionState, SystemTimeState,
     TimerEntry, TimerSetInput, TimerValues,

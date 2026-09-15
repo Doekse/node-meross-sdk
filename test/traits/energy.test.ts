@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint, type EndpointChange } from '../../src/endpoint';
 import {
     CONFIG_OVERTEMP_NAMESPACE,
     CONFIG_STANDBY_KILLER_NAMESPACE,
@@ -28,10 +28,7 @@ import {
     encodeStandbyKillerSet,
     type MerossMessage
 } from '../../src/protocol';
-import {
-    type EnergyValues,
-    EnergyTrait
-} from '../../src/traits/energy';
+import { EnergyTrait } from '../../src/traits/energy';
 import { createRequestRecorder, recordedCalls, traitAck } from '../helpers/request';
 
 const fixturesDir = join(process.cwd(), 'test/fixtures');
@@ -213,7 +210,7 @@ describe('EnergyTrait.poll', () => {
 
     it('emits change patches for electricity and consumption', async () => {
         const { endpoint, trait } = createEnergyHarness();
-        const changes: Array<{ trait: string; values: EnergyValues }> = [];
+        const changes: EndpointChange[] = [];
         endpoint.on('change', (change) => changes.push(change));
 
         await trait.poll();
@@ -764,7 +761,7 @@ describe('EnergyTrait alert config', () => {
 describe('EnergyTrait consumption delete', () => {
     it('DELETEs ConsumptionX records and clears local consumption', async () => {
         const { endpoint, trait, requests } = createEnergyHarness();
-        const changes: Array<{ trait: string; values: EnergyValues }> = [];
+        const changes: EndpointChange[] = [];
         endpoint.on('change', (change) => changes.push(change));
         await trait.poll();
         requests.length = 0;

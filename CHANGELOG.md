@@ -10,10 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `Endpoint.protocol()` and a `protocol` event report whether the next request will use LAN HTTP or cloud MQTT. Hosts can display this; they cannot pick a protocol.
+- Public `CommandError`, `TransportError`, and `ProtocolError` so hosts can `instanceof` trait-command failures.
+- Type-only `SessionOptions` next to `LoginOptions` / `TokenData`.
+- `EndpointChange` is a per-trait discriminated union; remaining trait `*Values` types (`SwitchValues`, `EnergyValues`, `LightValues`, `LightRgb`, `CoverValues`, `ClimateValues`, `ClimatePid`, `DndValues`) are on the public barrel.
 
 ### Changed
 
 - Internal composition: endpoint trait binding moves to `attachEndpoint`, traits take a device-scoped `DeviceRequest` port, digest namespaces live next to System.All decode, and poll jobs accept `PollTarget`. No host-visible API or behavior change.
+- Driver methods (`Endpoint.handlePush`, `setAvailability`, `setProtocol`) and `Inventory.replace` are `@internal` and omitted from published typings (`stripInternal`). Same-package source and tests that import `src/` still see them; runtime CJS still has the functions on the prototype.
+
+### Breaking (alpha)
+
+- `EndpointChange.values` is no longer `Record<string, unknown>` — narrow on `change.trait` before reading fields.
+- `NotImplementedError` is not exported from the public barrel.
 
 ### Fixed
 

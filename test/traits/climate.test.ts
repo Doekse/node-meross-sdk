@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint, type EndpointChange } from '../../src/endpoint';
 import {
     THERMOSTAT_MODE_NAMESPACE,
     THERMOSTAT_MODEB_NAMESPACE,
@@ -354,27 +354,29 @@ describe('ClimateTrait hub valve', () => {
 
     it('applies Hub.Exception PUSH for the bound subdevice', () => {
         const { endpoint, trait } = createHubHarness([HUB_EXCEPTION_NAMESPACE]);
-        const changes: Array<{ values: Record<string, unknown> }> = [];
+        const changes: EndpointChange[] = [];
         endpoint.on('change', (c) => changes.push(c));
 
         trait.handlePush(push(HUB_EXCEPTION_NAMESPACE, {
             exception: [{ id: SUB_DEVICE_ID, code: 5061 }]
         }));
 
-        assert.equal(changes[0].values.fault, 5061);
+        assert.deepEqual(changes, [{ trait: 'climate', values: { fault: 5061 } }]);
     });
 
     it('applies Hub.SubDevice.Version PUSH for the bound subdevice', () => {
         const { endpoint, trait } = createHubHarness([HUB_SUBDEVICE_VERSION_NAMESPACE]);
-        const changes: Array<{ values: Record<string, unknown> }> = [];
+        const changes: EndpointChange[] = [];
         endpoint.on('change', (c) => changes.push(c));
 
         trait.handlePush(push(HUB_SUBDEVICE_VERSION_NAMESPACE, {
             version: [{ id: SUB_DEVICE_ID, hardware: '1.1.5', firmware: '5.1.8' }]
         }));
 
-        assert.equal(changes[0].values.firmwareVersion, '5.1.8');
-        assert.equal(changes[0].values.hardwareVersion, '1.1.5');
+        assert.deepEqual(changes, [{
+            trait: 'climate',
+            values: { firmwareVersion: '5.1.8', hardwareVersion: '1.1.5' }
+        }]);
     });
 
     it('handlePush applies Hub.Mts100.Temperature PUSH', () => {

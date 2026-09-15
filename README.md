@@ -205,9 +205,11 @@ endpoint.on('protocol', (protocol) => {
   // 'http' | 'mqtt'; current value is endpoint.protocol()
 });
 
-endpoint.on('change', ({ trait, values }) => {
-  // trait: 'switch' | 'light' | 'energy' | ...
-  // values: trait-specific snapshot (e.g. { on: true })
+endpoint.on('change', (change) => {
+  // Narrow on trait before reading fields — values is a per-trait union.
+  if (change.trait === 'energy') {
+    // change.values.power, .current, .voltage, …
+  }
 });
 ```
 
@@ -258,19 +260,28 @@ Readings such as energy and sensors update from PUSH and the internal poller. Li
 
 ## Errors
 
-Catch by class. Each error has a string `code`.
+Catch by class. Each error has a string `code`. Trait commands such as `setOn` reject with `CommandError`, `TransportError`, or `ProtocolError` — not `AuthError` / `CloudError`.
 
 
-| Class                 | When                                                                      |
-| --------------------- | ------------------------------------------------------------------------- |
-| `AuthError`           | Bad credentials, MFA, or an incomplete / expired token                    |
-| `CloudError`          | Cloud HTTP failure, region redirect exhaustion, or a non-auth `apiStatus` |
-| `MerossError`         | Session not connected, unknown endpoint, and other operational failures   |
-| `NotImplementedError` | Reserved for unimplemented public surface                                 |
+| Class            | When                                                                                                                                      |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `CommandError`   | `COMMAND_TIMEOUT`, device `ERROR` (`COMMAND_FAILED` + `deviceCode`), `COMMAND_CANCELLED`, wrong key (`INVALID_KEY`, `deviceCode` 5001)   |
+| `TransportError` | MQTT/LAN connect or publish failure after failover (`MQTT_RATE_LIMITED`, …)                                                             |
+| `ProtocolError`  | Malformed envelope, `SIGNATURE_ERROR`, or a LAN body that is not a pending reply                                                          |
+| `MerossError`    | `NOT_CONNECTED`, `ENDPOINT_NOT_FOUND`, `TIMER_NOT_FOUND`, `TRIGGER_NOT_FOUND`, and other operational failures                             |
+| `AuthError`      | Login, `sync()`, or `reauthenticate()` — bad credentials, MFA, or an incomplete / expired token                                           |
+| `CloudError`     | Login, `sync()`, or `reauthenticate()` — cloud HTTP failure, region redirect exhaustion, or a non-auth `apiStatus`                        |
 
 
 ```javascript
-const { AuthError, CloudError, MerossError } = require('node-meross-sdk');
+const {
+  AuthError,
+  CloudError,
+  MerossError,
+  CommandError,
+  TransportError,
+  ProtocolError
+} = require('node-meross-sdk');
 ```
 
 
