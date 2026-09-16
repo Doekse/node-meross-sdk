@@ -16,6 +16,7 @@ import {
     enrollBoardAlarmExtra,
     enrollHubAlarmExtra
 } from '../traits/alarm';
+import { ClimateDescriptor, enrollClimate } from '../traits/climate';
 import { enrollCover } from '../traits/cover';
 import { enrollDiffuser } from '../traits/diffuser';
 import {
@@ -28,7 +29,9 @@ import { enrollFan } from '../traits/fan';
 import { enrollLight } from '../traits/light';
 import { enrollBoardMediaExtra, enrollMediaStandalone } from '../traits/media';
 import { enrollPresence } from '../traits/presence';
+import { SensorDescriptor } from '../traits/sensor';
 import { enrollSpray } from '../traits/spray';
+import { SprinklerDescriptor } from '../traits/sprinkler';
 import { enrollBoardSystemExtra } from '../traits/system';
 import {
     enrollHubUntypedOnoff,
@@ -42,23 +45,6 @@ export { ABILITY_NAMESPACE, abilityMaxCmdNum, decodeAbilityGetAck } from '../pro
 export type { AbilityMap } from '../protocol/codecs/ability';
 export { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from '../protocol/codecs/system-all';
 export type { SystemAll } from '../protocol/codecs/system-all';
-
-const CLIMATE_SUBDEVICES = new Set(['mts100', 'mts100v3', 'mts150', 'mts150p']);
-const SENSOR_SUBDEVICES = new Set([
-    'ms100', 'ms100f', 'ms120', 'ms130', 'ms200', 'ms400', 'ms405', 'ma151', 'gs559'
-]);
-const SPRINKLER_SUBDEVICES = new Set(['mst100']);
-
-/** Digest type strings that do not match cloud subDeviceType. */
-const HUB_MODEL_ALIASES: Record<string, string> = {
-    mst: 'mst100',
-    temphum: 'ms100',
-    temphumi: 'ms130',
-    doorwindow: 'ms200',
-    waterleak: 'ms400',
-    smokealarm: 'gs559',
-    motion: 'ms120'
-};
 
 export interface EnrollInput {
     abilityPayload: MerossPayload;
@@ -271,7 +257,8 @@ export class DeviceGraph {
 
 /**
  * Unknown digest types return undefined so enrollHub can fall back to onoff
- * or omit the row.
+ * or omit the row. Alias rewrite consults the three hubChild maps before
+ * model-set lookup (climate → sensor → sprinkler).
  */
 function classifyHubChild(raw: string | undefined): {
     model: string;
@@ -282,15 +269,31 @@ function classifyHubChild(raw: string | undefined): {
         return undefined;
     }
     const lowered = raw.toLowerCase();
-    const model = HUB_MODEL_ALIASES[lowered] ?? lowered;
-    if (CLIMATE_SUBDEVICES.has(model)) {
-        return { model, classHint: 'climate', traits: ['climate'] };
+    const model =
+        ClimateDescriptor.hubChild.aliases[lowered]
+        ?? SensorDescriptor.hubChild.aliases[lowered]
+        ?? SprinklerDescriptor.hubChild.aliases[lowered]
+        ?? lowered;
+    if (ClimateDescriptor.hubChild.models.has(model)) {
+        return {
+            model,
+            classHint: ClimateDescriptor.hubChild.classHint,
+            traits: ['climate']
+        };
     }
-    if (SENSOR_SUBDEVICES.has(model)) {
-        return { model, classHint: 'sensor', traits: ['sensor'] };
+    if (SensorDescriptor.hubChild.models.has(model)) {
+        return {
+            model,
+            classHint: SensorDescriptor.hubChild.classHint,
+            traits: ['sensor']
+        };
     }
-    if (SPRINKLER_SUBDEVICES.has(model)) {
-        return { model, classHint: 'sprinkler', traits: ['sprinkler'] };
+    if (SprinklerDescriptor.hubChild.models.has(model)) {
+        return {
+            model,
+            classHint: SprinklerDescriptor.hubChild.classHint,
+            traits: ['sprinkler']
+        };
     }
     return undefined;
 }
@@ -374,16 +377,7 @@ function enrollBoard(
 
     enrollLight(ctx);
     enrollCover(ctx);
-
-    if (
-        'Appliance.Control.Thermostat.Mode' in ability
-        || 'Appliance.Control.Thermostat.ModeB' in ability
-        || 'Appliance.Control.Thermostat.ModeC' in ability
-        || all.digest.thermostat
-    ) {
-        add(0, 'climate', ['climate']);
-    }
-
+    enrollClimate(ctx);
     enrollPresence(ctx);
     enrollDiffuser(ctx);
     enrollSpray(ctx);

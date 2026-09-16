@@ -103,6 +103,7 @@ import { CONTROL_WATER_NAMESPACE, DEVICE_CFG_NAMESPACE } from '../protocol/codec
 import type { MerossPayload } from '../protocol/message';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import { AlarmDescriptor } from '../traits/alarm';
+import { ClimateDescriptor } from '../traits/climate';
 import { CoverDescriptor } from '../traits/cover';
 import { DiffuserDescriptor } from '../traits/diffuser';
 import { DndDescriptor } from '../traits/dnd';
@@ -111,7 +112,9 @@ import { FanDescriptor } from '../traits/fan';
 import { LightDescriptor } from '../traits/light';
 import { MediaDescriptor } from '../traits/media';
 import { PresenceDescriptor } from '../traits/presence';
+import { SensorDescriptor } from '../traits/sensor';
 import { SprayDescriptor } from '../traits/spray';
+import { SprinklerDescriptor } from '../traits/sprinkler';
 import { SwitchDescriptor, TOGGLE_NAMESPACE } from '../traits/switch';
 import { SystemDescriptor } from '../traits/system';
 import { TimerDescriptor } from '../traits/timer';
@@ -119,18 +122,7 @@ import { TriggerDescriptor } from '../traits/trigger';
 import type { PollJob } from './poller';
 import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
 import {
-    channelList,
-    DEFAULT,
-    idList,
-    ONCE,
     POLL_RESPONSE_HEADER_SIZE,
-    SMART_ALL,
-    SMART_BATTERY,
-    SMART_CLOUDMQTT,
-    SMART_CONFIG,
-    SMART_FAST_SLOW_CLOUD,
-    SMART_SLOW,
-    subIdList,
     type PayloadSpec,
     type PollSpec
 } from './spec';
@@ -210,11 +202,7 @@ const POLL: Record<string, PollSpec> = {
     [SYSTEM_DEBUG_NAMESPACE]: SystemDescriptor.poll[SYSTEM_DEBUG_NAMESPACE],
     [CONFIG_OVERTEMP_NAMESPACE]: EnergyDescriptor.poll[CONFIG_OVERTEMP_NAMESPACE],
     [CONTROL_OVERTEMP_NAMESPACE]: EnergyDescriptor.poll[CONTROL_OVERTEMP_NAMESPACE],
-    [CONFIG_SENSOR_ASSOCIATION_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('config'),
-        item: 30
-    },
+    [CONFIG_SENSOR_ASSOCIATION_NAMESPACE]: SensorDescriptor.poll[CONFIG_SENSOR_ASSOCIATION_NAMESPACE],
     [CONTROL_ALERT_CONFIG_NAMESPACE]: EnergyDescriptor.poll[CONTROL_ALERT_CONFIG_NAMESPACE],
     [CONFIG_STANDBY_KILLER_NAMESPACE]: EnergyDescriptor.poll[CONFIG_STANDBY_KILLER_NAMESPACE],
 
@@ -252,11 +240,7 @@ const POLL: Record<string, PollSpec> = {
     [CONSUMPTIONX_NAMESPACE]: EnergyDescriptor.poll[CONSUMPTIONX_NAMESPACE],
     [CONSUMPTIONH_NAMESPACE]: EnergyDescriptor.poll[CONSUMPTIONH_NAMESPACE],
     [SENSOR_LATESTX_NAMESPACE]: PresenceDescriptor.poll[SENSOR_LATESTX_NAMESPACE],
-    [SENSOR_LATEST_NAMESPACE]: {
-        ...SMART_FAST_SLOW_CLOUD,
-        payload: channelList('latest', 'climate'),
-        item: 80
-    },
+    [SENSOR_LATEST_NAMESPACE]: ClimateDescriptor.poll[SENSOR_LATEST_NAMESPACE],
 
     // Timer / trigger indexes (X) and legacy full-list GETs (pre-X)
     [DIGEST_TIMERX_NAMESPACE]: TimerDescriptor.poll[DIGEST_TIMERX_NAMESPACE],
@@ -265,188 +249,53 @@ const POLL: Record<string, PollSpec> = {
     [CONTROL_TRIGGER_NAMESPACE]: TriggerDescriptor.poll[CONTROL_TRIGGER_NAMESPACE],
 
     // Board climate
-    [THERMOSTAT_MODE_NAMESPACE]: {
-        ...DEFAULT,
-        payload: channelList('mode', 'climate')
-    },
-    [THERMOSTAT_MODEB_NAMESPACE]: {
-        ...DEFAULT,
-        payload: channelList('modeB', 'climate')
-    },
-    [THERMOSTAT_MODEC_NAMESPACE]: {
-        ...DEFAULT,
-        payload: channelList('control', 'climate')
-    },
-    [TIMER_NAMESPACE]: {
-        ...DEFAULT,
-        payload: channelList('timer', 'climate')
-    },
-    [ALARM_NAMESPACE]: {
-        ...DEFAULT,
-        payload: channelList('alarm', 'climate')
-    },
-    [HOLD_ACTION_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('holdAction', 'climate')
-    },
-    [WINDOW_OPENED_NAMESPACE]: {
-        ...SMART_SLOW,
-        payload: channelList('windowOpened', 'climate')
-    },
-    [SENSOR_NAMESPACE]: {
-        ...SMART_SLOW,
-        payload: channelList('sensor', 'climate')
-    },
-    [CALIBRATION_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('calibration', 'climate')
-    },
-    [DEAD_ZONE_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('deadZone', 'climate')
-    },
-    [SUMMER_MODE_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('summerMode', 'climate')
-    },
-    [COMPRESSOR_DELAY_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('delay', 'climate')
-    },
-    [ALARM_CONFIG_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('alarmConfig', 'climate')
-    },
-    [SCHEDULE_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('schedule', 'climate')
-    },
-    [SCHEDULEB_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('scheduleB', 'climate')
-    },
-    [TEMP_UNIT_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('tempUnit', 'climate')
-    },
-    [SCREEN_BRIGHTNESS_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('brightness', 'climate'),
-        item: 70
-    },
-    [PHYSICAL_LOCK_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: { list: 'lock', by: 'either', for: 'climate' },
-        item: 35
-    },
-    [FROST_NAMESPACE]: {
-        ...SMART_SLOW,
-        payload: channelList('frost', 'climate')
-    },
-    [OVERHEAT_NAMESPACE]: {
-        ...SMART_SLOW,
-        payload: channelList('overheat', 'climate')
-    },
-    [CTL_RANGE_NAMESPACE]: {
-        ...ONCE,
-        payload: channelList('ctlRange', 'climate')
-    },
+    [THERMOSTAT_MODE_NAMESPACE]: ClimateDescriptor.poll[THERMOSTAT_MODE_NAMESPACE],
+    [THERMOSTAT_MODEB_NAMESPACE]: ClimateDescriptor.poll[THERMOSTAT_MODEB_NAMESPACE],
+    [THERMOSTAT_MODEC_NAMESPACE]: ClimateDescriptor.poll[THERMOSTAT_MODEC_NAMESPACE],
+    [TIMER_NAMESPACE]: ClimateDescriptor.poll[TIMER_NAMESPACE],
+    [ALARM_NAMESPACE]: ClimateDescriptor.poll[ALARM_NAMESPACE],
+    [HOLD_ACTION_NAMESPACE]: ClimateDescriptor.poll[HOLD_ACTION_NAMESPACE],
+    [WINDOW_OPENED_NAMESPACE]: ClimateDescriptor.poll[WINDOW_OPENED_NAMESPACE],
+    [SENSOR_NAMESPACE]: ClimateDescriptor.poll[SENSOR_NAMESPACE],
+    [CALIBRATION_NAMESPACE]: ClimateDescriptor.poll[CALIBRATION_NAMESPACE],
+    [DEAD_ZONE_NAMESPACE]: ClimateDescriptor.poll[DEAD_ZONE_NAMESPACE],
+    [SUMMER_MODE_NAMESPACE]: ClimateDescriptor.poll[SUMMER_MODE_NAMESPACE],
+    [COMPRESSOR_DELAY_NAMESPACE]: ClimateDescriptor.poll[COMPRESSOR_DELAY_NAMESPACE],
+    [ALARM_CONFIG_NAMESPACE]: ClimateDescriptor.poll[ALARM_CONFIG_NAMESPACE],
+    [SCHEDULE_NAMESPACE]: ClimateDescriptor.poll[SCHEDULE_NAMESPACE],
+    [SCHEDULEB_NAMESPACE]: ClimateDescriptor.poll[SCHEDULEB_NAMESPACE],
+    [TEMP_UNIT_NAMESPACE]: ClimateDescriptor.poll[TEMP_UNIT_NAMESPACE],
+    [SCREEN_BRIGHTNESS_NAMESPACE]: ClimateDescriptor.poll[SCREEN_BRIGHTNESS_NAMESPACE],
+    [PHYSICAL_LOCK_NAMESPACE]: ClimateDescriptor.poll[PHYSICAL_LOCK_NAMESPACE],
+    [FROST_NAMESPACE]: ClimateDescriptor.poll[FROST_NAMESPACE],
+    [OVERHEAT_NAMESPACE]: ClimateDescriptor.poll[OVERHEAT_NAMESPACE],
+    [CTL_RANGE_NAMESPACE]: ClimateDescriptor.poll[CTL_RANGE_NAMESPACE],
 
     // Hub climate
-    [HUB_MTS100_ALL_NAMESPACE]: {
-        ...SMART_ALL,
-        payload: idList('all', 'climate')
-    },
-    [HUB_MTS100_MODE_NAMESPACE]: {
-        ...DEFAULT,
-        skipIf: HUB_MTS100_ALL_NAMESPACE,
-        payload: idList('mode', 'climate')
-    },
-    [HUB_MTS100_TEMPERATURE_NAMESPACE]: {
-        ...DEFAULT,
-        skipIf: HUB_MTS100_ALL_NAMESPACE,
-        payload: idList('temperature', 'climate')
-    },
-    [HUB_MTS100_ADJUST_NAMESPACE]: {
-        ...SMART_CLOUDMQTT,
-        payload: idList('adjust', 'climate')
-    },
-    [HUB_MTS100_CONFIG_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: idList('config', 'climate')
-    },
-    [HUB_MTS100_SUPERCTL_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: idList('superCtl', 'climate')
-    },
-    [HUB_MTS100_TIMESYNC_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: idList('timeSync', 'climate')
-    },
-    [HUB_MTS100_SCHEDULE_NAMESPACE]: {
-        ...SMART_CLOUDMQTT,
-        payload: idList('schedule', 'climate')
-    },
-    [HUB_MTS100_SCHEDULEB_NAMESPACE]: {
-        ...SMART_CLOUDMQTT,
-        payload: idList('schedule', 'climate')
-    },
+    [HUB_MTS100_ALL_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_ALL_NAMESPACE],
+    [HUB_MTS100_MODE_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_MODE_NAMESPACE],
+    [HUB_MTS100_TEMPERATURE_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_TEMPERATURE_NAMESPACE],
+    [HUB_MTS100_ADJUST_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_ADJUST_NAMESPACE],
+    [HUB_MTS100_CONFIG_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_CONFIG_NAMESPACE],
+    [HUB_MTS100_SUPERCTL_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_SUPERCTL_NAMESPACE],
+    [HUB_MTS100_TIMESYNC_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_TIMESYNC_NAMESPACE],
+    [HUB_MTS100_SCHEDULE_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_SCHEDULE_NAMESPACE],
+    [HUB_MTS100_SCHEDULEB_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_SCHEDULEB_NAMESPACE],
 
     // Hub sensors / sprinkler
-    [HUB_SENSOR_ALL_NAMESPACE]: {
-        ...SMART_ALL,
-        payload: idList('all', 'sensor')
-    },
-    [HUB_SENSOR_TEMPHUM_NAMESPACE]: {
-        ...DEFAULT,
-        skipIf: HUB_SENSOR_ALL_NAMESPACE,
-        payload: idList('tempHum', 'sensor')
-    },
-    [HUB_SENSOR_DOORWINDOW_NAMESPACE]: {
-        ...DEFAULT,
-        skipIf: HUB_SENSOR_ALL_NAMESPACE,
-        payload: idList('doorWindow', 'sensor')
-    },
-    [HUB_SENSOR_WATERLEAK_NAMESPACE]: {
-        ...DEFAULT,
-        skipIf: HUB_SENSOR_ALL_NAMESPACE,
-        payload: idList('waterLeak', 'sensor')
-    },
-    [HUB_SENSOR_MOTION_NAMESPACE]: {
-        ...DEFAULT,
-        skipIf: HUB_SENSOR_ALL_NAMESPACE,
-        payload: idList('motion', 'sensor')
-    },
-    [HUB_SENSOR_SMOKE_NAMESPACE]: {
-        ...DEFAULT,
-        skipIf: HUB_SENSOR_ALL_NAMESPACE,
-        payload: idList('smokeAlarm', 'sensor')
-    },
-    [HUB_BATTERY_NAMESPACE]: {
-        ...SMART_BATTERY,
-        payload: idList('battery')
-    },
+    [HUB_SENSOR_ALL_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_ALL_NAMESPACE],
+    [HUB_SENSOR_TEMPHUM_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_TEMPHUM_NAMESPACE],
+    [HUB_SENSOR_DOORWINDOW_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_DOORWINDOW_NAMESPACE],
+    [HUB_SENSOR_WATERLEAK_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_WATERLEAK_NAMESPACE],
+    [HUB_SENSOR_MOTION_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_MOTION_NAMESPACE],
+    [HUB_SENSOR_SMOKE_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_SMOKE_NAMESPACE],
+    [HUB_BATTERY_NAMESPACE]: SensorDescriptor.poll[HUB_BATTERY_NAMESPACE],
     [HUB_SUBDEVICE_VERSION_NAMESPACE]: SwitchDescriptor.poll[HUB_SUBDEVICE_VERSION_NAMESPACE],
-    [HUB_SENSOR_ADJUST_NAMESPACE]: {
-        ...SMART_CLOUDMQTT,
-        payload: idList('adjust', 'sensor')
-    },
-    [HUB_SENSOR_ALERT_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: idList('alert', 'sensor')
-    },
-    [SMOKE_CONFIG_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: subIdList('config', 'sensor')
-    },
-    [CONTROL_WATER_NAMESPACE]: {
-        ...DEFAULT,
-        payload: subIdList('control', 'sprinkler')
-    },
-    [DEVICE_CFG_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: subIdList('config', 'sprinkler')
-    }
+    [HUB_SENSOR_ADJUST_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_ADJUST_NAMESPACE],
+    [HUB_SENSOR_ALERT_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_ALERT_NAMESPACE],
+    [SMOKE_CONFIG_NAMESPACE]: SensorDescriptor.poll[SMOKE_CONFIG_NAMESPACE],
+    [CONTROL_WATER_NAMESPACE]: SprinklerDescriptor.poll[CONTROL_WATER_NAMESPACE],
+    [DEVICE_CFG_NAMESPACE]: SprinklerDescriptor.poll[DEVICE_CFG_NAMESPACE]
 };
 
 /**

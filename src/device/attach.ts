@@ -1,7 +1,7 @@
 import { Endpoint } from '../endpoint';
 import type { DeviceRequest } from '../request';
 import { AlarmDescriptor, AlarmTrait, type AlarmValues } from '../traits/alarm';
-import { ClimateTrait, type ClimateValues, type ThermostatGeneration } from '../traits/climate';
+import { ClimateDescriptor, ClimateTrait, type ClimateValues } from '../traits/climate';
 import { CoverDescriptor, CoverTrait, type CoverValues } from '../traits/cover';
 import { DiffuserDescriptor, DiffuserTrait, type DiffuserValues } from '../traits/diffuser';
 import { DndDescriptor, DndTrait, type DndValues } from '../traits/dnd';
@@ -10,9 +10,9 @@ import { FanDescriptor, FanTrait, type FanValues } from '../traits/fan';
 import { LightDescriptor, LightTrait, type LightValues } from '../traits/light';
 import { MediaDescriptor, MediaTrait, type MediaValues } from '../traits/media';
 import { PresenceDescriptor, PresenceTrait, type PresenceValues } from '../traits/presence';
-import { SENSOR_FAMILY_MAP, SensorTrait, type SensorValues } from '../traits/sensor';
+import { SensorDescriptor, SensorTrait, type SensorValues } from '../traits/sensor';
 import { SprayDescriptor, SprayTrait, type SprayValues } from '../traits/spray';
-import { SprinklerTrait, type SprinklerValues } from '../traits/sprinkler';
+import { SprinklerDescriptor, SprinklerTrait, type SprinklerValues } from '../traits/sprinkler';
 import { SwitchDescriptor, SwitchTrait, type SwitchValues } from '../traits/switch';
 import { SystemDescriptor, SystemTrait, type SystemValues } from '../traits/system';
 import { TimerDescriptor, TimerTrait, type TimerValues } from '../traits/timer';
@@ -152,43 +152,24 @@ export function attachEndpoint(
         });
     }
     if (graphEndpoint.traits.includes('climate')) {
-        if (graphEndpoint.subDeviceId) {
-            climateTrait = new ClimateTrait({
-                kind: 'hub',
-                uuid: physical.uuid,
-                subDeviceId: graphEndpoint.subDeviceId,
-                namespaces,
-                request,
-                emitChange: emit.climate
-            });
-        } else {
-            const generation: ThermostatGeneration =
-                'Appliance.Control.Thermostat.ModeC' in physical.ability ? 'modeC'
-                    : 'Appliance.Control.Thermostat.ModeB' in physical.ability ? 'modeB'
-                        : 'mode';
-            climateTrait = new ClimateTrait({
-                kind: 'board',
-                uuid: physical.uuid,
-                channel,
-                generation,
-                namespaces,
-                request,
-                emitChange: emit.climate
-            });
-        }
+        climateTrait = ClimateDescriptor.attach({
+            graphEndpoint,
+            physical,
+            request,
+            channel,
+            namespaces,
+            emitChange: emit.climate
+        });
     }
-    if (graphEndpoint.traits.includes('sensor') && graphEndpoint.subDeviceId) {
-        const family = SENSOR_FAMILY_MAP.get(graphEndpoint.model.toLowerCase());
-        if (family) {
-            sensorTrait = new SensorTrait({
-                uuid: physical.uuid,
-                subDeviceId: graphEndpoint.subDeviceId,
-                family,
-                namespaces,
-                request,
-                emitChange: emit.sensor
-            });
-        }
+    if (graphEndpoint.traits.includes('sensor')) {
+        sensorTrait = SensorDescriptor.attach({
+            graphEndpoint,
+            physical,
+            request,
+            channel,
+            namespaces,
+            emitChange: emit.sensor
+        });
     }
     if (graphEndpoint.traits.includes('presence')) {
         presenceTrait = PresenceDescriptor.attach({
@@ -200,12 +181,13 @@ export function attachEndpoint(
             emitChange: emit.presence
         });
     }
-    if (graphEndpoint.traits.includes('sprinkler') && graphEndpoint.subDeviceId) {
-        sprinklerTrait = new SprinklerTrait({
-            uuid: physical.uuid,
-            subDeviceId: graphEndpoint.subDeviceId,
-            namespaces,
+    if (graphEndpoint.traits.includes('sprinkler')) {
+        sprinklerTrait = SprinklerDescriptor.attach({
+            graphEndpoint,
+            physical,
             request,
+            channel,
+            namespaces,
             emitChange: emit.sprinkler
         });
     }
