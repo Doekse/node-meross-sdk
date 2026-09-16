@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 
 import { CloudClient } from './cloud';
-import type { CloudClientOptions, CloudDevice } from './cloud';
+import type { CloudClientOptions, CloudDevice, CloudSubDevice } from './cloud';
 import { Endpoint } from './endpoint';
 import { MerossError } from './errors';
 import {
@@ -66,9 +66,11 @@ interface SessionEvents {
     connection: [connected: boolean];
     ratelimit: [uuid: string, dropped: number];
     /**
-     * Per-device failure {@link Session.sync} swallowed to keep going, typically
-     * an Ability / System.All timeout. Cloud-level failures still reject `sync`
-     * itself, so a stale token surfaces there rather than here.
+     * Per-device failure {@link Session.sync} swallowed to keep going.
+     * Typical cases are an Ability / System.All timeout, or a hub cloud
+     * `listSubDevices` failure (digest children still enroll; cloud names /
+     * extra ids are omitted). Cloud-level failures still reject `sync` itself,
+     * so a stale token surfaces there rather than here.
      *
      * Deliberately not named `error`: Node throws on an unhandled `error` emit,
      * which would turn one unreachable device into a crashed host process.
@@ -385,6 +387,11 @@ export class Session extends EventEmitter<SessionEvents> {
         this.devices.delete(uuid);
     }
 
+    /**
+     * Ability and System.All failures reject so {@link enrollAll} can skip the
+     * device. A hub `listSubDevices` failure is emitted as `warning` instead,
+     * so digest children still enroll without the cloud name overlay.
+     */
     private async enroll(cloudDevice: CloudDevice): Promise<EnrollResult> {
         const [abilityReply, allReply] = await this.connectedRouter.requestGets({
             uuid: cloudDevice.uuid,
@@ -395,13 +402,21 @@ export class Session extends EventEmitter<SessionEvents> {
         });
 
         const ability = decodeAbilityGetAck(abilityReply.payload);
+        let subDevices: CloudSubDevice[] | undefined;
+        if ('Appliance.Hub.SubdeviceList' in ability) {
+            try {
+                subDevices = await this.cloud.listSubDevices(cloudDevice.uuid);
+            } catch (error) {
+                // Leave subDevices undefined: digest children still enroll;
+                // only the cloud name overlay is lost.
+                this.emitWarning(error);
+            }
+        }
         return this.graph.enroll({
             abilityPayload: abilityReply.payload,
             allPayload: allReply.payload,
             cloud: cloudDevice,
-            subDevices: 'Appliance.Hub.SubdeviceList' in ability
-                ? await this.cloud.listSubDevices(cloudDevice.uuid).catch(() => [])
-                : undefined
+            subDevices
         });
     }
 

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { ABILITY_NAMESPACE, SYSTEM_ALL_NAMESPACE } from '../src/device';
-import { AuthError, MerossError, TransportError } from '../src/errors';
+import { AuthError, CloudError, MerossError, TransportError } from '../src/errors';
 import {
     decodeMessage,
     decryptPayload,
@@ -54,9 +54,25 @@ const LAMP_ROW = {
     channels: [{ channel: 0, devName: 'Lamp' }]
 };
 
+const HUB_UUID = '9109182170548290880048b1a9522933';
+const HUB_CHILD_ID = '120027D21C19';
+const HUB_ROW = {
+    uuid: HUB_UUID,
+    devName: 'Hall hub',
+    deviceType: 'msh300',
+    onlineStatus: 1,
+    channels: []
+};
+
 interface EnrollmentAckOptions {
     innerIp?: boolean;
     encrypt?: boolean;
+    /**
+     * When set, Ability advertises Hub.SubdeviceList and System.All carries
+     * these digest hub.subdevice rows so Session can enroll children without
+     * a cloud overlay.
+     */
+    hubSubdevice?: Array<Record<string, unknown>>;
 }
 
 function loadFixture(name: string): MerossMessage['payload'] {
@@ -124,6 +140,15 @@ function ackFor(
 function enrollmentAck(sent: MerossMessage, options: EnrollmentAckOptions = {}): MerossMessage {
     const uuid = sent.header.uuid ?? UUID;
     if (sent.header.namespace === ABILITY_NAMESPACE) {
+        if (options.hubSubdevice) {
+            return ackFor(sent, 'GETACK', {
+                payloadVersion: 1,
+                ability: {
+                    'Appliance.Hub.SubdeviceList': {},
+                    'Appliance.Control.Multiple': { maxCmdNum: 5 }
+                }
+            });
+        }
         return ackFor(sent, 'GETACK', {
             payloadVersion: 1,
             ability: {
@@ -139,14 +164,19 @@ function enrollmentAck(sent: MerossMessage, options: EnrollmentAckOptions = {}):
         const payload = structuredClone(loadFixture('system-all-getack.json')) as {
             all: {
                 system: {
-                    hardware: { uuid: string };
+                    hardware: { type?: string; uuid: string };
                     firmware: { innerIp?: string };
                 };
+                digest?: Record<string, unknown>;
             };
         };
         payload.all.system.hardware.uuid = uuid;
         if (!options.innerIp) {
             delete payload.all.system.firmware.innerIp;
+        }
+        if (options.hubSubdevice) {
+            payload.all.system.hardware.type = 'msh300';
+            payload.all.digest = { hub: { subdevice: options.hubSubdevice } };
         }
         return ackFor(sent, 'GETACK', payload);
     }
@@ -200,7 +230,8 @@ function enrollmentAck(sent: MerossMessage, options: EnrollmentAckOptions = {}):
 
 function createCloudFetch(
     devices: unknown[] = [DEVICE_ROW],
-    login: () => unknown = () => LOGIN_DATA
+    login: () => unknown = () => LOGIN_DATA,
+    subDevices?: unknown[]
 ) {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const fetchImpl = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
@@ -210,6 +241,10 @@ function createCloudFetch(
         }
         if (String(url).endsWith('/v1/Device/devList')) {
             return ok(devices);
+        }
+        // A defined body, including [], is a successful list; omit so this path returns HTTP 500.
+        if (String(url).endsWith('/v1/Hub/getSubDevices') && subDevices !== undefined) {
+            return ok(subDevices);
         }
         return jsonResponse({ apiStatus: 999, info: 'unexpected' }, 500);
     };
@@ -247,6 +282,8 @@ async function loginConnected(options: {
     login?: () => unknown;
     lanFetch?: typeof fetch;
     ack?: EnrollmentAckOptions;
+    /** Successful `/v1/Hub/getSubDevices` body, including `[]`. Omit so the path returns HTTP 500. */
+    subDevices?: unknown[];
     /** Attach listeners before MQTT comes up so connect emits are not missed. */
     beforeConnect?: (session: Session) => void;
 } = {}): Promise<{
@@ -257,7 +294,7 @@ async function loginConnected(options: {
     devices: unknown[];
 }> {
     const devices = options.devices ?? [DEVICE_ROW];
-    const { fetchImpl, calls } = createCloudFetch(devices, options.login);
+    const { fetchImpl, calls } = createCloudFetch(devices, options.login, options.subDevices);
     const clientRef: { current?: EnrollingMqttClient } = {};
     const session = await Session.login(
         { email: EMAIL, password: PASSWORD },
@@ -721,6 +758,51 @@ describe('Session.sync', () => {
         assert.deepEqual(
             session.inventory.endpoints().map((row) => row.id),
             [`${UUID}:0`]
+        );
+        await session.disconnect();
+    });
+});
+
+describe('Session hub enroll', () => {
+    const hubDigestChild = [{ id: HUB_CHILD_ID, status: 1, ms130: {} }];
+    const hubEndpointIds = [HUB_UUID, `${HUB_UUID}#${HUB_CHILD_ID}`];
+
+    it('warns when getSubDevices fails but still enrolls digest children', async () => {
+        const warnings: Error[] = [];
+        const { session } = await loginConnected({
+            devices: [HUB_ROW],
+            ack: { hubSubdevice: hubDigestChild },
+            beforeConnect: (next) => {
+                next.on('warning', (error) => warnings.push(error));
+            }
+        });
+
+        assert.equal(warnings.length, 1);
+        const warning = warnings[0];
+        assert.ok(warning instanceof CloudError);
+        assert.equal(warning.code, 'HTTP_ERROR');
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            hubEndpointIds
+        );
+        await session.disconnect();
+    });
+
+    it('stays silent when getSubDevices returns an empty list', async () => {
+        const warnings: Error[] = [];
+        const { session } = await loginConnected({
+            devices: [HUB_ROW],
+            ack: { hubSubdevice: hubDigestChild },
+            subDevices: [],
+            beforeConnect: (next) => {
+                next.on('warning', (error) => warnings.push(error));
+            }
+        });
+
+        assert.equal(warnings.length, 0);
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            hubEndpointIds
         );
         await session.disconnect();
     });

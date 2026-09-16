@@ -191,7 +191,8 @@ session.on('ratelimit', (uuid, dropped) => {
 });
 
 session.on('warning', (error) => {
-  // a single device that sync() skipped, e.g. an Ability / System.All timeout.
+  // a single device that sync() skipped, e.g. an Ability / System.All timeout,
+  // or a hub whose cloud subdevice list failed (digest children still enroll).
   // Cloud-level failures reject sync() itself instead of arriving here.
 });
 
