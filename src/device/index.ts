@@ -16,13 +16,19 @@ import {
     enrollBoardAlarmExtra,
     enrollHubAlarmExtra
 } from '../traits/alarm';
+import { enrollCover } from '../traits/cover';
+import { enrollDiffuser } from '../traits/diffuser';
 import {
     enrollBoardDndExtra,
     enrollDndStandalone,
     enrollHubDndExtra
 } from '../traits/dnd';
 import { enrollBoardEnergyExtra } from '../traits/energy';
+import { enrollFan } from '../traits/fan';
+import { enrollLight } from '../traits/light';
 import { enrollBoardMediaExtra, enrollMediaStandalone } from '../traits/media';
+import { enrollPresence } from '../traits/presence';
+import { enrollSpray } from '../traits/spray';
 import { enrollBoardSystemExtra } from '../traits/system';
 import {
     enrollHubUntypedOnoff,
@@ -366,34 +372,8 @@ function enrollBoard(
         add
     };
 
-    const lightChannels = all.digest.light.length > 0 ? all.digest.light : ('Appliance.Control.Light' in ability ? [0] : []);
-    for (const channel of lightChannels) {
-        add(channel, 'light', ['light']);
-    }
-
-    if (all.digest.garageDoor.length > 0) {
-        // Seed open/closed from the digest so hosts have state before the first
-        // PUSH or poll; on cloud MQTT that poll can be ~20 minutes away.
-        // Channels the installer never wired report doorEnable 0 and are not
-        // user-visible devices, so they are skipped (MSG200 ships three doors).
-        for (const door of all.digest.garageDoor) {
-            if (door.doorEnable === false) {
-                // Claim the channel without creating an endpoint, so the
-                // ToggleX pass below does not re-add the disabled door as a
-                // plain socket.
-                taken.add(door.channel);
-                continue;
-            }
-            add(door.channel, 'cover', ['cover'], door.open);
-        }
-    } else {
-        const coverChannels = all.digest.rollerShutter.length > 0
-            ? all.digest.rollerShutter
-            : ('Appliance.GarageDoor.State' in ability || 'Appliance.RollerShutter.State' in ability ? [0] : []);
-        for (const channel of coverChannels) {
-            add(channel, 'cover', ['cover']);
-        }
-    }
+    enrollLight(ctx);
+    enrollCover(ctx);
 
     if (
         'Appliance.Control.Thermostat.Mode' in ability
@@ -404,37 +384,10 @@ function enrollBoard(
         add(0, 'climate', ['climate']);
     }
 
-    if ('Appliance.Control.Presence.Config' in ability || 'Appliance.Control.Presence.Study' in ability) {
-        add(0, 'sensor', ['presence']);
-    }
-
-    const diffuserChannels = new Set<number>([
-        ...(all.digest.diffuser?.light ?? []),
-        ...(all.digest.diffuser?.spray ?? [])
-    ]);
-    if (
-        diffuserChannels.size === 0
-        && ('Appliance.Control.Diffuser.Light' in ability || 'Appliance.Control.Diffuser.Spray' in ability)
-    ) {
-        diffuserChannels.add(0);
-    }
-    for (const channel of diffuserChannels) {
-        add(channel, 'humidifier', ['diffuser']);
-    }
-
-    const sprayChannels = all.digest.spray.length > 0
-        ? all.digest.spray
-        : ('Appliance.Control.Spray' in ability ? [0] : []);
-    for (const channel of sprayChannels) {
-        add(channel, 'humidifier', ['spray']);
-    }
-
-    const fanChannels = all.digest.fan.length > 0
-        ? all.digest.fan
-        : ('Appliance.Control.Fan' in ability ? [0] : []);
-    for (const channel of fanChannels) {
-        add(channel, 'fan', ['fan']);
-    }
+    enrollPresence(ctx);
+    enrollDiffuser(ctx);
+    enrollSpray(ctx);
+    enrollFan(ctx);
 
     enrollMediaStandalone(ctx);
 

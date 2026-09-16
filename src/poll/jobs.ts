@@ -94,7 +94,7 @@ import {
     CONTROL_TIMER_NAMESPACE,
     DIGEST_TIMERX_NAMESPACE
 } from '../protocol/codecs/timerx';
-import { TOGGLEX_ALL_CHANNELS, TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
+import { TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
 import {
     CONTROL_TRIGGER_NAMESPACE,
     DIGEST_TRIGGERX_NAMESPACE
@@ -103,9 +103,15 @@ import { CONTROL_WATER_NAMESPACE, DEVICE_CFG_NAMESPACE } from '../protocol/codec
 import type { MerossPayload } from '../protocol/message';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import { AlarmDescriptor } from '../traits/alarm';
+import { CoverDescriptor } from '../traits/cover';
+import { DiffuserDescriptor } from '../traits/diffuser';
 import { DndDescriptor } from '../traits/dnd';
 import { EnergyDescriptor } from '../traits/energy';
+import { FanDescriptor } from '../traits/fan';
+import { LightDescriptor } from '../traits/light';
 import { MediaDescriptor } from '../traits/media';
+import { PresenceDescriptor } from '../traits/presence';
+import { SprayDescriptor } from '../traits/spray';
 import { SwitchDescriptor, TOGGLE_NAMESPACE } from '../traits/switch';
 import { SystemDescriptor } from '../traits/system';
 import { TimerDescriptor } from '../traits/timer';
@@ -122,7 +128,6 @@ import {
     SMART_BATTERY,
     SMART_CLOUDMQTT,
     SMART_CONFIG,
-    SMART_FAST_MQTT,
     SMART_FAST_SLOW_CLOUD,
     SMART_SLOW,
     subIdList,
@@ -216,75 +221,37 @@ const POLL: Record<string, PollSpec> = {
     // Digest / device state
     [TOGGLEX_NAMESPACE]: SwitchDescriptor.poll[TOGGLEX_NAMESPACE],
     [TOGGLE_NAMESPACE]: SwitchDescriptor.poll[TOGGLE_NAMESPACE],
-    [LIGHT_NAMESPACE]: DEFAULT,
-    [SPRAY_NAMESPACE]: {
-        ...DEFAULT,
-        payload: { dict: 'spray' }
-    },
-    [FAN_NAMESPACE]: {
-        ...DEFAULT,
-        payload: channelList('fan', 'fan'),
-        item: 20
-    },
+    [LIGHT_NAMESPACE]: LightDescriptor.poll[LIGHT_NAMESPACE],
+    [SPRAY_NAMESPACE]: SprayDescriptor.poll[SPRAY_NAMESPACE],
+    [FAN_NAMESPACE]: FanDescriptor.poll[FAN_NAMESPACE],
     [MP3_NAMESPACE]: MediaDescriptor.poll[MP3_NAMESPACE],
-    [DIFFUSER_LIGHT_NAMESPACE]: DEFAULT,
-    [DIFFUSER_SPRAY_NAMESPACE]: DEFAULT,
-    [GARAGE_STATE_NAMESPACE]: {
-        ...DEFAULT,
-        payload: { dict: 'state', channel: TOGGLEX_ALL_CHANNELS }
-    },
-    [GARAGE_CONFIG_NAMESPACE]: { ...SMART_CONFIG, base: 410 },
-    [GARAGE_MULTIPLE_CONFIG_NAMESPACE]: { ...SMART_CONFIG, item: 140 },
-    [SHUTTER_POSITION_NAMESPACE]: { ...DEFAULT, item: 50 },
-    [SHUTTER_STATE_NAMESPACE]: { ...DEFAULT, item: 40 },
-    [SHUTTER_CONFIG_NAMESPACE]: { ...SMART_CONFIG, item: 70 },
-    [SHUTTER_ADJUST_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('adjust', 'cover'),
-        item: 35
-    },
+    [DIFFUSER_LIGHT_NAMESPACE]: DiffuserDescriptor.poll[DIFFUSER_LIGHT_NAMESPACE],
+    [DIFFUSER_SPRAY_NAMESPACE]: DiffuserDescriptor.poll[DIFFUSER_SPRAY_NAMESPACE],
+    [GARAGE_STATE_NAMESPACE]: CoverDescriptor.poll[GARAGE_STATE_NAMESPACE],
+    [GARAGE_CONFIG_NAMESPACE]: CoverDescriptor.poll[GARAGE_CONFIG_NAMESPACE],
+    [GARAGE_MULTIPLE_CONFIG_NAMESPACE]: CoverDescriptor.poll[GARAGE_MULTIPLE_CONFIG_NAMESPACE],
+    [SHUTTER_POSITION_NAMESPACE]: CoverDescriptor.poll[SHUTTER_POSITION_NAMESPACE],
+    [SHUTTER_STATE_NAMESPACE]: CoverDescriptor.poll[SHUTTER_STATE_NAMESPACE],
+    [SHUTTER_CONFIG_NAMESPACE]: CoverDescriptor.poll[SHUTTER_CONFIG_NAMESPACE],
+    [SHUTTER_ADJUST_NAMESPACE]: CoverDescriptor.poll[SHUTTER_ADJUST_NAMESPACE],
     [CONTROL_ALARM_NAMESPACE]: AlarmDescriptor.poll[CONTROL_ALARM_NAMESPACE],
     [CONTROL_BEEP_NAMESPACE]: AlarmDescriptor.poll[CONTROL_BEEP_NAMESPACE],
     [HUB_TOGGLEX_NAMESPACE]: SwitchDescriptor.poll[HUB_TOGGLEX_NAMESPACE],
 
     // Config / slow sensors
-    [LIGHT_EFFECT_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: { list: 'effect' },
-        base: 1_850
-    },
-    [FAN_CONFIG_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('config', 'fan')
-    },
-    [FILTER_MAINTENANCE_NAMESPACE]: {
-        ...SMART_CLOUDMQTT,
-        method: 'PUSH',
-        item: 35
-    },
-    [DIFFUSER_SENSOR_NAMESPACE]: { ...SMART_SLOW, item: 100 },
+    [LIGHT_EFFECT_NAMESPACE]: LightDescriptor.poll[LIGHT_EFFECT_NAMESPACE],
+    [FAN_CONFIG_NAMESPACE]: FanDescriptor.poll[FAN_CONFIG_NAMESPACE],
+    [FILTER_MAINTENANCE_NAMESPACE]: FanDescriptor.poll[FILTER_MAINTENANCE_NAMESPACE],
+    [DIFFUSER_SENSOR_NAMESPACE]: DiffuserDescriptor.poll[DIFFUSER_SENSOR_NAMESPACE],
     [DND_MODE_NAMESPACE]: DndDescriptor.poll[DND_MODE_NAMESPACE],
-    [PRESENCE_CONFIG_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('config', 'presence'),
-        item: 260
-    },
+    [PRESENCE_CONFIG_NAMESPACE]: PresenceDescriptor.poll[PRESENCE_CONFIG_NAMESPACE],
 
     // Energy / fast sensors
     [ELECTRICITY_NAMESPACE]: EnergyDescriptor.poll[ELECTRICITY_NAMESPACE],
     [ELECTRICITYX_NAMESPACE]: EnergyDescriptor.poll[ELECTRICITYX_NAMESPACE],
     [CONSUMPTIONX_NAMESPACE]: EnergyDescriptor.poll[CONSUMPTIONX_NAMESPACE],
     [CONSUMPTIONH_NAMESPACE]: EnergyDescriptor.poll[CONSUMPTIONH_NAMESPACE],
-    [SENSOR_LATESTX_NAMESPACE]: {
-        ...SMART_FAST_MQTT,
-        payload: {
-            list: 'latest',
-            by: 'either',
-            data: ['presence', 'light'],
-            dataId: ['light', 'temp', 'humi']
-        },
-        item: 220
-    },
+    [SENSOR_LATESTX_NAMESPACE]: PresenceDescriptor.poll[SENSOR_LATESTX_NAMESPACE],
     [SENSOR_LATEST_NAMESPACE]: {
         ...SMART_FAST_SLOW_CLOUD,
         payload: channelList('latest', 'climate'),

@@ -8,9 +8,13 @@ import {
     CONTROL_TIMER_NAMESPACE,
     CONTROL_TRIGGER_NAMESPACE,
     DND_MODE_NAMESPACE,
+    FAN_NAMESPACE,
+    GARAGE_STATE_NAMESPACE,
     HUB_SENSOR_ALL_NAMESPACE,
     HUB_TOGGLEX_NAMESPACE,
     LIGHT_NAMESPACE,
+    SHUTTER_POSITION_NAMESPACE,
+    SHUTTER_STATE_NAMESPACE,
     THERMOSTAT_MODE_NAMESPACE,
     THERMOSTAT_MODEB_NAMESPACE,
     THERMOSTAT_MODEC_NAMESPACE,
@@ -96,6 +100,7 @@ function createHarness(options: {
     ability: AbilityMap;
     subDeviceId?: string;
     model?: string;
+    ack?: Parameters<typeof createRequestRecorder>[0]['ack'];
 }): {
     endpoint: Endpoint;
     requests: MerossMessage[];
@@ -105,7 +110,11 @@ function createHarness(options: {
         subDeviceId: options.subDeviceId,
         model: options.model
     });
-    const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
+    const { requests, request } = createRequestRecorder({
+        uuid: UUID,
+        key: KEY,
+        ack: options.ack
+    });
     const endpoint = attachEndpoint(graph, request, physical(options.ability, graph.model));
     return { endpoint, requests };
 }
@@ -253,6 +262,69 @@ describe('attachEndpoint light', () => {
             nonNumber.requests[0]?.payload,
             encodeLightSet({ channel: CHANNEL, capacity: 0, onoff: true })
         );
+    });
+});
+
+describe('attachEndpoint cover', () => {
+    it('defaults to garage when RollerShutter.State is absent', async () => {
+        const { endpoint, requests } = createHarness({
+            traits: ['cover'],
+            ability: { [GARAGE_STATE_NAMESPACE]: {} },
+            ack: (_opts, sent) => encodeMessage({
+                namespace: sent.header.namespace,
+                method: 'SETACK',
+                key: KEY,
+                from: `/appliance/${UUID}/publish`,
+                messageId: sent.header.messageId,
+                uuid: UUID,
+                payload: {
+                    state: { channel: CHANNEL, open: 1, execute: 0, lmTime: 0 }
+                }
+            })
+        });
+
+        await endpoint.cover!.open();
+
+        assert.equal(requests[0]?.header.namespace, GARAGE_STATE_NAMESPACE);
+    });
+
+    it('binds shutter when RollerShutter.State is advertised', async () => {
+        const { endpoint, requests } = createHarness({
+            traits: ['cover'],
+            ability: { [SHUTTER_STATE_NAMESPACE]: {}, [SHUTTER_POSITION_NAMESPACE]: {} }
+        });
+
+        await endpoint.cover!.open();
+
+        assert.equal(requests[0]?.header.namespace, SHUTTER_POSITION_NAMESPACE);
+    });
+});
+
+describe('attachEndpoint fan', () => {
+    it('binds ToggleX when both Toggle and ToggleX are advertised', async () => {
+        const { endpoint, requests } = createHarness({
+            traits: ['fan'],
+            ability: {
+                [FAN_NAMESPACE]: {},
+                [TOGGLE_NAMESPACE]: {},
+                [TOGGLEX_NAMESPACE]: {}
+            }
+        });
+
+        await endpoint.fan!.setOn(true);
+
+        assert.equal(requests[0]?.header.namespace, TOGGLEX_NAMESPACE);
+    });
+
+    it('binds classic Toggle when Toggle is present and ToggleX is absent', async () => {
+        const { endpoint, requests } = createHarness({
+            traits: ['fan'],
+            ability: { [FAN_NAMESPACE]: {}, [TOGGLE_NAMESPACE]: {} }
+        });
+
+        await endpoint.fan!.setOn(true);
+
+        assert.equal(requests[0]?.header.namespace, TOGGLE_NAMESPACE);
     });
 });
 

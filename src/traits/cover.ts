@@ -1,3 +1,4 @@
+import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
 import {
     GARAGE_CONFIG_NAMESPACE,
     GARAGE_MULTIPLE_CONFIG_NAMESPACE,
@@ -6,6 +7,7 @@ import {
     SHUTTER_CONFIG_NAMESPACE,
     SHUTTER_POSITION_NAMESPACE,
     SHUTTER_STATE_NAMESPACE,
+    TOGGLEX_ALL_CHANNELS,
     decodeGarageConfigGetAck,
     decodeGarageGetAck,
     decodeGarageMultipleConfigGetAck,
@@ -28,7 +30,14 @@ import type {
     ShutterConfig,
     ShutterConfigSetOptions
 } from '../protocol';
+import {
+    channelList,
+    DEFAULT,
+    SMART_CONFIG,
+    type PollSpec
+} from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { TraitDescriptor } from './descriptor';
 
 export interface CoverValues {
     open?: boolean;
@@ -372,3 +381,75 @@ export class CoverTrait {
         this.bind.emitChange({ moving });
     }
 }
+
+/**
+ * Garage digest wins so unwired doors can be claimed without an endpoint
+ * (ToggleX leftover would otherwise re-add them as sockets). Shutter digest
+ * and Ability fallback only run when there is no garage digest.
+ */
+export function enrollCover(ctx: EnrollBoardContext): void {
+    if (ctx.all.digest.garageDoor.length > 0) {
+        // Seed open/closed from the digest so hosts have state before the first
+        // PUSH or poll; on cloud MQTT that poll can be ~20 minutes away.
+        // Channels the installer never wired report doorEnable 0 and are not
+        // user-visible devices, so they are skipped (MSG200 ships three doors).
+        for (const door of ctx.all.digest.garageDoor) {
+            if (door.doorEnable === false) {
+                // Claim the channel without creating an endpoint, so the
+                // ToggleX leftover pass does not re-add the disabled door as a
+                // plain socket.
+                ctx.taken.add(door.channel);
+                continue;
+            }
+            ctx.add(door.channel, 'cover', ['cover'], door.open);
+        }
+        return;
+    }
+    if (ctx.all.digest.rollerShutter.length > 0) {
+        for (const channel of ctx.all.digest.rollerShutter) {
+            ctx.add(channel, 'cover', ['cover']);
+        }
+        return;
+    }
+    if (GARAGE_STATE_NAMESPACE in ctx.ability || SHUTTER_STATE_NAMESPACE in ctx.ability) {
+        ctx.add(0, 'cover', ['cover']);
+    }
+}
+
+export const CoverDescriptor: TraitDescriptor & {
+    readonly name: 'cover';
+    attach(args: TraitAttachArgs<CoverValues>): CoverTrait;
+} = {
+    name: 'cover',
+    poll: {
+        [GARAGE_STATE_NAMESPACE]: {
+            ...DEFAULT,
+            payload: { dict: 'state', channel: TOGGLEX_ALL_CHANNELS }
+        },
+        [GARAGE_CONFIG_NAMESPACE]: { ...SMART_CONFIG, base: 410 },
+        [GARAGE_MULTIPLE_CONFIG_NAMESPACE]: { ...SMART_CONFIG, item: 140 },
+        [SHUTTER_POSITION_NAMESPACE]: { ...DEFAULT, item: 50 },
+        [SHUTTER_STATE_NAMESPACE]: { ...DEFAULT, item: 40 },
+        [SHUTTER_CONFIG_NAMESPACE]: { ...SMART_CONFIG, item: 70 },
+        [SHUTTER_ADJUST_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('adjust', 'cover'),
+            item: 35
+        }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<CoverValues>): CoverTrait {
+        // Position/Config can exist without a shutter; State is the discriminator.
+        const kind: 'garage' | 'shutter' = SHUTTER_STATE_NAMESPACE in args.physical.ability
+            ? 'shutter'
+            : 'garage';
+        return new CoverTrait({
+            uuid: args.physical.uuid,
+            channel: args.channel,
+            kind,
+            namespaces: args.namespaces,
+            initialOpen: args.graphEndpoint.on,
+            request: args.request,
+            emitChange: args.emitChange
+        });
+    }
+};

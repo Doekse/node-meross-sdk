@@ -1,3 +1,4 @@
+import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
 import {
     FAN_BTN_CONFIG_NAMESPACE,
     FAN_CONFIG_NAMESPACE,
@@ -17,7 +18,17 @@ import {
     type FanButtonConfigSetOptions,
     type MerossMessage
 } from '../protocol';
+import {
+    channelList,
+    DEFAULT,
+    SMART_CLOUDMQTT,
+    SMART_CONFIG,
+    type PollSpec
+} from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { TraitDescriptor } from './descriptor';
+
+const TOGGLE_NAMESPACE = 'Appliance.Control.Toggle';
 
 export interface FanValues {
     on?: boolean;
@@ -97,7 +108,7 @@ export class FanTrait {
             });
         } else if (this.bind.hasToggle) {
             await this.bind.request({
-                namespace: 'Appliance.Control.Toggle',
+                namespace: TOGGLE_NAMESPACE,
                 method: 'SET',
                 payload: { toggle: { onoff: on ? 1 : 0 } }
             });
@@ -164,7 +175,7 @@ export class FanTrait {
             return;
         }
 
-        if (message.header.namespace === 'Appliance.Control.Toggle' && this.bind.hasToggle) {
+        if (message.header.namespace === TOGGLE_NAMESPACE && this.bind.hasToggle) {
             if (this.bind.channel === 0) {
                 const toggle = message.payload.toggle as { onoff?: unknown } | undefined;
                 if (toggle && typeof toggle.onoff === 'number') {
@@ -263,3 +274,55 @@ export class FanTrait {
 function clamp01(value: number): number {
     return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
 }
+
+/**
+ * Digest lists the fan channels; Ability without a digest row still claims
+ * channel 0 so leftover ToggleX does not enroll the fan as a socket.
+ */
+export function enrollFan(ctx: EnrollBoardContext): void {
+    if (ctx.all.digest.fan.length > 0) {
+        for (const channel of ctx.all.digest.fan) {
+            ctx.add(channel, 'fan', ['fan']);
+        }
+        return;
+    }
+    if (FAN_NAMESPACE in ctx.ability) {
+        ctx.add(0, 'fan', ['fan']);
+    }
+}
+
+export const FanDescriptor: TraitDescriptor & {
+    readonly name: 'fan';
+    attach(args: TraitAttachArgs<FanValues>): FanTrait;
+} = {
+    name: 'fan',
+    poll: {
+        [FAN_NAMESPACE]: {
+            ...DEFAULT,
+            payload: channelList('fan', 'fan'),
+            item: 20
+        },
+        [FAN_CONFIG_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('config', 'fan')
+        },
+        [FILTER_MAINTENANCE_NAMESPACE]: {
+            ...SMART_CLOUDMQTT,
+            method: 'PUSH',
+            item: 35
+        }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<FanValues>): FanTrait {
+        // ToggleX wins when both Toggle and ToggleX are advertised.
+        const hasToggleX = TOGGLEX_NAMESPACE in args.physical.ability;
+        return new FanTrait({
+            uuid: args.physical.uuid,
+            channel: args.channel,
+            namespaces: args.namespaces,
+            hasToggleX,
+            hasToggle: !hasToggleX && TOGGLE_NAMESPACE in args.physical.ability,
+            request: args.request,
+            emitChange: args.emitChange
+        });
+    }
+};
