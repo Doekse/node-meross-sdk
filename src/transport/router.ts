@@ -195,14 +195,25 @@ export class TransportRouter {
                     `Control.Multiple SETACK count ${subs.length} != ${chunk.length}`
                 );
             }
-            return subs.map((sub) => ({
-                header: {
-                    ...packed.header,
-                    namespace: sub.header.namespace,
-                    method: sub.header.method
-                },
-                payload: sub.payload
-            }));
+            const unpacked: MerossMessage[] = [];
+            for (const [index, sub] of subs.entries()) {
+                const get = chunk[index]!;
+                // SETACK is parallel to SET. Some plugs leave Electricity
+                // GETACK `namespace` empty; meross_lan still walks by index.
+                let namespace = sub.header.namespace;
+                if (namespace === '') {
+                    namespace = get.namespace;
+                }
+                unpacked.push({
+                    header: {
+                        ...packed.header,
+                        namespace,
+                        method: sub.header.method
+                    },
+                    payload: sub.payload
+                });
+            }
+            return unpacked;
         } catch (error) {
             if (decodingPackedReply && error instanceof ProtocolError) {
                 options.onPackedFallback?.();

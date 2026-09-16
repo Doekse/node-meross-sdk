@@ -513,6 +513,42 @@ describe('TransportRouter', () => {
         assert.equal(replies[0]?.header.method, 'GETACK');
     });
 
+    it('fills empty Control.Multiple SETACK namespaces from the SET order', async () => {
+        const { router } = createRouted({
+            lan: async (sent) => {
+                if (sent.header.namespace === MULTIPLE_NAMESPACE) {
+                    const gets = decodeMultipleAck(sent.payload);
+                    return jsonResponse(ackFor(sent, 'SETACK', {
+                        multiple: gets.map((get) => ({
+                            header: { namespace: '', method: 'GETACK' },
+                            payload: get.header.namespace === ELECTRICITY
+                                ? { electricity: { channel: 0, power: 11_000 } }
+                                : {}
+                        }))
+                    }));
+                }
+                return defaultLanOk(sent);
+            }
+        });
+        await router.connect();
+
+        const replies = await router.requestGets({
+            uuid: UUID,
+            ip: IP,
+            maxCmdNum: 3,
+            gets: [
+                { namespace: TOGGLEX_NAMESPACE },
+                { namespace: ELECTRICITY }
+            ]
+        });
+
+        assert.equal(replies.length, 2);
+        assert.equal(replies[0]?.header.namespace, TOGGLEX_NAMESPACE);
+        assert.equal(replies[1]?.header.namespace, ELECTRICITY);
+        assert.equal(replies[1]?.header.method, 'GETACK');
+        assert.deepEqual(replies[1]?.payload, { electricity: { channel: 0, power: 11_000 } });
+    });
+
     it('retries a Control.Multiple device ERROR as singles without reporting truncation', async () => {
         let packedFallback = 0;
         const { router, lanCalls } = createRouted({
