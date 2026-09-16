@@ -6,12 +6,11 @@ import type {
     SystemHardwareState,
     SystemTimeState
 } from '../protocol/codecs/system';
-import { TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
 import type { MerossPayload } from '../protocol/message';
 import { abilityMaxCmdNum, decodeAbilityGetAck } from '../protocol/codecs/ability';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import { decodeSystemAllGetAck, getDigestNamespaces } from '../protocol/codecs/system-all';
-import type { DigestToggle, SystemAll } from '../protocol/codecs/system-all';
+import type { SystemAll } from '../protocol/codecs/system-all';
 import {
     enrollAlarmStandalone,
     enrollBoardAlarmExtra,
@@ -25,6 +24,10 @@ import {
 import { enrollBoardEnergyExtra } from '../traits/energy';
 import { enrollBoardMediaExtra, enrollMediaStandalone } from '../traits/media';
 import { enrollBoardSystemExtra } from '../traits/system';
+import {
+    enrollHubUntypedOnoff,
+    enrollSwitchLeftover
+} from '../traits/switch';
 import { enrollBoardTimerExtra } from '../traits/timer';
 import { enrollBoardTriggerExtra } from '../traits/trigger';
 import type { EnrollBoardContext, EnrollBoardExtraInput } from './enroll-context';
@@ -435,30 +438,7 @@ function enrollBoard(
 
     enrollMediaStandalone(ctx);
 
-    let toggles: DigestToggle[] = all.digest.togglex;
-    if (toggles.length === 0 && cloud?.channels?.length) {
-        toggles = cloud.channels.map((_, channel) => ({ channel }));
-    }
-    if (
-        toggles.length === 0
-        && (TOGGLEX_NAMESPACE in ability || 'Appliance.Control.Toggle' in ability)
-    ) {
-        toggles = [{ channel: 0 }];
-    }
-    if (all.digest.garageDoor.some((door) => door.channel !== 0)) {
-        toggles = toggles.filter((entry) => entry.channel !== 0);
-    }
-    const masterId = `${uuid}:0`;
-    const isStrip = toggles.length >= 3 && toggles.some((entry) => entry.channel === 0);
-    for (const entry of toggles) {
-        add(
-            entry.channel,
-            'socket',
-            ['switch'],
-            entry.on,
-            isStrip && entry.channel !== 0 ? masterId : undefined
-        );
-    }
+    enrollSwitchLeftover(ctx);
 
     enrollDndStandalone(ctx);
     enrollAlarmStandalone(ctx);
@@ -528,21 +508,17 @@ function enrollHub(
             });
             continue;
         }
-        if (sub.on === undefined) {
-            continue;
-        }
-        endpoints.push({
-            id: `${uuid}#${subDeviceId}`,
+        const untyped = enrollHubUntypedOnoff({
             uuid,
             subDeviceId,
-            parentId: uuid,
-            name: sub.name || subDeviceId,
-            model: sub.model || subDeviceId,
-            classHint: 'socket',
-            traits: ['switch'],
+            name: sub.name,
+            model: sub.model,
             online: sub.online,
             on: sub.on
         });
+        if (untyped) {
+            endpoints.push(untyped);
+        }
     }
     return endpoints;
 }

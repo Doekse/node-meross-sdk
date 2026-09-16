@@ -106,13 +106,13 @@ import { AlarmDescriptor } from '../traits/alarm';
 import { DndDescriptor } from '../traits/dnd';
 import { EnergyDescriptor } from '../traits/energy';
 import { MediaDescriptor } from '../traits/media';
+import { SwitchDescriptor, TOGGLE_NAMESPACE } from '../traits/switch';
 import { SystemDescriptor } from '../traits/system';
 import { TimerDescriptor } from '../traits/timer';
 import { TriggerDescriptor } from '../traits/trigger';
 import type { PollJob } from './poller';
 import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
 import {
-    ALL_CHANNELS,
     channelList,
     DEFAULT,
     idList,
@@ -214,14 +214,8 @@ const POLL: Record<string, PollSpec> = {
     [CONFIG_STANDBY_KILLER_NAMESPACE]: EnergyDescriptor.poll[CONFIG_STANDBY_KILLER_NAMESPACE],
 
     // Digest / device state
-    [TOGGLEX_NAMESPACE]: {
-        ...DEFAULT,
-        payload: ALL_CHANNELS
-    },
-    'Appliance.Control.Toggle': {
-        ...DEFAULT,
-        payload: { dict: 'toggle' }
-    },
+    [TOGGLEX_NAMESPACE]: SwitchDescriptor.poll[TOGGLEX_NAMESPACE],
+    [TOGGLE_NAMESPACE]: SwitchDescriptor.poll[TOGGLE_NAMESPACE],
     [LIGHT_NAMESPACE]: DEFAULT,
     [SPRAY_NAMESPACE]: {
         ...DEFAULT,
@@ -251,10 +245,7 @@ const POLL: Record<string, PollSpec> = {
     },
     [CONTROL_ALARM_NAMESPACE]: AlarmDescriptor.poll[CONTROL_ALARM_NAMESPACE],
     [CONTROL_BEEP_NAMESPACE]: AlarmDescriptor.poll[CONTROL_BEEP_NAMESPACE],
-    [HUB_TOGGLEX_NAMESPACE]: {
-        ...DEFAULT,
-        payload: idList('togglex')
-    },
+    [HUB_TOGGLEX_NAMESPACE]: SwitchDescriptor.poll[HUB_TOGGLEX_NAMESPACE],
 
     // Config / slow sensors
     [LIGHT_EFFECT_NAMESPACE]: {
@@ -468,10 +459,7 @@ const POLL: Record<string, PollSpec> = {
         ...SMART_BATTERY,
         payload: idList('battery')
     },
-    [HUB_SUBDEVICE_VERSION_NAMESPACE]: {
-        ...ONCE,
-        payload: idList('version')
-    },
+    [HUB_SUBDEVICE_VERSION_NAMESPACE]: SwitchDescriptor.poll[HUB_SUBDEVICE_VERSION_NAMESPACE],
     [HUB_SENSOR_ADJUST_NAMESPACE]: {
         ...SMART_CLOUDMQTT,
         payload: idList('adjust', 'sensor')

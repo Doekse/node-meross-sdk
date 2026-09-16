@@ -17,7 +17,7 @@ import { PresenceTrait, type PresenceValues } from '../traits/presence';
 import { SENSOR_FAMILY_MAP, SensorTrait, type SensorValues } from '../traits/sensor';
 import { SprayTrait, type SprayValues } from '../traits/spray';
 import { SprinklerTrait, type SprinklerValues } from '../traits/sprinkler';
-import { SwitchTrait, type SwitchValues } from '../traits/switch';
+import { SwitchDescriptor, SwitchTrait, type SwitchValues } from '../traits/switch';
 import { SystemDescriptor, SystemTrait, type SystemValues } from '../traits/system';
 import { TimerDescriptor, TimerTrait, type TimerValues } from '../traits/timer';
 import { TriggerDescriptor, TriggerTrait, type TriggerValues } from '../traits/trigger';
@@ -116,29 +116,14 @@ export function attachEndpoint(
     let timerTrait: TimerTrait | undefined;
     let triggerTrait: TriggerTrait | undefined;
     if (graphEndpoint.traits.includes('switch')) {
-        if (graphEndpoint.subDeviceId) {
-            switchTrait = new SwitchTrait({
-                kind: 'hub',
-                uuid: physical.uuid,
-                subDeviceId: graphEndpoint.subDeviceId,
-                initialOn: graphEndpoint.on,
-                namespaces,
-                request,
-                emitChange: emit.switch
-            });
-        } else {
-            switchTrait = new SwitchTrait({
-                kind: 'board',
-                uuid: physical.uuid,
-                channel,
-                namespace: 'Appliance.Control.Toggle' in physical.ability && !(TOGGLEX_NAMESPACE in physical.ability)
-                    ? 'Appliance.Control.Toggle'
-                    : TOGGLEX_NAMESPACE,
-                initialOn: graphEndpoint.on,
-                request,
-                emitChange: emit.switch
-            });
-        }
+        switchTrait = SwitchDescriptor.attach({
+            graphEndpoint,
+            physical,
+            request,
+            channel,
+            namespaces,
+            emitChange: emit.switch
+        });
     }
     if (graphEndpoint.traits.includes('energy')) {
         energyTrait = EnergyDescriptor.attach({

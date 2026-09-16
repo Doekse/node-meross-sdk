@@ -1,3 +1,5 @@
+import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+import type { GraphEndpoint } from '../device/index';
 import {
     HUB_EXCEPTION_NAMESPACE,
     HUB_SUBDEVICE_VERSION_NAMESPACE,
@@ -11,7 +13,15 @@ import {
     encodeToggleXSet,
     type MerossMessage
 } from '../protocol';
+import {
+    ALL_CHANNELS,
+    DEFAULT,
+    idList,
+    ONCE,
+    type PollSpec
+} from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { TraitDescriptor } from './descriptor';
 
 export interface SwitchValues {
     on?: boolean;
@@ -20,6 +30,9 @@ export interface SwitchValues {
     hardwareVersion?: string;
 }
 
+/** Classic Toggle (not ToggleX). Shared so poll/jobs can key the same string. */
+export const TOGGLE_NAMESPACE = 'Appliance.Control.Toggle';
+
 /**
  * Board bind: one Toggle/ToggleX channel on the physical device.
  */
@@ -27,7 +40,7 @@ export interface SwitchTraitBoardBind {
     kind: 'board';
     uuid: string;
     channel: number;
-    namespace: typeof TOGGLEX_NAMESPACE | 'Appliance.Control.Toggle';
+    namespace: typeof TOGGLEX_NAMESPACE | typeof TOGGLE_NAMESPACE;
     request: DeviceRequest;
     emitChange: (values: SwitchValues) => void;
     /** System.All digest `onoff` so hosts can read on/off before the first PUSH. */
@@ -160,3 +173,124 @@ export class SwitchTrait {
         return this.bind.kind === 'hub' && (this.bind.namespaces?.has(namespace) ?? false);
     }
 }
+
+/**
+ * Leftover Toggle / ToggleX after light / cover / fan / … claimed theirs.
+ * Cloud fallback is by array index (not channel fields); MSG200 drops
+ * channel 0 when any garage door is non-zero; strip parentId is applied after
+ * that filter. Taken-set skips already-claimed channels — do not subtract
+ * light/fan/garage here or filter doorEnable (cover already claimed).
+ */
+export function enrollSwitchLeftover(ctx: EnrollBoardContext): void {
+    let toggles = ctx.all.digest.togglex;
+    if (toggles.length === 0 && ctx.cloud?.channels?.length) {
+        toggles = ctx.cloud.channels.map((_, channel) => ({ channel }));
+    }
+    if (
+        toggles.length === 0
+        && (TOGGLEX_NAMESPACE in ctx.ability || TOGGLE_NAMESPACE in ctx.ability)
+    ) {
+        toggles = [{ channel: 0 }];
+    }
+    if (ctx.all.digest.garageDoor.some((door) => door.channel !== 0)) {
+        toggles = toggles.filter((entry) => entry.channel !== 0);
+    }
+    const masterId = `${ctx.uuid}:0`;
+    const isStrip = toggles.length >= 3 && toggles.some((entry) => entry.channel === 0);
+    for (const entry of toggles) {
+        ctx.add(
+            entry.channel,
+            'socket',
+            ['switch'],
+            entry.on,
+            isStrip && entry.channel !== 0 ? masterId : undefined
+        );
+    }
+}
+
+/**
+ * Unknown hub digest type with onoff — enroll as a switch. Builds the child
+ * endpoint when classifyHubChild has no model; omit when onoff is absent.
+ */
+export function enrollHubUntypedOnoff(input: {
+    readonly uuid: string;
+    readonly subDeviceId: string;
+    readonly name?: string;
+    readonly model?: string;
+    readonly online: boolean;
+    readonly on?: boolean;
+}): GraphEndpoint | undefined {
+    if (input.on === undefined) {
+        return undefined;
+    }
+    return {
+        id: `${input.uuid}#${input.subDeviceId}`,
+        uuid: input.uuid,
+        subDeviceId: input.subDeviceId,
+        parentId: input.uuid,
+        name: input.name || input.subDeviceId,
+        model: input.model || input.subDeviceId,
+        classHint: 'socket',
+        traits: ['switch'],
+        online: input.online,
+        on: input.on
+    };
+}
+
+export const SwitchDescriptor: TraitDescriptor & {
+    readonly name: 'switch';
+    attach(args: TraitAttachArgs<SwitchValues>): SwitchTrait;
+} = {
+    name: 'switch',
+    poll: {
+        [TOGGLEX_NAMESPACE]: {
+            ...DEFAULT,
+            payload: ALL_CHANNELS
+        },
+        [TOGGLE_NAMESPACE]: {
+            ...DEFAULT,
+            payload: { dict: 'toggle' }
+        },
+        /**
+         * Shared with climate hub setOn; keep unfiltered
+         * `idList('togglex')` so MTS100 stays in the GET.
+         */
+        [HUB_TOGGLEX_NAMESPACE]: {
+            ...DEFAULT,
+            payload: idList('togglex')
+        },
+        /**
+         * Shared with sensor, sprinkler, climate handlePush; keep unfiltered
+         * `idList('version')` so mixed children stay in the GET.
+         */
+        [HUB_SUBDEVICE_VERSION_NAMESPACE]: {
+            ...ONCE,
+            payload: idList('version')
+        }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<SwitchValues>): SwitchTrait {
+        if (args.graphEndpoint.subDeviceId) {
+            return new SwitchTrait({
+                kind: 'hub',
+                uuid: args.physical.uuid,
+                subDeviceId: args.graphEndpoint.subDeviceId,
+                namespaces: args.namespaces,
+                request: args.request,
+                emitChange: args.emitChange,
+                initialOn: args.graphEndpoint.on
+            });
+        }
+        // Classic Toggle only when Toggle is present and ToggleX is absent.
+        const hasClassicToggle = TOGGLE_NAMESPACE in args.physical.ability
+            && !(TOGGLEX_NAMESPACE in args.physical.ability);
+        return new SwitchTrait({
+            kind: 'board',
+            uuid: args.physical.uuid,
+            channel: args.channel,
+            namespace: hasClassicToggle ? TOGGLE_NAMESPACE : TOGGLEX_NAMESPACE,
+            request: args.request,
+            emitChange: args.emitChange,
+            initialOn: args.graphEndpoint.on
+        });
+    }
+};
