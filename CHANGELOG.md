@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Internal catalog records colocate per-trait poll ownership; no host-visible API or behavior change.
 - Internal composition: endpoint trait binding moves to `attachEndpoint`, traits take a device-scoped `DeviceRequest` port, digest namespaces live next to System.All decode, and poll jobs accept `PollTarget`. No host-visible API or behavior change.
 - Driver methods (`Endpoint.handlePush`, `setAvailability`, `setProtocol`) and `Inventory.replace` are `@internal` and omitted from published typings (`stripInternal`). Same-package source and tests that import `src/` still see them; runtime CJS still has the functions on the prototype.
 

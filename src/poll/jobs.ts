@@ -191,8 +191,9 @@ export function getDeviceResponseSizeMax(maxCmdNum: number): number {
  * GET schedule keyed by Ability. Unadvertised namespaces stay off the wire.
  * FilterMaintenance is PUSH-query (GET disconnects MAP100).
  * `base`/`item` live here so packing does not keep a second per-namespace table.
+ * Assembled from trait descriptors; not re-exported from the poll barrel.
  */
-const POLL: Record<string, PollSpec> = {
+export const POLL: Record<string, PollSpec> = {
     [SYSTEM_ALL_NAMESPACE]: SystemDescriptor.poll[SYSTEM_ALL_NAMESPACE],
     'Appliance.System.Runtime': SystemDescriptor.poll['Appliance.System.Runtime'],
     [SYSTEM_FIRMWARE_NAMESPACE]: SystemDescriptor.poll[SYSTEM_FIRMWARE_NAMESPACE],
