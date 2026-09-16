@@ -38,7 +38,20 @@ import {
     type SensorAllState,
     type SensorSmokeState
 } from '../protocol';
+import type { TraitAttachArgs } from '../device/enroll-context';
+import {
+    DEFAULT,
+    SMART_ALL,
+    SMART_BATTERY,
+    SMART_CLOUDMQTT,
+    SMART_CONFIG,
+    channelList,
+    idList,
+    subIdList,
+    type PollSpec
+} from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { HubChildRule, TraitDescriptor } from './descriptor';
 
 /** Hub child sensor families. Digest type strings do not match cloud subDeviceType. */
 export type SensorFamily = 'tempHum' | 'contact' | 'leak' | 'motion' | 'smoke';
@@ -545,3 +558,103 @@ function smokeConfigPatch(entry: { dndEnabled?: boolean; detectEnabled?: boolean
     }
     return patch;
 }
+
+export const SensorDescriptor: TraitDescriptor & {
+    readonly name: 'sensor';
+    readonly hubChild: HubChildRule;
+    attach(args: TraitAttachArgs<SensorValues>): SensorTrait | undefined;
+} = {
+    name: 'sensor',
+    hubChild: {
+        // SENSOR_FAMILY_MAP stays the source of truth for SKUs and families.
+        models: new Set(SENSOR_FAMILY_MAP.keys()),
+        aliases: {
+            temphum: 'ms100',
+            temphumi: 'ms130',
+            doorwindow: 'ms200',
+            waterleak: 'ms400',
+            smokealarm: 'gs559',
+            motion: 'ms120'
+        },
+        classHint: 'sensor'
+    },
+    poll: {
+        /**
+         * Shared with climate board SET/PUSH; keep unfiltered
+         * `channelList('config')` so MTS300 GETs are not dropped.
+         */
+        [CONFIG_SENSOR_ASSOCIATION_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('config'),
+            item: 30
+        },
+        [HUB_SENSOR_ALL_NAMESPACE]: {
+            ...SMART_ALL,
+            payload: idList('all', 'sensor')
+        },
+        [HUB_SENSOR_TEMPHUM_NAMESPACE]: {
+            ...DEFAULT,
+            skipIf: HUB_SENSOR_ALL_NAMESPACE,
+            payload: idList('tempHum', 'sensor')
+        },
+        [HUB_SENSOR_DOORWINDOW_NAMESPACE]: {
+            ...DEFAULT,
+            skipIf: HUB_SENSOR_ALL_NAMESPACE,
+            payload: idList('doorWindow', 'sensor')
+        },
+        [HUB_SENSOR_WATERLEAK_NAMESPACE]: {
+            ...DEFAULT,
+            skipIf: HUB_SENSOR_ALL_NAMESPACE,
+            payload: idList('waterLeak', 'sensor')
+        },
+        [HUB_SENSOR_MOTION_NAMESPACE]: {
+            ...DEFAULT,
+            skipIf: HUB_SENSOR_ALL_NAMESPACE,
+            payload: idList('motion', 'sensor')
+        },
+        [HUB_SENSOR_SMOKE_NAMESPACE]: {
+            ...DEFAULT,
+            skipIf: HUB_SENSOR_ALL_NAMESPACE,
+            payload: idList('smokeAlarm', 'sensor')
+        },
+        /**
+         * Shared with sprinkler handlePush; keep unfiltered
+         * `idList('battery')` so mixed children stay in the GET.
+         */
+        [HUB_BATTERY_NAMESPACE]: {
+            ...SMART_BATTERY,
+            payload: idList('battery')
+        },
+        [HUB_SENSOR_ADJUST_NAMESPACE]: {
+            ...SMART_CLOUDMQTT,
+            payload: idList('adjust', 'sensor')
+        },
+        [HUB_SENSOR_ALERT_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: idList('alert', 'sensor')
+        },
+        [SMOKE_CONFIG_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: subIdList('config', 'sensor')
+        }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<SensorValues>): SensorTrait | undefined {
+        if (!args.graphEndpoint.subDeviceId) {
+            return undefined;
+        }
+        // Enroll already rewrote aliases; omit when the canonical model is
+        // missing from SENSOR_FAMILY_MAP (traits still list 'sensor').
+        const family = SENSOR_FAMILY_MAP.get(args.graphEndpoint.model.toLowerCase());
+        if (!family) {
+            return undefined;
+        }
+        return new SensorTrait({
+            uuid: args.physical.uuid,
+            subDeviceId: args.graphEndpoint.subDeviceId,
+            family,
+            namespaces: args.namespaces,
+            request: args.request,
+            emitChange: args.emitChange
+        });
+    }
+};

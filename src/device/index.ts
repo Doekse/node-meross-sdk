@@ -1,45 +1,50 @@
 import type { CloudDevice, CloudSubDevice } from '../cloud';
 import type { TraitName } from '../endpoint';
 import type { ClassHint, InventoryRow } from '../inventory';
-import { CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE } from '../protocol/codecs/alarm';
-import { CONSUMPTIONH_NAMESPACE } from '../protocol/codecs/consumptionh';
-import { CONSUMPTIONX_NAMESPACE } from '../protocol/codecs/consumptionx';
-import { ELECTRICITY_NAMESPACE, ELECTRICITYX_NAMESPACE } from '../protocol/codecs/electricity';
 import type {
     SystemFirmwareState,
     SystemHardwareState,
     SystemTimeState
 } from '../protocol/codecs/system';
-import { CONTROL_TIMER_NAMESPACE, TIMERX_NAMESPACE } from '../protocol/codecs/timerx';
-import { CONTROL_TRIGGER_NAMESPACE, TRIGGERX_NAMESPACE } from '../protocol/codecs/triggerx';
-import { TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
 import type { MerossPayload } from '../protocol/message';
 import { abilityMaxCmdNum, decodeAbilityGetAck } from '../protocol/codecs/ability';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import { decodeSystemAllGetAck, getDigestNamespaces } from '../protocol/codecs/system-all';
-import type { DigestToggle, SystemAll } from '../protocol/codecs/system-all';
+import type { SystemAll } from '../protocol/codecs/system-all';
+import {
+    enrollAlarmStandalone,
+    enrollBoardAlarmExtra,
+    enrollHubAlarmExtra
+} from '../traits/alarm';
+import { ClimateDescriptor, enrollClimate } from '../traits/climate';
+import { enrollCover } from '../traits/cover';
+import { enrollDiffuser } from '../traits/diffuser';
+import {
+    enrollBoardDndExtra,
+    enrollDndStandalone,
+    enrollHubDndExtra
+} from '../traits/dnd';
+import { enrollBoardEnergyExtra } from '../traits/energy';
+import { enrollFan } from '../traits/fan';
+import { enrollLight } from '../traits/light';
+import { enrollBoardMediaExtra, enrollMediaStandalone } from '../traits/media';
+import { enrollPresence } from '../traits/presence';
+import { SensorDescriptor } from '../traits/sensor';
+import { enrollSpray } from '../traits/spray';
+import { SprinklerDescriptor } from '../traits/sprinkler';
+import { enrollBoardSystemExtra } from '../traits/system';
+import {
+    enrollHubUntypedOnoff,
+    enrollSwitchLeftover
+} from '../traits/switch';
+import { enrollBoardTimerExtra } from '../traits/timer';
+import { enrollBoardTriggerExtra } from '../traits/trigger';
+import type { EnrollBoardContext, EnrollBoardExtraInput } from './enroll-context';
 
 export { ABILITY_NAMESPACE, abilityMaxCmdNum, decodeAbilityGetAck } from '../protocol/codecs/ability';
 export type { AbilityMap } from '../protocol/codecs/ability';
 export { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from '../protocol/codecs/system-all';
 export type { SystemAll } from '../protocol/codecs/system-all';
-
-const CLIMATE_SUBDEVICES = new Set(['mts100', 'mts100v3', 'mts150', 'mts150p']);
-const SENSOR_SUBDEVICES = new Set([
-    'ms100', 'ms100f', 'ms120', 'ms130', 'ms200', 'ms400', 'ms405', 'ma151', 'gs559'
-]);
-const SPRINKLER_SUBDEVICES = new Set(['mst100']);
-
-/** Digest type strings that do not match cloud subDeviceType. */
-const HUB_MODEL_ALIASES: Record<string, string> = {
-    mst: 'mst100',
-    temphum: 'ms100',
-    temphumi: 'ms130',
-    doorwindow: 'ms200',
-    waterleak: 'ms400',
-    smokealarm: 'gs559',
-    motion: 'ms120'
-};
 
 export interface EnrollInput {
     abilityPayload: MerossPayload;
@@ -114,12 +119,6 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
     const model = input.cloud?.deviceType || all.hardware.type;
     const name = input.cloud?.devName || all.hardware.type;
     const online = all.online.status === 1 || input.cloud?.onlineStatus === 1;
-    const boardEnergy = ELECTRICITY_NAMESPACE in ability || CONSUMPTIONX_NAMESPACE in ability;
-    const channelEnergy = ELECTRICITYX_NAMESPACE in ability || CONSUMPTIONH_NAMESPACE in ability;
-    const hasDnd = 'Appliance.System.DNDMode' in ability;
-    const hasAlarm = CONTROL_ALARM_NAMESPACE in ability || CONTROL_BEEP_NAMESPACE in ability;
-    const hasTimer = TIMERX_NAMESPACE in ability || CONTROL_TIMER_NAMESPACE in ability;
-    const hasTrigger = TRIGGERX_NAMESPACE in ability || CONTROL_TRIGGER_NAMESPACE in ability;
     const isHub = 'Appliance.Hub.SubdeviceList' in ability || all.digest.hub !== undefined;
 
     return {
@@ -138,11 +137,8 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
         },
         digestNamespaces: getDigestNamespaces(all.digest),
         endpoints: isHub
-            ? enrollHub(uuid, name, model, online, hasDnd, hasAlarm, all, input.subDevices ?? [])
-            : enrollBoard(
-                uuid, name, model, online, boardEnergy, channelEnergy, hasDnd, hasAlarm, hasTimer, hasTrigger,
-                ability, all, input.cloud
-            )
+            ? enrollHub(uuid, name, model, online, ability, all, input.subDevices ?? [])
+            : enrollBoard(uuid, name, model, online, ability, all, input.cloud)
     };
 }
 
@@ -261,7 +257,8 @@ export class DeviceGraph {
 
 /**
  * Unknown digest types return undefined so enrollHub can fall back to onoff
- * or omit the row.
+ * or omit the row. Alias rewrite consults the three hubChild maps before
+ * model-set lookup (climate → sensor → sprinkler).
  */
 function classifyHubChild(raw: string | undefined): {
     model: string;
@@ -272,15 +269,31 @@ function classifyHubChild(raw: string | undefined): {
         return undefined;
     }
     const lowered = raw.toLowerCase();
-    const model = HUB_MODEL_ALIASES[lowered] ?? lowered;
-    if (CLIMATE_SUBDEVICES.has(model)) {
-        return { model, classHint: 'climate', traits: ['climate'] };
+    const model =
+        ClimateDescriptor.hubChild.aliases[lowered]
+        ?? SensorDescriptor.hubChild.aliases[lowered]
+        ?? SprinklerDescriptor.hubChild.aliases[lowered]
+        ?? lowered;
+    if (ClimateDescriptor.hubChild.models.has(model)) {
+        return {
+            model,
+            classHint: ClimateDescriptor.hubChild.classHint,
+            traits: ['climate']
+        };
     }
-    if (SENSOR_SUBDEVICES.has(model)) {
-        return { model, classHint: 'sensor', traits: ['sensor'] };
+    if (SensorDescriptor.hubChild.models.has(model)) {
+        return {
+            model,
+            classHint: SensorDescriptor.hubChild.classHint,
+            traits: ['sensor']
+        };
     }
-    if (SPRINKLER_SUBDEVICES.has(model)) {
-        return { model, classHint: 'sprinkler', traits: ['sprinkler'] };
+    if (SprinklerDescriptor.hubChild.models.has(model)) {
+        return {
+            model,
+            classHint: SprinklerDescriptor.hubChild.classHint,
+            traits: ['sprinkler']
+        };
     }
     return undefined;
 }
@@ -298,19 +311,12 @@ function enrollBoard(
     name: string,
     model: string,
     online: boolean,
-    boardEnergy: boolean,
-    channelEnergy: boolean,
-    hasDnd: boolean,
-    hasAlarm: boolean,
-    hasTimer: boolean,
-    hasTrigger: boolean,
     ability: AbilityMap,
     all: SystemAll,
     cloud: CloudDevice | undefined
 ): GraphEndpoint[] {
     const endpoints: GraphEndpoint[] = [];
     const taken = new Set<number>();
-    const hasMp3 = 'Appliance.Control.Mp3' in ability;
     const add = (
         channel: number,
         classHint: ClassHint,
@@ -326,45 +332,21 @@ function enrollBoard(
             ? (entry as { devName?: unknown }).devName
             : undefined;
         const extra: TraitName[] = [];
-        // Board diagnostics live on channel 0 / hub root only.
-        if (channel === 0 && !traits.includes('system')) {
-            extra.push('system');
-        }
-        if (
-            (channelEnergy && classHint === 'socket')
-            || (boardEnergy && classHint !== 'cover' && parentId === undefined)
-        ) {
-            extra.push('energy');
-        }
-        if (hasMp3 && channel === 0 && !traits.includes('media')) {
-            extra.push('media');
-        }
-        if (hasDnd && channel === 0 && !traits.includes('dnd')) {
-            extra.push('dnd');
-        }
-        if (hasAlarm && channel === 0 && !traits.includes('alarm')) {
-            extra.push('alarm');
-        }
-        // Toggle-shaped Timer/TimerX extend only; cover/climate/humidifier/speaker use other extend objects.
-        if (
-            hasTimer
-            && (classHint === 'socket' || classHint === 'light' || classHint === 'fan')
-            && !traits.includes('timer')
-            && !traits.includes('media')
-            && !extra.includes('media')
-        ) {
-            extra.push('timer');
-        }
-        // Same board endpoints as timer (socket/light/fan); skip media speakers.
-        if (
-            hasTrigger
-            && (classHint === 'socket' || classHint === 'light' || classHint === 'fan')
-            && !traits.includes('trigger')
-            && !traits.includes('media')
-            && !extra.includes('media')
-        ) {
-            extra.push('trigger');
-        }
+        const input: EnrollBoardExtraInput = {
+            channel,
+            classHint,
+            traits,
+            extra,
+            parentId,
+            ability
+        };
+        extra.push(...enrollBoardSystemExtra(input));
+        extra.push(...enrollBoardEnergyExtra(input));
+        extra.push(...enrollBoardMediaExtra(input));
+        extra.push(...enrollBoardDndExtra(input));
+        extra.push(...enrollBoardAlarmExtra(input));
+        extra.push(...enrollBoardTimerExtra(input));
+        extra.push(...enrollBoardTriggerExtra(input));
         endpoints.push({
             id: `${uuid}:${channel}`,
             uuid,
@@ -381,113 +363,32 @@ function enrollBoard(
         });
         taken.add(channel);
     };
+    const ctx: EnrollBoardContext = {
+        uuid,
+        name,
+        model,
+        online,
+        ability,
+        all,
+        cloud,
+        taken,
+        add
+    };
 
-    const lightChannels = all.digest.light.length > 0 ? all.digest.light : ('Appliance.Control.Light' in ability ? [0] : []);
-    for (const channel of lightChannels) {
-        add(channel, 'light', ['light']);
-    }
+    enrollLight(ctx);
+    enrollCover(ctx);
+    enrollClimate(ctx);
+    enrollPresence(ctx);
+    enrollDiffuser(ctx);
+    enrollSpray(ctx);
+    enrollFan(ctx);
 
-    if (all.digest.garageDoor.length > 0) {
-        // Seed open/closed from the digest so hosts have state before the first
-        // PUSH or poll; on cloud MQTT that poll can be ~20 minutes away.
-        // Channels the installer never wired report doorEnable 0 and are not
-        // user-visible devices, so they are skipped (MSG200 ships three doors).
-        for (const door of all.digest.garageDoor) {
-            if (door.doorEnable === false) {
-                // Claim the channel without creating an endpoint, so the
-                // ToggleX pass below does not re-add the disabled door as a
-                // plain socket.
-                taken.add(door.channel);
-                continue;
-            }
-            add(door.channel, 'cover', ['cover'], door.open);
-        }
-    } else {
-        const coverChannels = all.digest.rollerShutter.length > 0
-            ? all.digest.rollerShutter
-            : ('Appliance.GarageDoor.State' in ability || 'Appliance.RollerShutter.State' in ability ? [0] : []);
-        for (const channel of coverChannels) {
-            add(channel, 'cover', ['cover']);
-        }
-    }
+    enrollMediaStandalone(ctx);
 
-    if (
-        'Appliance.Control.Thermostat.Mode' in ability
-        || 'Appliance.Control.Thermostat.ModeB' in ability
-        || 'Appliance.Control.Thermostat.ModeC' in ability
-        || all.digest.thermostat
-    ) {
-        add(0, 'climate', ['climate']);
-    }
+    enrollSwitchLeftover(ctx);
 
-    if ('Appliance.Control.Presence.Config' in ability || 'Appliance.Control.Presence.Study' in ability) {
-        add(0, 'sensor', ['presence']);
-    }
-
-    const diffuserChannels = new Set<number>([
-        ...(all.digest.diffuser?.light ?? []),
-        ...(all.digest.diffuser?.spray ?? [])
-    ]);
-    if (
-        diffuserChannels.size === 0
-        && ('Appliance.Control.Diffuser.Light' in ability || 'Appliance.Control.Diffuser.Spray' in ability)
-    ) {
-        diffuserChannels.add(0);
-    }
-    for (const channel of diffuserChannels) {
-        add(channel, 'humidifier', ['diffuser']);
-    }
-
-    const sprayChannels = all.digest.spray.length > 0
-        ? all.digest.spray
-        : ('Appliance.Control.Spray' in ability ? [0] : []);
-    for (const channel of sprayChannels) {
-        add(channel, 'humidifier', ['spray']);
-    }
-
-    const fanChannels = all.digest.fan.length > 0
-        ? all.digest.fan
-        : ('Appliance.Control.Fan' in ability ? [0] : []);
-    for (const channel of fanChannels) {
-        add(channel, 'fan', ['fan']);
-    }
-
-    if (hasMp3 && !taken.has(0)) {
-        add(0, 'speaker', ['media']);
-    }
-
-    let toggles: DigestToggle[] = all.digest.togglex;
-    if (toggles.length === 0 && cloud?.channels?.length) {
-        toggles = cloud.channels.map((_, channel) => ({ channel }));
-    }
-    if (
-        toggles.length === 0
-        && (TOGGLEX_NAMESPACE in ability || 'Appliance.Control.Toggle' in ability)
-    ) {
-        toggles = [{ channel: 0 }];
-    }
-    if (all.digest.garageDoor.some((door) => door.channel !== 0)) {
-        toggles = toggles.filter((entry) => entry.channel !== 0);
-    }
-    const masterId = `${uuid}:0`;
-    const isStrip = toggles.length >= 3 && toggles.some((entry) => entry.channel === 0);
-    for (const entry of toggles) {
-        add(
-            entry.channel,
-            'socket',
-            ['switch'],
-            entry.on,
-            isStrip && entry.channel !== 0 ? masterId : undefined
-        );
-    }
-
-    if (hasDnd && !taken.has(0)) {
-        add(0, 'socket', ['dnd']);
-    }
-
-    if (hasAlarm && !taken.has(0)) {
-        add(0, 'socket', ['alarm']);
-    }
+    enrollDndStandalone(ctx);
+    enrollAlarmStandalone(ctx);
 
     return endpoints;
 }
@@ -501,18 +402,15 @@ function enrollHub(
     name: string,
     model: string,
     online: boolean,
-    hasDnd: boolean,
-    hasAlarm: boolean,
+    ability: AbilityMap,
     all: SystemAll,
     cloudSubs: CloudSubDevice[]
 ): GraphEndpoint[] {
-    const hubTraits: TraitName[] = ['system'];
-    if (hasAlarm) {
-        hubTraits.push('alarm');
-    }
-    if (hasDnd) {
-        hubTraits.push('dnd');
-    }
+    const hubTraits: TraitName[] = [
+        'system',
+        ...enrollHubAlarmExtra(ability),
+        ...enrollHubDndExtra(ability)
+    ];
     const endpoints: GraphEndpoint[] = [{
         id: uuid,
         uuid,
@@ -557,21 +455,17 @@ function enrollHub(
             });
             continue;
         }
-        if (sub.on === undefined) {
-            continue;
-        }
-        endpoints.push({
-            id: `${uuid}#${subDeviceId}`,
+        const untyped = enrollHubUntypedOnoff({
             uuid,
             subDeviceId,
-            parentId: uuid,
-            name: sub.name || subDeviceId,
-            model: sub.model || subDeviceId,
-            classHint: 'socket',
-            traits: ['switch'],
+            name: sub.name,
+            model: sub.model,
             online: sub.online,
             on: sub.on
         });
+        if (untyped) {
+            endpoints.push(untyped);
+        }
     }
     return endpoints;
 }

@@ -1,3 +1,4 @@
+import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
 import {
     LIGHT_CAPACITY_EFFECT,
     LIGHT_CAPACITY_LUMINANCE,
@@ -17,7 +18,15 @@ import {
     type LightEffectEntry,
     type MerossMessage
 } from '../protocol';
+import {
+    DEFAULT,
+    SMART_CONFIG,
+    type PollSpec
+} from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { TraitDescriptor } from './descriptor';
+
+const TOGGLE_NAMESPACE = 'Appliance.Control.Toggle';
 
 export interface LightRgb {
     r: number;
@@ -138,7 +147,7 @@ export class LightTrait {
             });
         } else if (this.bind.hasToggle) {
             await this.bind.request({
-                namespace: 'Appliance.Control.Toggle',
+                namespace: TOGGLE_NAMESPACE,
                 method: 'SET',
                 payload: { toggle: { onoff: on ? 1 : 0 } }
             });
@@ -203,7 +212,7 @@ export class LightTrait {
             return;
         }
 
-        if (message.header.namespace === 'Appliance.Control.Toggle' && this.bind.hasToggle) {
+        if (message.header.namespace === TOGGLE_NAMESPACE && this.bind.hasToggle) {
             if (this.bind.channel === 0) {
                 const toggle = message.payload.toggle as { onoff?: unknown } | undefined;
                 if (toggle && typeof toggle.onoff === 'number') {
@@ -312,4 +321,50 @@ function wireToHost01(value: number): number {
 function clampInt(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, Math.trunc(value)));
 }
+
+/**
+ * Digest lists the bulbs; Ability without a digest row still claims channel 0
+ * so leftover ToggleX does not enroll the bulb as a socket.
+ */
+export function enrollLight(ctx: EnrollBoardContext): void {
+    if (ctx.all.digest.light.length > 0) {
+        for (const channel of ctx.all.digest.light) {
+            ctx.add(channel, 'light', ['light']);
+        }
+        return;
+    }
+    if (LIGHT_NAMESPACE in ctx.ability) {
+        ctx.add(0, 'light', ['light']);
+    }
+}
+
+export const LightDescriptor: TraitDescriptor & {
+    readonly name: 'light';
+    attach(args: TraitAttachArgs<LightValues>): LightTrait;
+} = {
+    name: 'light',
+    poll: {
+        [LIGHT_NAMESPACE]: DEFAULT,
+        [LIGHT_EFFECT_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: { list: 'effect' },
+            base: 1_850
+        }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<LightValues>): LightTrait {
+        const capacity = args.physical.ability[LIGHT_NAMESPACE]?.capacity;
+        // ToggleX wins when both Toggle and ToggleX are advertised.
+        const hasToggleX = TOGGLEX_NAMESPACE in args.physical.ability;
+        return new LightTrait({
+            uuid: args.physical.uuid,
+            channel: args.channel,
+            hasToggleX,
+            hasToggle: !hasToggleX && TOGGLE_NAMESPACE in args.physical.ability,
+            hasLightEffect: LIGHT_EFFECT_NAMESPACE in args.physical.ability,
+            lightCapacity: typeof capacity === 'number' ? capacity : 0,
+            request: args.request,
+            emitChange: args.emitChange
+        });
+    }
+};
 

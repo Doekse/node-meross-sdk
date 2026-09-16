@@ -1,3 +1,6 @@
+import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { TraitName } from '../endpoint';
+import type { AbilityMap } from '../protocol/codecs/ability';
 import {
     CONTROL_ALARM_NAMESPACE,
     CONTROL_BEEP_NAMESPACE,
@@ -10,7 +13,9 @@ import {
     type BeepChannelState,
     type MerossMessage
 } from '../protocol';
+import { channelList, DEFAULT, SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { TraitDescriptor } from './descriptor';
 
 export interface AlarmValues {
     on?: boolean;
@@ -178,3 +183,62 @@ function alarmPatch(entry: AlarmChannelState): AlarmValues {
     }
     return patch;
 }
+
+function hasAlarm(ability: AbilityMap): boolean {
+    return CONTROL_ALARM_NAMESPACE in ability || CONTROL_BEEP_NAMESPACE in ability;
+}
+
+/**
+ * Hub / board siren rides channel 0 when some other trait already claimed it.
+ */
+export function enrollBoardAlarmExtra(input: EnrollBoardExtraInput): TraitName[] {
+    if (
+        hasAlarm(input.ability)
+        && input.channel === 0
+        && !input.traits.includes('alarm')
+    ) {
+        return ['alarm'];
+    }
+    return [];
+}
+
+/** Standalone alarm when nothing else claimed channel 0. */
+export function enrollAlarmStandalone(ctx: EnrollBoardContext): void {
+    if (hasAlarm(ctx.ability) && !ctx.taken.has(0)) {
+        ctx.add(0, 'socket', ['alarm']);
+    }
+}
+
+/** Hub parent carries alarm beside system when Ability advertises it. */
+export function enrollHubAlarmExtra(ability: AbilityMap): TraitName[] {
+    if (!hasAlarm(ability)) {
+        return [];
+    }
+    return ['alarm'];
+}
+
+export const AlarmDescriptor: TraitDescriptor & {
+    readonly name: 'alarm';
+    attach(args: TraitAttachArgs<AlarmValues>): AlarmTrait;
+} = {
+    name: 'alarm',
+    poll: {
+        [CONTROL_ALARM_NAMESPACE]: {
+            ...DEFAULT,
+            payload: channelList('alarm', 'alarm')
+        },
+        [CONTROL_BEEP_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('alarm', 'alarm')
+        }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<AlarmValues>): AlarmTrait {
+        return new AlarmTrait({
+            uuid: args.physical.uuid,
+            channel: args.channel,
+            namespaces: args.namespaces,
+            request: args.request,
+            emitChange: args.emitChange
+        });
+    }
+};

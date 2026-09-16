@@ -1,3 +1,5 @@
+import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { TraitName } from '../endpoint';
 import {
     MP3_NAMESPACE,
     MP3_VOLUME_MAX,
@@ -6,7 +8,9 @@ import {
     type MerossMessage,
     type Mp3State
 } from '../protocol';
+import { DEFAULT, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { TraitDescriptor } from './descriptor';
 
 export interface MediaValues {
     muted?: boolean;
@@ -135,3 +139,50 @@ function mediaPatch(entry: Mp3State): MediaValues {
 function clamp01(value: number): number {
     return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
 }
+
+function hasMedia(ability: EnrollBoardExtraInput['ability']): boolean {
+    return MP3_NAMESPACE in ability;
+}
+
+/**
+ * Mp3 rides channel 0 when some other trait already claimed it.
+ */
+export function enrollBoardMediaExtra(input: EnrollBoardExtraInput): TraitName[] {
+    if (
+        hasMedia(input.ability)
+        && input.channel === 0
+        && !input.traits.includes('media')
+    ) {
+        return ['media'];
+    }
+    return [];
+}
+
+/** Standalone speaker when nothing else claimed channel 0. */
+export function enrollMediaStandalone(ctx: EnrollBoardContext): void {
+    if (hasMedia(ctx.ability) && !ctx.taken.has(0)) {
+        ctx.add(0, 'speaker', ['media']);
+    }
+}
+
+export const MediaDescriptor: TraitDescriptor & {
+    readonly name: 'media';
+    attach(args: TraitAttachArgs<MediaValues>): MediaTrait;
+} = {
+    name: 'media',
+    poll: {
+        [MP3_NAMESPACE]: {
+            ...DEFAULT,
+            payload: { dict: 'mp3' },
+            base: 380
+        }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<MediaValues>): MediaTrait {
+        return new MediaTrait({
+            uuid: args.physical.uuid,
+            channel: args.channel,
+            request: args.request,
+            emitChange: args.emitChange
+        });
+    }
+};

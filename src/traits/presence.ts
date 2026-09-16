@@ -1,3 +1,4 @@
+import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
 import {
     PRESENCE_CONFIG_NAMESPACE,
     PRESENCE_STUDY_NAMESPACE,
@@ -12,7 +13,14 @@ import {
     type PresenceConfig,
     type PresenceConfigSetOptions
 } from '../protocol';
+import {
+    channelList,
+    SMART_CONFIG,
+    SMART_FAST_MQTT,
+    type PollSpec
+} from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { TraitDescriptor } from './descriptor';
 
 export interface PresenceValues {
     /** true when firmware reports present (wire 2). */
@@ -186,3 +194,50 @@ function configPatch(entry: PresenceConfig): PresenceValues {
         testMode: entry.mode.testMode
     };
 }
+
+/**
+ * MS600 has no digest channel list for presence; Ability Config/Study is the
+ * claim so leftover ToggleX does not enroll it as a socket.
+ */
+export function enrollPresence(ctx: EnrollBoardContext): void {
+    if (PRESENCE_CONFIG_NAMESPACE in ctx.ability || PRESENCE_STUDY_NAMESPACE in ctx.ability) {
+        ctx.add(0, 'sensor', ['presence']);
+    }
+}
+
+export const PresenceDescriptor: TraitDescriptor & {
+    readonly name: 'presence';
+    attach(args: TraitAttachArgs<PresenceValues>): PresenceTrait;
+} = {
+    name: 'presence',
+    poll: {
+        [PRESENCE_CONFIG_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('config', 'presence'),
+            item: 260
+        },
+        /**
+         * Shared with sensor tempHum handlePush; keep `by: 'either'` + data /
+         * dataId so hub children stay in the GET. preferTrait stays in jobs.
+         */
+        [SENSOR_LATESTX_NAMESPACE]: {
+            ...SMART_FAST_MQTT,
+            payload: {
+                list: 'latest',
+                by: 'either',
+                data: ['presence', 'light'],
+                dataId: ['light', 'temp', 'humi']
+            },
+            item: 220
+        }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<PresenceValues>): PresenceTrait {
+        return new PresenceTrait({
+            uuid: args.physical.uuid,
+            channel: args.channel,
+            namespaces: args.namespaces,
+            request: args.request,
+            emitChange: args.emitChange
+        });
+    }
+};

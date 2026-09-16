@@ -1,5 +1,4 @@
 import type { TraitName } from '../endpoint';
-import { CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE } from '../protocol/codecs/alarm';
 import {
     ALARM_CONFIG_NAMESPACE,
     ALARM_NAMESPACE,
@@ -33,6 +32,7 @@ import {
     TIMER_NAMESPACE,
     WINDOW_OPENED_NAMESPACE
 } from '../protocol/codecs/climate';
+import { CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE } from '../protocol/codecs/alarm';
 import { CONSUMPTIONH_NAMESPACE } from '../protocol/codecs/consumptionh';
 import { CONSUMPTIONX_NAMESPACE, consumptionXDays } from '../protocol/codecs/consumptionx';
 import {
@@ -52,7 +52,6 @@ import {
 import { DND_MODE_NAMESPACE } from '../protocol/codecs/dnd';
 import {
     ELECTRICITY_NAMESPACE,
-    ELECTRICITYX_ALL_CHANNELS,
     ELECTRICITYX_NAMESPACE
 } from '../protocol/codecs/electricity';
 import { FAN_CONFIG_NAMESPACE, FAN_NAMESPACE, FILTER_MAINTENANCE_NAMESPACE } from '../protocol/codecs/fan';
@@ -93,20 +92,53 @@ import {
 } from '../protocol/codecs/system';
 import {
     CONTROL_TIMER_NAMESPACE,
-    DIGEST_TIMERX_NAMESPACE,
-    TIMERX_NAMESPACE
+    DIGEST_TIMERX_NAMESPACE
 } from '../protocol/codecs/timerx';
-import { TOGGLEX_ALL_CHANNELS, TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
+import { TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
 import {
     CONTROL_TRIGGER_NAMESPACE,
-    DIGEST_TRIGGERX_NAMESPACE,
-    TRIGGERX_NAMESPACE
+    DIGEST_TRIGGERX_NAMESPACE
 } from '../protocol/codecs/triggerx';
 import { CONTROL_WATER_NAMESPACE, DEVICE_CFG_NAMESPACE } from '../protocol/codecs/water';
 import type { MerossPayload } from '../protocol/message';
 import type { AbilityMap } from '../protocol/codecs/ability';
-import type { PollJob, PollStrategy } from './poller';
+import { AlarmDescriptor } from '../traits/alarm';
+import { ClimateDescriptor } from '../traits/climate';
+import { CoverDescriptor } from '../traits/cover';
+import { DiffuserDescriptor } from '../traits/diffuser';
+import { DndDescriptor } from '../traits/dnd';
+import { EnergyDescriptor } from '../traits/energy';
+import { FanDescriptor } from '../traits/fan';
+import { LightDescriptor } from '../traits/light';
+import { MediaDescriptor } from '../traits/media';
+import { PresenceDescriptor } from '../traits/presence';
+import { SensorDescriptor } from '../traits/sensor';
+import { SprayDescriptor } from '../traits/spray';
+import { SprinklerDescriptor } from '../traits/sprinkler';
+import { SwitchDescriptor, TOGGLE_NAMESPACE } from '../traits/switch';
+import { SystemDescriptor } from '../traits/system';
+import { TimerDescriptor } from '../traits/timer';
+import { TriggerDescriptor } from '../traits/trigger';
+import type { PollJob } from './poller';
 import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
+import {
+    POLL_RESPONSE_HEADER_SIZE,
+    type PayloadSpec,
+    type PollSpec
+} from './spec';
+
+export {
+    CLOUDMQTT_PERIOD_MS,
+    ENERGY_CLOUD_PERIOD_MS,
+    ENERGY_PERIOD_MS,
+    HUB_BATTERY_PERIOD_MS,
+    POLL_RESPONSE_HEADER_SIZE,
+    SENSOR_FAST_CLOUD_PERIOD_MS,
+    SENSOR_FAST_PERIOD_MS,
+    SENSOR_SLOW_CLOUD_PERIOD_MS,
+    SENSOR_SLOW_PERIOD_MS,
+    SYSTEM_ALL_PERIOD_MS
+} from './spec';
 
 /**
  * Channel, sub-device, and traits used to pack LIST GET payloads.
@@ -115,47 +147,10 @@ import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
  * {@link buildPollJobs} argument); `model` is hub chunking (later).
  */
 export interface PollTarget {
-    channel?: number;
-    subDeviceId?: string;
-    traits: readonly TraitName[];
+    readonly channel?: number;
+    readonly subDeviceId?: string;
+    readonly traits: readonly TraitName[];
 }
-
-/**
- * Firmware heartbeat window. HTTP is also probed on this interval while MQTT
- * is current, so a dropped LAN path is noticed even while PUSH is still
- * arriving.
- */
-export const SYSTEM_ALL_PERIOD_MS = 295_000;
-
-/** Watt-hour totals do not need the instantaneous electricity period. */
-export const ENERGY_PERIOD_MS = 55_000;
-
-/** Consumption over cloud MQTT so daily totals do not fill the broker budget. */
-export const ENERGY_CLOUD_PERIOD_MS = 600_000;
-
-/** Live power / presence: due on every LAN tick. */
-export const SENSOR_FAST_PERIOD_MS = 0;
-
-/** Live sensors when the request rides cloud MQTT. */
-export const SENSOR_FAST_CLOUD_PERIOD_MS = 180_000;
-
-/** Config and slowly changing sensors on LAN. */
-export const SENSOR_SLOW_PERIOD_MS = 300_000;
-
-/** Slowly changing sensors over cloud MQTT. */
-export const SENSOR_SLOW_CLOUD_PERIOD_MS = 600_000;
-
-/** Config GETs over cloud MQTT; the slowest period, as they rarely change. */
-export const CLOUDMQTT_PERIOD_MS = 1_195_000;
-
-/** Hub battery percent barely moves; about once an hour is enough. */
-export const HUB_BATTERY_PERIOD_MS = 3_600_000;
-
-/**
- * Control.Multiple's envelope is counted before any sub-GETACK so the HTTP
- * ~3000-byte ceiling is not spent twice.
- */
-export const POLL_RESPONSE_HEADER_SIZE = 300;
 
 /**
  * Floor after a truncated-Multiple shrink, and the advertised max when
@@ -178,8 +173,8 @@ export const POLL_RESPONSE_SIZE_PER_CMD = 800;
 export const CONSUMPTIONX_DEFAULT_DAYS = 30;
 
 interface PollResponseParts {
-    base: number;
-    item: number;
+    readonly base: number;
+    readonly item: number;
 }
 
 /**
@@ -192,491 +187,116 @@ export function getDeviceResponseSizeMax(maxCmdNum: number): number {
     return advertised < POLL_RESPONSE_SIZE_MIN ? POLL_RESPONSE_SIZE_MIN : advertised;
 }
 
-interface PollPeriods {
-    strategy: PollStrategy;
-    periodMs: number;
-    periodCloudMs: number;
-}
-
-/**
- * GET body grammar. Omitted payload is `{}`.
- * `dict` — `{ key: { channel } }` or `{ key: {} }` when channel is omitted.
- * `list` without `by` — `{ key: [] }` (Light.Effect catalog).
- * `list` with `by` — `{ key: [{ channel | id | subId }] }` from enrolled endpoints.
- * `either` — hub children (`subId`) when present, otherwise board channels.
- */
-type PayloadSpec =
-    | { dict: string; channel?: number }
-    | {
-        list: string;
-        by?: 'channel' | 'id' | 'subId' | 'either';
-        for?: TraitName;
-        data?: string[];
-        dataId?: string[];
-    };
-
-interface PollSpec extends PollPeriods {
-    skipIf?: string;
-    payload?: PayloadSpec;
-    method?: 'GET' | 'PUSH';
-    calibrate?: (payload: MerossPayload) => number | undefined;
-    /**
-     * GETACK bytes. Omitted `base` is {@link POLL_RESPONSE_HEADER_SIZE} and
-     * omitted `item` is 0, so packing still charges the Multiple envelope
-     * instead of treating the namespace as free.
-     */
-    base?: number;
-    item?: number;
-}
-
-const DEFAULT: PollPeriods = {
-    strategy: 'default',
-    periodMs: 0,
-    periodCloudMs: CLOUDMQTT_PERIOD_MS
-};
-
-const ONCE: PollPeriods = {
-    strategy: 'once',
-    periodMs: 0,
-    periodCloudMs: 0
-};
-
-const SMART_FAST: PollPeriods = {
-    strategy: 'smart',
-    periodMs: SENSOR_FAST_PERIOD_MS,
-    periodCloudMs: SENSOR_FAST_CLOUD_PERIOD_MS
-};
-
-/** LatestX stays every LAN tick; over MQTT it uses the config cloud period. */
-const SMART_FAST_MQTT: PollPeriods = {
-    strategy: 'smart',
-    periodMs: SENSOR_FAST_PERIOD_MS,
-    periodCloudMs: CLOUDMQTT_PERIOD_MS
-};
-
-/** Latest is live on LAN; over MQTT it can wait with other slow sensors. */
-const SMART_FAST_SLOW_CLOUD: PollPeriods = {
-    strategy: 'smart',
-    periodMs: SENSOR_FAST_PERIOD_MS,
-    periodCloudMs: SENSOR_SLOW_CLOUD_PERIOD_MS
-};
-
-const SMART_SLOW: PollPeriods = {
-    strategy: 'smart',
-    periodMs: SENSOR_SLOW_PERIOD_MS,
-    periodCloudMs: SENSOR_SLOW_CLOUD_PERIOD_MS
-};
-
-const SMART_CONFIG: PollPeriods = {
-    strategy: 'smart',
-    periodMs: SENSOR_SLOW_PERIOD_MS,
-    periodCloudMs: CLOUDMQTT_PERIOD_MS
-};
-
-const SMART_ENERGY: PollPeriods = {
-    strategy: 'smart',
-    periodMs: ENERGY_PERIOD_MS,
-    periodCloudMs: ENERGY_CLOUD_PERIOD_MS
-};
-
-const SMART_CLOUDMQTT: PollPeriods = {
-    strategy: 'smart',
-    periodMs: CLOUDMQTT_PERIOD_MS,
-    periodCloudMs: CLOUDMQTT_PERIOD_MS
-};
-
-const SMART_BATTERY: PollPeriods = {
-    strategy: 'smart',
-    periodMs: HUB_BATTERY_PERIOD_MS,
-    periodCloudMs: CLOUDMQTT_PERIOD_MS
-};
-
-const SMART_ALL: PollPeriods = {
-    strategy: 'smart',
-    periodMs: SYSTEM_ALL_PERIOD_MS,
-    periodCloudMs: CLOUDMQTT_PERIOD_MS
-};
-
-const ALL_CHANNELS = { dict: 'togglex', channel: TOGGLEX_ALL_CHANNELS } as const;
-
-function channelList(list: string, trait?: TraitName): PayloadSpec {
-    return { list, by: 'channel', ...(trait ? { for: trait } : {}) };
-}
-
-function idList(list: string, trait?: TraitName): PayloadSpec {
-    return { list, by: 'id', ...(trait ? { for: trait } : {}) };
-}
-
-function subIdList(list: string, trait: TraitName): PayloadSpec {
-    return { list, by: 'subId', for: trait };
-}
-
 /**
  * GET schedule keyed by Ability. Unadvertised namespaces stay off the wire.
  * FilterMaintenance is PUSH-query (GET disconnects MAP100).
  * `base`/`item` live here so packing does not keep a second per-namespace table.
+ * Assembled from trait descriptors; not re-exported from the poll barrel.
  */
-const POLL: Record<string, PollSpec> = {
-    [SYSTEM_ALL_NAMESPACE]: {
-        strategy: 'all',
-        periodMs: SYSTEM_ALL_PERIOD_MS,
-        periodCloudMs: 0,
-        base: 1_000
-    },
-    'Appliance.System.Runtime': { ...SMART_CONFIG, base: 330 },
-    // Firmware / Hardware / Time ride System.All; standalone GET is the fallback.
-    [SYSTEM_FIRMWARE_NAMESPACE]: {
-        ...ONCE,
-        skipIf: SYSTEM_ALL_NAMESPACE
-    },
-    [SYSTEM_HARDWARE_NAMESPACE]: {
-        ...ONCE,
-        skipIf: SYSTEM_ALL_NAMESPACE
-    },
-    [SYSTEM_TIME_NAMESPACE]: {
-        ...SMART_CONFIG,
-        skipIf: SYSTEM_ALL_NAMESPACE
-    },
-    [SYSTEM_POSITION_NAMESPACE]: ONCE,
-    [SYSTEM_DEBUG_NAMESPACE]: { ...ONCE, base: 1_900 },
-    [CONFIG_OVERTEMP_NAMESPACE]: { ...SMART_CONFIG, base: 340 },
-    [CONTROL_OVERTEMP_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('overTemp', 'energy')
-    },
-    [CONFIG_SENSOR_ASSOCIATION_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('config'),
-        item: 30
-    },
-    [CONTROL_ALERT_CONFIG_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('config')
-    },
-    [CONFIG_STANDBY_KILLER_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('config', 'energy')
-    },
+export const POLL: Record<string, PollSpec> = {
+    [SYSTEM_ALL_NAMESPACE]: SystemDescriptor.poll[SYSTEM_ALL_NAMESPACE],
+    'Appliance.System.Runtime': SystemDescriptor.poll['Appliance.System.Runtime'],
+    [SYSTEM_FIRMWARE_NAMESPACE]: SystemDescriptor.poll[SYSTEM_FIRMWARE_NAMESPACE],
+    [SYSTEM_HARDWARE_NAMESPACE]: SystemDescriptor.poll[SYSTEM_HARDWARE_NAMESPACE],
+    [SYSTEM_TIME_NAMESPACE]: SystemDescriptor.poll[SYSTEM_TIME_NAMESPACE],
+    [SYSTEM_POSITION_NAMESPACE]: SystemDescriptor.poll[SYSTEM_POSITION_NAMESPACE],
+    [SYSTEM_DEBUG_NAMESPACE]: SystemDescriptor.poll[SYSTEM_DEBUG_NAMESPACE],
+    [CONFIG_OVERTEMP_NAMESPACE]: EnergyDescriptor.poll[CONFIG_OVERTEMP_NAMESPACE],
+    [CONTROL_OVERTEMP_NAMESPACE]: EnergyDescriptor.poll[CONTROL_OVERTEMP_NAMESPACE],
+    [CONFIG_SENSOR_ASSOCIATION_NAMESPACE]: SensorDescriptor.poll[CONFIG_SENSOR_ASSOCIATION_NAMESPACE],
+    [CONTROL_ALERT_CONFIG_NAMESPACE]: EnergyDescriptor.poll[CONTROL_ALERT_CONFIG_NAMESPACE],
+    [CONFIG_STANDBY_KILLER_NAMESPACE]: EnergyDescriptor.poll[CONFIG_STANDBY_KILLER_NAMESPACE],
 
     // Digest / device state
-    [TOGGLEX_NAMESPACE]: {
-        ...DEFAULT,
-        payload: ALL_CHANNELS
-    },
-    'Appliance.Control.Toggle': {
-        ...DEFAULT,
-        payload: { dict: 'toggle' }
-    },
-    [LIGHT_NAMESPACE]: DEFAULT,
-    [SPRAY_NAMESPACE]: {
-        ...DEFAULT,
-        payload: { dict: 'spray' }
-    },
-    [FAN_NAMESPACE]: {
-        ...DEFAULT,
-        payload: channelList('fan', 'fan'),
-        item: 20
-    },
-    [MP3_NAMESPACE]: {
-        ...DEFAULT,
-        payload: { dict: 'mp3' },
-        base: 380
-    },
-    [DIFFUSER_LIGHT_NAMESPACE]: DEFAULT,
-    [DIFFUSER_SPRAY_NAMESPACE]: DEFAULT,
-    [GARAGE_STATE_NAMESPACE]: {
-        ...DEFAULT,
-        payload: { dict: 'state', channel: TOGGLEX_ALL_CHANNELS }
-    },
-    [GARAGE_CONFIG_NAMESPACE]: { ...SMART_CONFIG, base: 410 },
-    [GARAGE_MULTIPLE_CONFIG_NAMESPACE]: { ...SMART_CONFIG, item: 140 },
-    [SHUTTER_POSITION_NAMESPACE]: { ...DEFAULT, item: 50 },
-    [SHUTTER_STATE_NAMESPACE]: { ...DEFAULT, item: 40 },
-    [SHUTTER_CONFIG_NAMESPACE]: { ...SMART_CONFIG, item: 70 },
-    [SHUTTER_ADJUST_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('adjust', 'cover'),
-        item: 35
-    },
-    [CONTROL_ALARM_NAMESPACE]: {
-        ...DEFAULT,
-        payload: channelList('alarm', 'alarm')
-    },
-    [CONTROL_BEEP_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('alarm', 'alarm')
-    },
-    [HUB_TOGGLEX_NAMESPACE]: {
-        ...DEFAULT,
-        payload: idList('togglex')
-    },
+    [TOGGLEX_NAMESPACE]: SwitchDescriptor.poll[TOGGLEX_NAMESPACE],
+    [TOGGLE_NAMESPACE]: SwitchDescriptor.poll[TOGGLE_NAMESPACE],
+    [LIGHT_NAMESPACE]: LightDescriptor.poll[LIGHT_NAMESPACE],
+    [SPRAY_NAMESPACE]: SprayDescriptor.poll[SPRAY_NAMESPACE],
+    [FAN_NAMESPACE]: FanDescriptor.poll[FAN_NAMESPACE],
+    [MP3_NAMESPACE]: MediaDescriptor.poll[MP3_NAMESPACE],
+    [DIFFUSER_LIGHT_NAMESPACE]: DiffuserDescriptor.poll[DIFFUSER_LIGHT_NAMESPACE],
+    [DIFFUSER_SPRAY_NAMESPACE]: DiffuserDescriptor.poll[DIFFUSER_SPRAY_NAMESPACE],
+    [GARAGE_STATE_NAMESPACE]: CoverDescriptor.poll[GARAGE_STATE_NAMESPACE],
+    [GARAGE_CONFIG_NAMESPACE]: CoverDescriptor.poll[GARAGE_CONFIG_NAMESPACE],
+    [GARAGE_MULTIPLE_CONFIG_NAMESPACE]: CoverDescriptor.poll[GARAGE_MULTIPLE_CONFIG_NAMESPACE],
+    [SHUTTER_POSITION_NAMESPACE]: CoverDescriptor.poll[SHUTTER_POSITION_NAMESPACE],
+    [SHUTTER_STATE_NAMESPACE]: CoverDescriptor.poll[SHUTTER_STATE_NAMESPACE],
+    [SHUTTER_CONFIG_NAMESPACE]: CoverDescriptor.poll[SHUTTER_CONFIG_NAMESPACE],
+    [SHUTTER_ADJUST_NAMESPACE]: CoverDescriptor.poll[SHUTTER_ADJUST_NAMESPACE],
+    [CONTROL_ALARM_NAMESPACE]: AlarmDescriptor.poll[CONTROL_ALARM_NAMESPACE],
+    [CONTROL_BEEP_NAMESPACE]: AlarmDescriptor.poll[CONTROL_BEEP_NAMESPACE],
+    [HUB_TOGGLEX_NAMESPACE]: SwitchDescriptor.poll[HUB_TOGGLEX_NAMESPACE],
 
     // Config / slow sensors
-    [LIGHT_EFFECT_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: { list: 'effect' },
-        base: 1_850
-    },
-    [FAN_CONFIG_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('config', 'fan')
-    },
-    [FILTER_MAINTENANCE_NAMESPACE]: {
-        ...SMART_CLOUDMQTT,
-        method: 'PUSH',
-        item: 35
-    },
-    [DIFFUSER_SENSOR_NAMESPACE]: { ...SMART_SLOW, item: 100 },
-    [DND_MODE_NAMESPACE]: { ...SMART_CONFIG, base: 320 },
-    [PRESENCE_CONFIG_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('config', 'presence'),
-        item: 260
-    },
+    [LIGHT_EFFECT_NAMESPACE]: LightDescriptor.poll[LIGHT_EFFECT_NAMESPACE],
+    [FAN_CONFIG_NAMESPACE]: FanDescriptor.poll[FAN_CONFIG_NAMESPACE],
+    [FILTER_MAINTENANCE_NAMESPACE]: FanDescriptor.poll[FILTER_MAINTENANCE_NAMESPACE],
+    [DIFFUSER_SENSOR_NAMESPACE]: DiffuserDescriptor.poll[DIFFUSER_SENSOR_NAMESPACE],
+    [DND_MODE_NAMESPACE]: DndDescriptor.poll[DND_MODE_NAMESPACE],
+    [PRESENCE_CONFIG_NAMESPACE]: PresenceDescriptor.poll[PRESENCE_CONFIG_NAMESPACE],
 
     // Energy / fast sensors
-    [ELECTRICITY_NAMESPACE]: {
-        ...SMART_FAST,
-        payload: { dict: 'electricity', channel: 0 },
-        base: 430
-    },
-    [ELECTRICITYX_NAMESPACE]: {
-        ...SMART_FAST,
-        payload: { dict: 'electricity', channel: ELECTRICITYX_ALL_CHANNELS },
-        item: 100
-    },
-    [CONSUMPTIONX_NAMESPACE]: {
-        ...SMART_ENERGY,
-        base: 320,
-        item: 53,
-        calibrate: (payload) => (
-            consumptionXDays(payload) === undefined
-                ? undefined
-                : estimateResponseSize(CONSUMPTIONX_NAMESPACE, payload)
-        )
-    },
-    [CONSUMPTIONH_NAMESPACE]: {
-        ...SMART_ENERGY,
-        payload: channelList('consumptionH', 'energy'),
-        base: 320,
-        item: 1_900
-    },
-    [SENSOR_LATESTX_NAMESPACE]: {
-        ...SMART_FAST_MQTT,
-        payload: {
-            list: 'latest',
-            by: 'either',
-            data: ['presence', 'light'],
-            dataId: ['light', 'temp', 'humi']
-        },
-        item: 220
-    },
-    [SENSOR_LATEST_NAMESPACE]: {
-        ...SMART_FAST_SLOW_CLOUD,
-        payload: channelList('latest', 'climate'),
-        item: 80
-    },
+    [ELECTRICITY_NAMESPACE]: EnergyDescriptor.poll[ELECTRICITY_NAMESPACE],
+    [ELECTRICITYX_NAMESPACE]: EnergyDescriptor.poll[ELECTRICITYX_NAMESPACE],
+    [CONSUMPTIONX_NAMESPACE]: EnergyDescriptor.poll[CONSUMPTIONX_NAMESPACE],
+    [CONSUMPTIONH_NAMESPACE]: EnergyDescriptor.poll[CONSUMPTIONH_NAMESPACE],
+    [SENSOR_LATESTX_NAMESPACE]: PresenceDescriptor.poll[SENSOR_LATESTX_NAMESPACE],
+    [SENSOR_LATEST_NAMESPACE]: ClimateDescriptor.poll[SENSOR_LATEST_NAMESPACE],
 
     // Timer / trigger indexes (X) and legacy full-list GETs (pre-X)
-    [DIGEST_TIMERX_NAMESPACE]: ONCE,
-    [DIGEST_TRIGGERX_NAMESPACE]: ONCE,
-    [CONTROL_TIMER_NAMESPACE]: {
-        ...SMART_CONFIG,
-        skipIf: TIMERX_NAMESPACE,
-        payload: { list: 'timer' }
-    },
-    [CONTROL_TRIGGER_NAMESPACE]: {
-        ...SMART_CONFIG,
-        skipIf: TRIGGERX_NAMESPACE,
-        payload: { dict: 'trigger' }
-    },
+    [DIGEST_TIMERX_NAMESPACE]: TimerDescriptor.poll[DIGEST_TIMERX_NAMESPACE],
+    [DIGEST_TRIGGERX_NAMESPACE]: TriggerDescriptor.poll[DIGEST_TRIGGERX_NAMESPACE],
+    [CONTROL_TIMER_NAMESPACE]: TimerDescriptor.poll[CONTROL_TIMER_NAMESPACE],
+    [CONTROL_TRIGGER_NAMESPACE]: TriggerDescriptor.poll[CONTROL_TRIGGER_NAMESPACE],
 
     // Board climate
-    [THERMOSTAT_MODE_NAMESPACE]: {
-        ...DEFAULT,
-        payload: channelList('mode', 'climate')
-    },
-    [THERMOSTAT_MODEB_NAMESPACE]: {
-        ...DEFAULT,
-        payload: channelList('modeB', 'climate')
-    },
-    [THERMOSTAT_MODEC_NAMESPACE]: {
-        ...DEFAULT,
-        payload: channelList('control', 'climate')
-    },
-    [TIMER_NAMESPACE]: {
-        ...DEFAULT,
-        payload: channelList('timer', 'climate')
-    },
-    [ALARM_NAMESPACE]: {
-        ...DEFAULT,
-        payload: channelList('alarm', 'climate')
-    },
-    [HOLD_ACTION_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('holdAction', 'climate')
-    },
-    [WINDOW_OPENED_NAMESPACE]: {
-        ...SMART_SLOW,
-        payload: channelList('windowOpened', 'climate')
-    },
-    [SENSOR_NAMESPACE]: {
-        ...SMART_SLOW,
-        payload: channelList('sensor', 'climate')
-    },
-    [CALIBRATION_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('calibration', 'climate')
-    },
-    [DEAD_ZONE_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('deadZone', 'climate')
-    },
-    [SUMMER_MODE_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('summerMode', 'climate')
-    },
-    [COMPRESSOR_DELAY_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('delay', 'climate')
-    },
-    [ALARM_CONFIG_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('alarmConfig', 'climate')
-    },
-    [SCHEDULE_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('schedule', 'climate')
-    },
-    [SCHEDULEB_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('scheduleB', 'climate')
-    },
-    [TEMP_UNIT_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('tempUnit', 'climate')
-    },
-    [SCREEN_BRIGHTNESS_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('brightness', 'climate'),
-        item: 70
-    },
-    [PHYSICAL_LOCK_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: { list: 'lock', by: 'either', for: 'climate' },
-        item: 35
-    },
-    [FROST_NAMESPACE]: {
-        ...SMART_SLOW,
-        payload: channelList('frost', 'climate')
-    },
-    [OVERHEAT_NAMESPACE]: {
-        ...SMART_SLOW,
-        payload: channelList('overheat', 'climate')
-    },
-    [CTL_RANGE_NAMESPACE]: {
-        ...ONCE,
-        payload: channelList('ctlRange', 'climate')
-    },
+    [THERMOSTAT_MODE_NAMESPACE]: ClimateDescriptor.poll[THERMOSTAT_MODE_NAMESPACE],
+    [THERMOSTAT_MODEB_NAMESPACE]: ClimateDescriptor.poll[THERMOSTAT_MODEB_NAMESPACE],
+    [THERMOSTAT_MODEC_NAMESPACE]: ClimateDescriptor.poll[THERMOSTAT_MODEC_NAMESPACE],
+    [TIMER_NAMESPACE]: ClimateDescriptor.poll[TIMER_NAMESPACE],
+    [ALARM_NAMESPACE]: ClimateDescriptor.poll[ALARM_NAMESPACE],
+    [HOLD_ACTION_NAMESPACE]: ClimateDescriptor.poll[HOLD_ACTION_NAMESPACE],
+    [WINDOW_OPENED_NAMESPACE]: ClimateDescriptor.poll[WINDOW_OPENED_NAMESPACE],
+    [SENSOR_NAMESPACE]: ClimateDescriptor.poll[SENSOR_NAMESPACE],
+    [CALIBRATION_NAMESPACE]: ClimateDescriptor.poll[CALIBRATION_NAMESPACE],
+    [DEAD_ZONE_NAMESPACE]: ClimateDescriptor.poll[DEAD_ZONE_NAMESPACE],
+    [SUMMER_MODE_NAMESPACE]: ClimateDescriptor.poll[SUMMER_MODE_NAMESPACE],
+    [COMPRESSOR_DELAY_NAMESPACE]: ClimateDescriptor.poll[COMPRESSOR_DELAY_NAMESPACE],
+    [ALARM_CONFIG_NAMESPACE]: ClimateDescriptor.poll[ALARM_CONFIG_NAMESPACE],
+    [SCHEDULE_NAMESPACE]: ClimateDescriptor.poll[SCHEDULE_NAMESPACE],
+    [SCHEDULEB_NAMESPACE]: ClimateDescriptor.poll[SCHEDULEB_NAMESPACE],
+    [TEMP_UNIT_NAMESPACE]: ClimateDescriptor.poll[TEMP_UNIT_NAMESPACE],
+    [SCREEN_BRIGHTNESS_NAMESPACE]: ClimateDescriptor.poll[SCREEN_BRIGHTNESS_NAMESPACE],
+    [PHYSICAL_LOCK_NAMESPACE]: ClimateDescriptor.poll[PHYSICAL_LOCK_NAMESPACE],
+    [FROST_NAMESPACE]: ClimateDescriptor.poll[FROST_NAMESPACE],
+    [OVERHEAT_NAMESPACE]: ClimateDescriptor.poll[OVERHEAT_NAMESPACE],
+    [CTL_RANGE_NAMESPACE]: ClimateDescriptor.poll[CTL_RANGE_NAMESPACE],
 
     // Hub climate
-    [HUB_MTS100_ALL_NAMESPACE]: {
-        ...SMART_ALL,
-        payload: idList('all', 'climate')
-    },
-    [HUB_MTS100_MODE_NAMESPACE]: {
-        ...DEFAULT,
-        skipIf: HUB_MTS100_ALL_NAMESPACE,
-        payload: idList('mode', 'climate')
-    },
-    [HUB_MTS100_TEMPERATURE_NAMESPACE]: {
-        ...DEFAULT,
-        skipIf: HUB_MTS100_ALL_NAMESPACE,
-        payload: idList('temperature', 'climate')
-    },
-    [HUB_MTS100_ADJUST_NAMESPACE]: {
-        ...SMART_CLOUDMQTT,
-        payload: idList('adjust', 'climate')
-    },
-    [HUB_MTS100_CONFIG_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: idList('config', 'climate')
-    },
-    [HUB_MTS100_SUPERCTL_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: idList('superCtl', 'climate')
-    },
-    [HUB_MTS100_TIMESYNC_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: idList('timeSync', 'climate')
-    },
-    [HUB_MTS100_SCHEDULE_NAMESPACE]: {
-        ...SMART_CLOUDMQTT,
-        payload: idList('schedule', 'climate')
-    },
-    [HUB_MTS100_SCHEDULEB_NAMESPACE]: {
-        ...SMART_CLOUDMQTT,
-        payload: idList('schedule', 'climate')
-    },
+    [HUB_MTS100_ALL_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_ALL_NAMESPACE],
+    [HUB_MTS100_MODE_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_MODE_NAMESPACE],
+    [HUB_MTS100_TEMPERATURE_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_TEMPERATURE_NAMESPACE],
+    [HUB_MTS100_ADJUST_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_ADJUST_NAMESPACE],
+    [HUB_MTS100_CONFIG_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_CONFIG_NAMESPACE],
+    [HUB_MTS100_SUPERCTL_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_SUPERCTL_NAMESPACE],
+    [HUB_MTS100_TIMESYNC_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_TIMESYNC_NAMESPACE],
+    [HUB_MTS100_SCHEDULE_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_SCHEDULE_NAMESPACE],
+    [HUB_MTS100_SCHEDULEB_NAMESPACE]: ClimateDescriptor.poll[HUB_MTS100_SCHEDULEB_NAMESPACE],
 
     // Hub sensors / sprinkler
-    [HUB_SENSOR_ALL_NAMESPACE]: {
-        ...SMART_ALL,
-        payload: idList('all', 'sensor')
-    },
-    [HUB_SENSOR_TEMPHUM_NAMESPACE]: {
-        ...DEFAULT,
-        skipIf: HUB_SENSOR_ALL_NAMESPACE,
-        payload: idList('tempHum', 'sensor')
-    },
-    [HUB_SENSOR_DOORWINDOW_NAMESPACE]: {
-        ...DEFAULT,
-        skipIf: HUB_SENSOR_ALL_NAMESPACE,
-        payload: idList('doorWindow', 'sensor')
-    },
-    [HUB_SENSOR_WATERLEAK_NAMESPACE]: {
-        ...DEFAULT,
-        skipIf: HUB_SENSOR_ALL_NAMESPACE,
-        payload: idList('waterLeak', 'sensor')
-    },
-    [HUB_SENSOR_MOTION_NAMESPACE]: {
-        ...DEFAULT,
-        skipIf: HUB_SENSOR_ALL_NAMESPACE,
-        payload: idList('motion', 'sensor')
-    },
-    [HUB_SENSOR_SMOKE_NAMESPACE]: {
-        ...DEFAULT,
-        skipIf: HUB_SENSOR_ALL_NAMESPACE,
-        payload: idList('smokeAlarm', 'sensor')
-    },
-    [HUB_BATTERY_NAMESPACE]: {
-        ...SMART_BATTERY,
-        payload: idList('battery')
-    },
-    [HUB_SUBDEVICE_VERSION_NAMESPACE]: {
-        ...ONCE,
-        payload: idList('version')
-    },
-    [HUB_SENSOR_ADJUST_NAMESPACE]: {
-        ...SMART_CLOUDMQTT,
-        payload: idList('adjust', 'sensor')
-    },
-    [HUB_SENSOR_ALERT_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: idList('alert', 'sensor')
-    },
-    [SMOKE_CONFIG_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: subIdList('config', 'sensor')
-    },
-    [CONTROL_WATER_NAMESPACE]: {
-        ...DEFAULT,
-        payload: subIdList('control', 'sprinkler')
-    },
-    [DEVICE_CFG_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: subIdList('config', 'sprinkler')
-    }
+    [HUB_SENSOR_ALL_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_ALL_NAMESPACE],
+    [HUB_SENSOR_TEMPHUM_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_TEMPHUM_NAMESPACE],
+    [HUB_SENSOR_DOORWINDOW_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_DOORWINDOW_NAMESPACE],
+    [HUB_SENSOR_WATERLEAK_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_WATERLEAK_NAMESPACE],
+    [HUB_SENSOR_MOTION_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_MOTION_NAMESPACE],
+    [HUB_SENSOR_SMOKE_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_SMOKE_NAMESPACE],
+    [HUB_BATTERY_NAMESPACE]: SensorDescriptor.poll[HUB_BATTERY_NAMESPACE],
+    [HUB_SUBDEVICE_VERSION_NAMESPACE]: SwitchDescriptor.poll[HUB_SUBDEVICE_VERSION_NAMESPACE],
+    [HUB_SENSOR_ADJUST_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_ADJUST_NAMESPACE],
+    [HUB_SENSOR_ALERT_NAMESPACE]: SensorDescriptor.poll[HUB_SENSOR_ALERT_NAMESPACE],
+    [SMOKE_CONFIG_NAMESPACE]: SensorDescriptor.poll[SMOKE_CONFIG_NAMESPACE],
+    [CONTROL_WATER_NAMESPACE]: SprinklerDescriptor.poll[CONTROL_WATER_NAMESPACE],
+    [DEVICE_CFG_NAMESPACE]: SprinklerDescriptor.poll[DEVICE_CFG_NAMESPACE]
 };
 
 /**
@@ -774,25 +394,39 @@ function encodeList(
     const withId = picked.filter((endpoint) => endpoint.subDeviceId);
     const withChannel = picked.filter((endpoint) => endpoint.channel !== undefined);
 
-    if (spec.by === 'id') {
-        return withId.map((endpoint) => ({ id: endpoint.subDeviceId }));
+    switch (spec.by) {
+        case 'id':
+            return withId.map((endpoint) => ({ id: endpoint.subDeviceId }));
+        case 'subId':
+            return withId.map((endpoint) => ({
+                subId: endpoint.subDeviceId,
+                channel: 0
+            }));
+        case 'either':
+            if (withId.length > 0) {
+                const hub = spec.dataId ? preferTrait(withId, 'sensor') : withId;
+                return hub.map((endpoint) => ({
+                    channel: 0,
+                    subId: endpoint.subDeviceId,
+                    ...(spec.dataId ? { data: spec.dataId } : {})
+                }));
+            }
+            return encodeChannelItems(spec, withChannel);
+        case 'channel':
+            return encodeChannelItems(spec, withChannel);
+        default: {
+            const _exhaustive: never = spec.by;
+            return _exhaustive;
+        }
     }
-    if (spec.by === 'subId') {
-        return withId.map((endpoint) => ({
-            subId: endpoint.subDeviceId,
-            channel: 0
-        }));
-    }
-    if (spec.by === 'either' && withId.length > 0) {
-        const hub = spec.dataId ? preferTrait(withId, 'sensor') : withId;
-        return hub.map((endpoint) => ({
-            channel: 0,
-            subId: endpoint.subDeviceId,
-            ...(spec.dataId ? { data: spec.dataId } : {})
-        }));
-    }
+}
 
-    const targets = spec.data ? preferTrait(withChannel, 'presence') : withChannel;
+/** Board-channel LIST rows; shared by `channel` and hub-less `either`. */
+function encodeChannelItems(
+    spec: Extract<PayloadSpec, { list: string }>,
+    endpoints: readonly PollTarget[]
+): unknown[] {
+    const targets = spec.data ? preferTrait(endpoints, 'presence') : endpoints;
     return targets.map((endpoint) => ({
         channel: endpoint.channel,
         ...(spec.data ? { data: spec.data } : {})

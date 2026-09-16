@@ -23,7 +23,15 @@ import {
     type WaterEventState,
     type WaterPlanEntry
 } from '../protocol';
+import type { TraitAttachArgs } from '../device/enroll-context';
+import {
+    DEFAULT,
+    SMART_CONFIG,
+    subIdList,
+    type PollSpec
+} from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { HubChildRule, TraitDescriptor } from './descriptor';
 
 /** Completed watering cycle from Control.WaterEvent. */
 export interface SprinklerCycleSummary {
@@ -285,3 +293,38 @@ function cloneScheduleEntry(entry: SprinklerScheduleEntry): SprinklerScheduleEnt
 function isUnsupportedWaterPlan(error: unknown): boolean {
     return error instanceof CommandError && error.deviceCode === 5000;
 }
+
+export const SprinklerDescriptor: TraitDescriptor & {
+    readonly name: 'sprinkler';
+    readonly hubChild: HubChildRule;
+    attach(args: TraitAttachArgs<SprinklerValues>): SprinklerTrait | undefined;
+} = {
+    name: 'sprinkler',
+    hubChild: {
+        models: new Set(['mst100']),
+        aliases: { mst: 'mst100' },
+        classHint: 'sprinkler'
+    },
+    poll: {
+        [CONTROL_WATER_NAMESPACE]: {
+            ...DEFAULT,
+            payload: subIdList('control', 'sprinkler')
+        },
+        [DEVICE_CFG_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: subIdList('config', 'sprinkler')
+        }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<SprinklerValues>): SprinklerTrait | undefined {
+        if (!args.graphEndpoint.subDeviceId) {
+            return undefined;
+        }
+        return new SprinklerTrait({
+            uuid: args.physical.uuid,
+            subDeviceId: args.graphEndpoint.subDeviceId,
+            namespaces: args.namespaces,
+            request: args.request,
+            emitChange: args.emitChange
+        });
+    }
+};

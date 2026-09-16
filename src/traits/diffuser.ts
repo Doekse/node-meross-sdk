@@ -1,3 +1,4 @@
+import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
 import {
     DIFFUSER_LIGHT_NAMESPACE,
     DIFFUSER_SENSOR_NAMESPACE,
@@ -12,7 +13,13 @@ import {
     type DiffuserSprayMode,
     type MerossMessage
 } from '../protocol';
+import {
+    DEFAULT,
+    SMART_SLOW,
+    type PollSpec
+} from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { TraitDescriptor } from './descriptor';
 import type { LightRgb } from './light';
 
 export type { DiffuserLightMode, DiffuserSprayMode };
@@ -232,3 +239,45 @@ function clampInt(value: number, min: number, max: number): number {
 function clamp01(value: number): number {
     return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
 }
+
+/**
+ * Light and spray digest arrays may name different channels on one board.
+ * Ability without digest rows still claims channel 0 so leftover ToggleX
+ * does not enroll the diffuser as a socket.
+ */
+export function enrollDiffuser(ctx: EnrollBoardContext): void {
+    const digest = ctx.all.digest.diffuser;
+    const channels = new Set<number>([
+        ...(digest?.light ?? []),
+        ...(digest?.spray ?? [])
+    ]);
+    const advertised = DIFFUSER_LIGHT_NAMESPACE in ctx.ability
+        || DIFFUSER_SPRAY_NAMESPACE in ctx.ability;
+    if (channels.size === 0 && advertised) {
+        channels.add(0);
+    }
+    for (const channel of channels) {
+        ctx.add(channel, 'humidifier', ['diffuser']);
+    }
+}
+
+export const DiffuserDescriptor: TraitDescriptor & {
+    readonly name: 'diffuser';
+    attach(args: TraitAttachArgs<DiffuserValues>): DiffuserTrait;
+} = {
+    name: 'diffuser',
+    poll: {
+        [DIFFUSER_LIGHT_NAMESPACE]: DEFAULT,
+        [DIFFUSER_SPRAY_NAMESPACE]: DEFAULT,
+        [DIFFUSER_SENSOR_NAMESPACE]: { ...SMART_SLOW, item: 100 }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<DiffuserValues>): DiffuserTrait {
+        return new DiffuserTrait({
+            uuid: args.physical.uuid,
+            channel: args.channel,
+            namespaces: args.namespaces,
+            request: args.request,
+            emitChange: args.emitChange
+        });
+    }
+};

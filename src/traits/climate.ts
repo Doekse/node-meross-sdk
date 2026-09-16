@@ -125,7 +125,21 @@ import {
     type SensorHistoryXState,
     type SensorLatestState
 } from '../protocol';
+import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+import {
+    DEFAULT,
+    ONCE,
+    SMART_ALL,
+    SMART_CLOUDMQTT,
+    SMART_CONFIG,
+    SMART_FAST_SLOW_CLOUD,
+    SMART_SLOW,
+    channelList,
+    idList,
+    type PollSpec
+} from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { HubChildRule, TraitDescriptor } from './descriptor';
 
 export interface ClimatePid {
     grade: number;
@@ -1343,3 +1357,192 @@ function sensorLatestToClimatePatch(entry: SensorLatestState): ClimatePatch {
     }
     return patch;
 }
+
+/**
+ * Board thermostats claim channel 0 from Ability Mode/ModeB/ModeC or digest
+ * so leftover ToggleX does not enroll them as sockets.
+ */
+export function enrollClimate(ctx: EnrollBoardContext): void {
+    if (
+        THERMOSTAT_MODE_NAMESPACE in ctx.ability
+        || THERMOSTAT_MODEB_NAMESPACE in ctx.ability
+        || THERMOSTAT_MODEC_NAMESPACE in ctx.ability
+        || ctx.all.digest.thermostat
+    ) {
+        ctx.add(0, 'climate', ['climate']);
+    }
+}
+
+export const ClimateDescriptor: TraitDescriptor & {
+    readonly name: 'climate';
+    readonly hubChild: HubChildRule;
+    attach(args: TraitAttachArgs<ClimateValues>): ClimateTrait;
+} = {
+    name: 'climate',
+    hubChild: {
+        models: new Set(['mts100', 'mts100v3', 'mts150', 'mts150p']),
+        aliases: {},
+        classHint: 'climate'
+    },
+    poll: {
+        [SENSOR_LATEST_NAMESPACE]: {
+            ...SMART_FAST_SLOW_CLOUD,
+            payload: channelList('latest', 'climate'),
+            item: 80
+        },
+        [THERMOSTAT_MODE_NAMESPACE]: {
+            ...DEFAULT,
+            payload: channelList('mode', 'climate')
+        },
+        [THERMOSTAT_MODEB_NAMESPACE]: {
+            ...DEFAULT,
+            payload: channelList('modeB', 'climate')
+        },
+        [THERMOSTAT_MODEC_NAMESPACE]: {
+            ...DEFAULT,
+            payload: channelList('control', 'climate')
+        },
+        [TIMER_NAMESPACE]: {
+            ...DEFAULT,
+            payload: channelList('timer', 'climate')
+        },
+        [ALARM_NAMESPACE]: {
+            ...DEFAULT,
+            payload: channelList('alarm', 'climate')
+        },
+        [HOLD_ACTION_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('holdAction', 'climate')
+        },
+        [WINDOW_OPENED_NAMESPACE]: {
+            ...SMART_SLOW,
+            payload: channelList('windowOpened', 'climate')
+        },
+        [SENSOR_NAMESPACE]: {
+            ...SMART_SLOW,
+            payload: channelList('sensor', 'climate')
+        },
+        [CALIBRATION_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('calibration', 'climate')
+        },
+        [DEAD_ZONE_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('deadZone', 'climate')
+        },
+        [SUMMER_MODE_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('summerMode', 'climate')
+        },
+        [COMPRESSOR_DELAY_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('delay', 'climate')
+        },
+        [ALARM_CONFIG_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('alarmConfig', 'climate')
+        },
+        [SCHEDULE_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('schedule', 'climate')
+        },
+        [SCHEDULEB_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('scheduleB', 'climate')
+        },
+        [TEMP_UNIT_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('tempUnit', 'climate')
+        },
+        [SCREEN_BRIGHTNESS_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('brightness', 'climate'),
+            item: 70
+        },
+        [PHYSICAL_LOCK_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: { list: 'lock', by: 'either', for: 'climate' },
+            item: 35
+        },
+        [FROST_NAMESPACE]: {
+            ...SMART_SLOW,
+            payload: channelList('frost', 'climate')
+        },
+        [OVERHEAT_NAMESPACE]: {
+            ...SMART_SLOW,
+            payload: channelList('overheat', 'climate')
+        },
+        [CTL_RANGE_NAMESPACE]: {
+            ...ONCE,
+            payload: channelList('ctlRange', 'climate')
+        },
+        [HUB_MTS100_ALL_NAMESPACE]: {
+            ...SMART_ALL,
+            payload: idList('all', 'climate')
+        },
+        [HUB_MTS100_MODE_NAMESPACE]: {
+            ...DEFAULT,
+            skipIf: HUB_MTS100_ALL_NAMESPACE,
+            payload: idList('mode', 'climate')
+        },
+        [HUB_MTS100_TEMPERATURE_NAMESPACE]: {
+            ...DEFAULT,
+            skipIf: HUB_MTS100_ALL_NAMESPACE,
+            payload: idList('temperature', 'climate')
+        },
+        [HUB_MTS100_ADJUST_NAMESPACE]: {
+            ...SMART_CLOUDMQTT,
+            payload: idList('adjust', 'climate')
+        },
+        [HUB_MTS100_CONFIG_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: idList('config', 'climate')
+        },
+        [HUB_MTS100_SUPERCTL_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: idList('superCtl', 'climate')
+        },
+        [HUB_MTS100_TIMESYNC_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: idList('timeSync', 'climate')
+        },
+        [HUB_MTS100_SCHEDULE_NAMESPACE]: {
+            ...SMART_CLOUDMQTT,
+            payload: idList('schedule', 'climate')
+        },
+        [HUB_MTS100_SCHEDULEB_NAMESPACE]: {
+            ...SMART_CLOUDMQTT,
+            payload: idList('schedule', 'climate')
+        }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<ClimateValues>): ClimateTrait {
+        if (args.graphEndpoint.subDeviceId) {
+            return new ClimateTrait({
+                kind: 'hub',
+                uuid: args.physical.uuid,
+                subDeviceId: args.graphEndpoint.subDeviceId,
+                namespaces: args.namespaces,
+                request: args.request,
+                emitChange: args.emitChange
+            });
+        }
+        // ModeC > ModeB > mode when Ability advertises more than one generation.
+        let generation: ThermostatGeneration;
+        if (THERMOSTAT_MODEC_NAMESPACE in args.physical.ability) {
+            generation = 'modeC';
+        } else if (THERMOSTAT_MODEB_NAMESPACE in args.physical.ability) {
+            generation = 'modeB';
+        } else {
+            generation = 'mode';
+        }
+        return new ClimateTrait({
+            kind: 'board',
+            uuid: args.physical.uuid,
+            channel: args.channel,
+            generation,
+            namespaces: args.namespaces,
+            request: args.request,
+            emitChange: args.emitChange
+        });
+    }
+};
