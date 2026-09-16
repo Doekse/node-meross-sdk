@@ -1,3 +1,5 @@
+import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { TraitName } from '../endpoint';
 import { decodeSystemAllGetAck } from '../protocol/codecs/system-all';
 import {
     SYSTEM_ALL_NAMESPACE,
@@ -22,7 +24,14 @@ import {
     type SystemPositionState,
     type SystemTimeState
 } from '../protocol';
+import {
+    ONCE,
+    SMART_CONFIG,
+    SYSTEM_ALL_PERIOD_MS,
+    type PollSpec
+} from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { TraitDescriptor } from './descriptor';
 
 export type {
     SystemDebugState,
@@ -234,3 +243,55 @@ export class SystemTrait {
         }
     }
 }
+
+/**
+ * Channel-0 / hub-root diagnostics. Enroll only as an extra — hubs seed
+ * `'system'` on the parent row directly.
+ */
+export function enrollBoardSystemExtra(input: EnrollBoardExtraInput): TraitName[] {
+    if (input.channel === 0 && !input.traits.includes('system')) {
+        return ['system'];
+    }
+    return [];
+}
+
+export const SystemDescriptor: TraitDescriptor & {
+    readonly name: 'system';
+    attach(args: TraitAttachArgs<SystemValues>): SystemTrait;
+} = {
+    name: 'system',
+    poll: {
+        [SYSTEM_ALL_NAMESPACE]: {
+            strategy: 'all',
+            periodMs: SYSTEM_ALL_PERIOD_MS,
+            periodCloudMs: 0,
+            base: 1_000
+        },
+        'Appliance.System.Runtime': { ...SMART_CONFIG, base: 330 },
+        // Firmware / Hardware / Time ride System.All; standalone GET is the fallback.
+        [SYSTEM_FIRMWARE_NAMESPACE]: {
+            ...ONCE,
+            skipIf: SYSTEM_ALL_NAMESPACE
+        },
+        [SYSTEM_HARDWARE_NAMESPACE]: {
+            ...ONCE,
+            skipIf: SYSTEM_ALL_NAMESPACE
+        },
+        [SYSTEM_TIME_NAMESPACE]: {
+            ...SMART_CONFIG,
+            skipIf: SYSTEM_ALL_NAMESPACE
+        },
+        [SYSTEM_POSITION_NAMESPACE]: ONCE,
+        [SYSTEM_DEBUG_NAMESPACE]: { ...ONCE, base: 1_900 }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<SystemValues>): SystemTrait {
+        return new SystemTrait({
+            uuid: args.physical.uuid,
+            initialFirmware: args.physical.system.firmware,
+            initialHardware: args.physical.system.hardware,
+            initialTime: args.physical.system.time,
+            request: args.request,
+            emitChange: args.emitChange
+        });
+    }
+};

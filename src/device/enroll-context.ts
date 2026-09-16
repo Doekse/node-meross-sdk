@@ -18,7 +18,7 @@ export interface EnrollBoardContext {
     readonly ability: AbilityMap;
     readonly all: SystemAll;
     readonly cloud: CloudDevice | undefined;
-    /** Mutated as channels are claimed; shared across board-extra helpers. */
+    /** Mutated as channels are claimed; shared across enroll extra helpers. */
     taken: Set<number>;
     add(
         channel: number,
@@ -30,10 +30,10 @@ export interface EnrollBoardContext {
 }
 
 /**
- * Inputs for board-extra trait decisions (system / energy / media / …) so
+ * Inputs for enroll extra trait decisions (system / energy / media / …) so
  * helpers can mirror `add()`'s extra order without owning endpoint creation.
  */
-export interface BoardExtraInput {
+export interface EnrollBoardExtraInput {
     readonly channel: number;
     readonly classHint: ClassHint;
     readonly traits: readonly TraitName[];

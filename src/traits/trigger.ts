@@ -1,3 +1,5 @@
+import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { TraitName } from '../endpoint';
 import { MerossError } from '../errors';
 import {
     CONTROL_TRIGGER_NAMESPACE,
@@ -15,7 +17,9 @@ import {
     type TriggerXEntry,
     type TriggerXRule
 } from '../protocol';
+import { ONCE, SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { TraitDescriptor } from './descriptor';
 
 export type TriggerEntry = TriggerXEntry;
 export type TriggerRule = TriggerXRule;
@@ -240,3 +244,54 @@ function sameEntries(left: TriggerEntry[], right: TriggerEntry[]): boolean {
 function sortedEntries(entries: TriggerEntry[]): TriggerEntry[] {
     return [...entries].map(cloneEntry).sort((a, b) => a.id.localeCompare(b.id));
 }
+
+function hasTrigger(ability: EnrollBoardExtraInput['ability']): boolean {
+    return TRIGGERX_NAMESPACE in ability || CONTROL_TRIGGER_NAMESPACE in ability;
+}
+
+/**
+ * Same board endpoints as timer (socket/light/fan); skip media speakers.
+ */
+export function enrollBoardTriggerExtra(input: EnrollBoardExtraInput): TraitName[] {
+    if (!hasTrigger(input.ability)) {
+        return [];
+    }
+    if (input.classHint !== 'socket' && input.classHint !== 'light' && input.classHint !== 'fan') {
+        return [];
+    }
+    if (input.traits.includes('trigger')) {
+        return [];
+    }
+    if (input.traits.includes('media') || input.extra.includes('media')) {
+        return [];
+    }
+    return ['trigger'];
+}
+
+export const TriggerDescriptor: TraitDescriptor & {
+    readonly name: 'trigger';
+    attach(args: TraitAttachArgs<TriggerValues>): TriggerTrait;
+} = {
+    name: 'trigger',
+    poll: {
+        [DIGEST_TRIGGERX_NAMESPACE]: ONCE,
+        [CONTROL_TRIGGER_NAMESPACE]: {
+            ...SMART_CONFIG,
+            skipIf: TRIGGERX_NAMESPACE,
+            payload: { dict: 'trigger' }
+        }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<TriggerValues>): TriggerTrait {
+        const generation: TriggerGeneration = TRIGGERX_NAMESPACE in args.physical.ability
+            ? 'x'
+            : 'legacy';
+        return new TriggerTrait({
+            uuid: args.physical.uuid,
+            channel: args.channel,
+            generation,
+            namespaces: args.namespaces,
+            request: args.request,
+            emitChange: args.emitChange
+        });
+    }
+};

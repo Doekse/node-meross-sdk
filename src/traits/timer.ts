@@ -1,3 +1,5 @@
+import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { TraitName } from '../endpoint';
 import { MerossError } from '../errors';
 import {
     CONTROL_TIMER_NAMESPACE,
@@ -14,7 +16,9 @@ import {
     type MerossMessage,
     type TimerXEntry
 } from '../protocol';
+import { ONCE, SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { TraitDescriptor } from './descriptor';
 
 export type TimerEntry = TimerXEntry;
 
@@ -241,3 +245,55 @@ function sameEntries(left: TimerEntry[], right: TimerEntry[]): boolean {
 function sortedEntries(entries: TimerEntry[]): TimerEntry[] {
     return [...entries].map(cloneEntry).sort((a, b) => a.id.localeCompare(b.id));
 }
+
+function hasTimer(ability: EnrollBoardExtraInput['ability']): boolean {
+    return TIMERX_NAMESPACE in ability || CONTROL_TIMER_NAMESPACE in ability;
+}
+
+/**
+ * Toggle-shaped Timer/TimerX only; cover/climate/humidifier/speaker use other
+ * extend objects. Skip when media already claimed the endpoint.
+ */
+export function enrollBoardTimerExtra(input: EnrollBoardExtraInput): TraitName[] {
+    if (!hasTimer(input.ability)) {
+        return [];
+    }
+    if (input.classHint !== 'socket' && input.classHint !== 'light' && input.classHint !== 'fan') {
+        return [];
+    }
+    if (input.traits.includes('timer')) {
+        return [];
+    }
+    if (input.traits.includes('media') || input.extra.includes('media')) {
+        return [];
+    }
+    return ['timer'];
+}
+
+export const TimerDescriptor: TraitDescriptor & {
+    readonly name: 'timer';
+    attach(args: TraitAttachArgs<TimerValues>): TimerTrait;
+} = {
+    name: 'timer',
+    poll: {
+        [DIGEST_TIMERX_NAMESPACE]: ONCE,
+        [CONTROL_TIMER_NAMESPACE]: {
+            ...SMART_CONFIG,
+            skipIf: TIMERX_NAMESPACE,
+            payload: { list: 'timer' }
+        }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<TimerValues>): TimerTrait {
+        const generation: TimerGeneration = TIMERX_NAMESPACE in args.physical.ability
+            ? 'x'
+            : 'legacy';
+        return new TimerTrait({
+            uuid: args.physical.uuid,
+            channel: args.channel,
+            generation,
+            namespaces: args.namespaces,
+            request: args.request,
+            emitChange: args.emitChange
+        });
+    }
+};

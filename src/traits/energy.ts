@@ -1,3 +1,5 @@
+import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { TraitName } from '../endpoint';
 import {
     CONFIG_OVERTEMP_NAMESPACE,
     CONFIG_STANDBY_KILLER_NAMESPACE,
@@ -8,7 +10,9 @@ import {
     CONTROL_ALERT_REPORT_NAMESPACE,
     CONTROL_OVERTEMP_NAMESPACE,
     ELECTRICITY_NAMESPACE,
+    ELECTRICITYX_ALL_CHANNELS,
     ELECTRICITYX_NAMESPACE,
+    consumptionXDays,
     decodeAlertConfigPush,
     decodeAlertReportPush,
     decodeConfigOverTempPush,
@@ -39,7 +43,16 @@ import {
     type MerossMessage,
     type StandbyKillerEntry
 } from '../protocol';
+import {
+    channelList,
+    pollSpecSize,
+    SMART_CONFIG,
+    SMART_ENERGY,
+    SMART_FAST,
+    type PollSpec
+} from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import type { TraitDescriptor } from './descriptor';
 
 export interface EnergyValues {
     power?: number;
@@ -471,3 +484,91 @@ export class EnergyTrait {
         this.bind.emitChange(values);
     }
 }
+
+/**
+ * Classic Electricity / ConsumptionX stay on the master (whole board);
+ * ElectricityX / ConsumptionH also land on strip children.
+ */
+export function enrollBoardEnergyExtra(input: EnrollBoardExtraInput): TraitName[] {
+    const boardEnergy = ELECTRICITY_NAMESPACE in input.ability
+        || CONSUMPTIONX_NAMESPACE in input.ability;
+    const channelEnergy = ELECTRICITYX_NAMESPACE in input.ability
+        || CONSUMPTIONH_NAMESPACE in input.ability;
+    if (channelEnergy && input.classHint === 'socket') {
+        return ['energy'];
+    }
+    if (boardEnergy && input.classHint !== 'cover' && input.parentId === undefined) {
+        return ['energy'];
+    }
+    return [];
+}
+
+/** Shared with calibrate so packing cannot drift from the POLL row. */
+const CONSUMPTIONX_SIZE = { base: 320, item: 53 } as const;
+
+export const EnergyDescriptor: TraitDescriptor & {
+    readonly name: 'energy';
+    attach(args: TraitAttachArgs<EnergyValues>): EnergyTrait;
+} = {
+    name: 'energy',
+    poll: {
+        [CONFIG_OVERTEMP_NAMESPACE]: { ...SMART_CONFIG, base: 340 },
+        [CONTROL_OVERTEMP_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('overTemp', 'energy')
+        },
+        /**
+         * Shared with climate board SET/PUSH; keep unfiltered
+         * `channelList('config')` so MTS300 GETs are not dropped.
+         */
+        [CONTROL_ALERT_CONFIG_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('config')
+        },
+        [CONFIG_STANDBY_KILLER_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: channelList('config', 'energy')
+        },
+        [ELECTRICITY_NAMESPACE]: {
+            ...SMART_FAST,
+            payload: { dict: 'electricity', channel: 0 },
+            base: 430
+        },
+        [ELECTRICITYX_NAMESPACE]: {
+            ...SMART_FAST,
+            payload: { dict: 'electricity', channel: ELECTRICITYX_ALL_CHANNELS },
+            item: 100
+        },
+        [CONSUMPTIONX_NAMESPACE]: {
+            ...SMART_ENERGY,
+            ...CONSUMPTIONX_SIZE,
+            calibrate: (payload) => {
+                const days = consumptionXDays(payload);
+                if (days === undefined) {
+                    return undefined;
+                }
+                return pollSpecSize(CONSUMPTIONX_SIZE, days.length);
+            }
+        },
+        [CONSUMPTIONH_NAMESPACE]: {
+            ...SMART_ENERGY,
+            payload: channelList('consumptionH', 'energy'),
+            base: 320,
+            item: 1_900
+        }
+    } satisfies Record<string, PollSpec>,
+    attach(args: TraitAttachArgs<EnergyValues>): EnergyTrait {
+        const hasElectricity = ELECTRICITY_NAMESPACE in args.physical.ability;
+        return new EnergyTrait({
+            uuid: args.physical.uuid,
+            channel: args.channel,
+            hasElectricity,
+            hasElectricityX: !hasElectricity && ELECTRICITYX_NAMESPACE in args.physical.ability,
+            hasConsumptionX: CONSUMPTIONX_NAMESPACE in args.physical.ability,
+            hasConsumptionH: CONSUMPTIONH_NAMESPACE in args.physical.ability,
+            namespaces: args.namespaces,
+            request: args.request,
+            emitChange: args.emitChange
+        });
+    }
+};

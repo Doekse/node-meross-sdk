@@ -1,5 +1,4 @@
 import type { TraitName } from '../endpoint';
-import { CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE } from '../protocol/codecs/alarm';
 import {
     ALARM_CONFIG_NAMESPACE,
     ALARM_NAMESPACE,
@@ -33,6 +32,7 @@ import {
     TIMER_NAMESPACE,
     WINDOW_OPENED_NAMESPACE
 } from '../protocol/codecs/climate';
+import { CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE } from '../protocol/codecs/alarm';
 import { CONSUMPTIONH_NAMESPACE } from '../protocol/codecs/consumptionh';
 import { CONSUMPTIONX_NAMESPACE, consumptionXDays } from '../protocol/codecs/consumptionx';
 import {
@@ -52,7 +52,6 @@ import {
 import { DND_MODE_NAMESPACE } from '../protocol/codecs/dnd';
 import {
     ELECTRICITY_NAMESPACE,
-    ELECTRICITYX_ALL_CHANNELS,
     ELECTRICITYX_NAMESPACE
 } from '../protocol/codecs/electricity';
 import { FAN_CONFIG_NAMESPACE, FAN_NAMESPACE, FILTER_MAINTENANCE_NAMESPACE } from '../protocol/codecs/fan';
@@ -93,18 +92,23 @@ import {
 } from '../protocol/codecs/system';
 import {
     CONTROL_TIMER_NAMESPACE,
-    DIGEST_TIMERX_NAMESPACE,
-    TIMERX_NAMESPACE
+    DIGEST_TIMERX_NAMESPACE
 } from '../protocol/codecs/timerx';
 import { TOGGLEX_ALL_CHANNELS, TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
 import {
     CONTROL_TRIGGER_NAMESPACE,
-    DIGEST_TRIGGERX_NAMESPACE,
-    TRIGGERX_NAMESPACE
+    DIGEST_TRIGGERX_NAMESPACE
 } from '../protocol/codecs/triggerx';
 import { CONTROL_WATER_NAMESPACE, DEVICE_CFG_NAMESPACE } from '../protocol/codecs/water';
 import type { MerossPayload } from '../protocol/message';
 import type { AbilityMap } from '../protocol/codecs/ability';
+import { AlarmDescriptor } from '../traits/alarm';
+import { DndDescriptor } from '../traits/dnd';
+import { EnergyDescriptor } from '../traits/energy';
+import { MediaDescriptor } from '../traits/media';
+import { SystemDescriptor } from '../traits/system';
+import { TimerDescriptor } from '../traits/timer';
+import { TriggerDescriptor } from '../traits/trigger';
 import type { PollJob } from './poller';
 import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
 import {
@@ -118,13 +122,10 @@ import {
     SMART_BATTERY,
     SMART_CLOUDMQTT,
     SMART_CONFIG,
-    SMART_ENERGY,
-    SMART_FAST,
     SMART_FAST_MQTT,
     SMART_FAST_SLOW_CLOUD,
     SMART_SLOW,
     subIdList,
-    SYSTEM_ALL_PERIOD_MS,
     type PayloadSpec,
     type PollSpec
 } from './spec';
@@ -195,46 +196,22 @@ export function getDeviceResponseSizeMax(maxCmdNum: number): number {
  * `base`/`item` live here so packing does not keep a second per-namespace table.
  */
 const POLL: Record<string, PollSpec> = {
-    [SYSTEM_ALL_NAMESPACE]: {
-        strategy: 'all',
-        periodMs: SYSTEM_ALL_PERIOD_MS,
-        periodCloudMs: 0,
-        base: 1_000
-    },
-    'Appliance.System.Runtime': { ...SMART_CONFIG, base: 330 },
-    // Firmware / Hardware / Time ride System.All; standalone GET is the fallback.
-    [SYSTEM_FIRMWARE_NAMESPACE]: {
-        ...ONCE,
-        skipIf: SYSTEM_ALL_NAMESPACE
-    },
-    [SYSTEM_HARDWARE_NAMESPACE]: {
-        ...ONCE,
-        skipIf: SYSTEM_ALL_NAMESPACE
-    },
-    [SYSTEM_TIME_NAMESPACE]: {
-        ...SMART_CONFIG,
-        skipIf: SYSTEM_ALL_NAMESPACE
-    },
-    [SYSTEM_POSITION_NAMESPACE]: ONCE,
-    [SYSTEM_DEBUG_NAMESPACE]: { ...ONCE, base: 1_900 },
-    [CONFIG_OVERTEMP_NAMESPACE]: { ...SMART_CONFIG, base: 340 },
-    [CONTROL_OVERTEMP_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('overTemp', 'energy')
-    },
+    [SYSTEM_ALL_NAMESPACE]: SystemDescriptor.poll[SYSTEM_ALL_NAMESPACE],
+    'Appliance.System.Runtime': SystemDescriptor.poll['Appliance.System.Runtime'],
+    [SYSTEM_FIRMWARE_NAMESPACE]: SystemDescriptor.poll[SYSTEM_FIRMWARE_NAMESPACE],
+    [SYSTEM_HARDWARE_NAMESPACE]: SystemDescriptor.poll[SYSTEM_HARDWARE_NAMESPACE],
+    [SYSTEM_TIME_NAMESPACE]: SystemDescriptor.poll[SYSTEM_TIME_NAMESPACE],
+    [SYSTEM_POSITION_NAMESPACE]: SystemDescriptor.poll[SYSTEM_POSITION_NAMESPACE],
+    [SYSTEM_DEBUG_NAMESPACE]: SystemDescriptor.poll[SYSTEM_DEBUG_NAMESPACE],
+    [CONFIG_OVERTEMP_NAMESPACE]: EnergyDescriptor.poll[CONFIG_OVERTEMP_NAMESPACE],
+    [CONTROL_OVERTEMP_NAMESPACE]: EnergyDescriptor.poll[CONTROL_OVERTEMP_NAMESPACE],
     [CONFIG_SENSOR_ASSOCIATION_NAMESPACE]: {
         ...SMART_CONFIG,
         payload: channelList('config'),
         item: 30
     },
-    [CONTROL_ALERT_CONFIG_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('config')
-    },
-    [CONFIG_STANDBY_KILLER_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('config', 'energy')
-    },
+    [CONTROL_ALERT_CONFIG_NAMESPACE]: EnergyDescriptor.poll[CONTROL_ALERT_CONFIG_NAMESPACE],
+    [CONFIG_STANDBY_KILLER_NAMESPACE]: EnergyDescriptor.poll[CONFIG_STANDBY_KILLER_NAMESPACE],
 
     // Digest / device state
     [TOGGLEX_NAMESPACE]: {
@@ -255,11 +232,7 @@ const POLL: Record<string, PollSpec> = {
         payload: channelList('fan', 'fan'),
         item: 20
     },
-    [MP3_NAMESPACE]: {
-        ...DEFAULT,
-        payload: { dict: 'mp3' },
-        base: 380
-    },
+    [MP3_NAMESPACE]: MediaDescriptor.poll[MP3_NAMESPACE],
     [DIFFUSER_LIGHT_NAMESPACE]: DEFAULT,
     [DIFFUSER_SPRAY_NAMESPACE]: DEFAULT,
     [GARAGE_STATE_NAMESPACE]: {
@@ -276,14 +249,8 @@ const POLL: Record<string, PollSpec> = {
         payload: channelList('adjust', 'cover'),
         item: 35
     },
-    [CONTROL_ALARM_NAMESPACE]: {
-        ...DEFAULT,
-        payload: channelList('alarm', 'alarm')
-    },
-    [CONTROL_BEEP_NAMESPACE]: {
-        ...SMART_CONFIG,
-        payload: channelList('alarm', 'alarm')
-    },
+    [CONTROL_ALARM_NAMESPACE]: AlarmDescriptor.poll[CONTROL_ALARM_NAMESPACE],
+    [CONTROL_BEEP_NAMESPACE]: AlarmDescriptor.poll[CONTROL_BEEP_NAMESPACE],
     [HUB_TOGGLEX_NAMESPACE]: {
         ...DEFAULT,
         payload: idList('togglex')
@@ -305,7 +272,7 @@ const POLL: Record<string, PollSpec> = {
         item: 35
     },
     [DIFFUSER_SENSOR_NAMESPACE]: { ...SMART_SLOW, item: 100 },
-    [DND_MODE_NAMESPACE]: { ...SMART_CONFIG, base: 320 },
+    [DND_MODE_NAMESPACE]: DndDescriptor.poll[DND_MODE_NAMESPACE],
     [PRESENCE_CONFIG_NAMESPACE]: {
         ...SMART_CONFIG,
         payload: channelList('config', 'presence'),
@@ -313,33 +280,10 @@ const POLL: Record<string, PollSpec> = {
     },
 
     // Energy / fast sensors
-    [ELECTRICITY_NAMESPACE]: {
-        ...SMART_FAST,
-        payload: { dict: 'electricity', channel: 0 },
-        base: 430
-    },
-    [ELECTRICITYX_NAMESPACE]: {
-        ...SMART_FAST,
-        payload: { dict: 'electricity', channel: ELECTRICITYX_ALL_CHANNELS },
-        item: 100
-    },
-    [CONSUMPTIONX_NAMESPACE]: {
-        ...SMART_ENERGY,
-        base: 320,
-        item: 53,
-        calibrate: (payload) => {
-            if (consumptionXDays(payload) === undefined) {
-                return undefined;
-            }
-            return estimateResponseSize(CONSUMPTIONX_NAMESPACE, payload);
-        }
-    },
-    [CONSUMPTIONH_NAMESPACE]: {
-        ...SMART_ENERGY,
-        payload: channelList('consumptionH', 'energy'),
-        base: 320,
-        item: 1_900
-    },
+    [ELECTRICITY_NAMESPACE]: EnergyDescriptor.poll[ELECTRICITY_NAMESPACE],
+    [ELECTRICITYX_NAMESPACE]: EnergyDescriptor.poll[ELECTRICITYX_NAMESPACE],
+    [CONSUMPTIONX_NAMESPACE]: EnergyDescriptor.poll[CONSUMPTIONX_NAMESPACE],
+    [CONSUMPTIONH_NAMESPACE]: EnergyDescriptor.poll[CONSUMPTIONH_NAMESPACE],
     [SENSOR_LATESTX_NAMESPACE]: {
         ...SMART_FAST_MQTT,
         payload: {
@@ -357,18 +301,10 @@ const POLL: Record<string, PollSpec> = {
     },
 
     // Timer / trigger indexes (X) and legacy full-list GETs (pre-X)
-    [DIGEST_TIMERX_NAMESPACE]: ONCE,
-    [DIGEST_TRIGGERX_NAMESPACE]: ONCE,
-    [CONTROL_TIMER_NAMESPACE]: {
-        ...SMART_CONFIG,
-        skipIf: TIMERX_NAMESPACE,
-        payload: { list: 'timer' }
-    },
-    [CONTROL_TRIGGER_NAMESPACE]: {
-        ...SMART_CONFIG,
-        skipIf: TRIGGERX_NAMESPACE,
-        payload: { dict: 'trigger' }
-    },
+    [DIGEST_TIMERX_NAMESPACE]: TimerDescriptor.poll[DIGEST_TIMERX_NAMESPACE],
+    [DIGEST_TRIGGERX_NAMESPACE]: TriggerDescriptor.poll[DIGEST_TRIGGERX_NAMESPACE],
+    [CONTROL_TIMER_NAMESPACE]: TimerDescriptor.poll[CONTROL_TIMER_NAMESPACE],
+    [CONTROL_TRIGGER_NAMESPACE]: TriggerDescriptor.poll[CONTROL_TRIGGER_NAMESPACE],
 
     // Board climate
     [THERMOSTAT_MODE_NAMESPACE]: {

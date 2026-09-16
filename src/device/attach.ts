@@ -1,32 +1,26 @@
 import { Endpoint } from '../endpoint';
 import type { DeviceRequest } from '../request';
 import {
-    CONSUMPTIONH_NAMESPACE,
-    CONSUMPTIONX_NAMESPACE,
-    ELECTRICITY_NAMESPACE,
-    ELECTRICITYX_NAMESPACE,
     LIGHT_EFFECT_NAMESPACE,
-    TIMERX_NAMESPACE,
-    TOGGLEX_NAMESPACE,
-    TRIGGERX_NAMESPACE
+    TOGGLEX_NAMESPACE
 } from '../protocol';
-import { AlarmTrait, type AlarmValues } from '../traits/alarm';
+import { AlarmDescriptor, AlarmTrait, type AlarmValues } from '../traits/alarm';
 import { ClimateTrait, type ClimateValues, type ThermostatGeneration } from '../traits/climate';
 import { CoverTrait, type CoverValues } from '../traits/cover';
 import { DiffuserTrait, type DiffuserValues } from '../traits/diffuser';
-import { DndTrait, type DndValues } from '../traits/dnd';
-import { EnergyTrait, type EnergyValues } from '../traits/energy';
+import { DndDescriptor, DndTrait, type DndValues } from '../traits/dnd';
+import { EnergyDescriptor, EnergyTrait, type EnergyValues } from '../traits/energy';
 import { FanTrait, type FanValues } from '../traits/fan';
 import { LightTrait, type LightValues } from '../traits/light';
-import { MediaTrait, type MediaValues } from '../traits/media';
+import { MediaDescriptor, MediaTrait, type MediaValues } from '../traits/media';
 import { PresenceTrait, type PresenceValues } from '../traits/presence';
 import { SENSOR_FAMILY_MAP, SensorTrait, type SensorValues } from '../traits/sensor';
 import { SprayTrait, type SprayValues } from '../traits/spray';
 import { SprinklerTrait, type SprinklerValues } from '../traits/sprinkler';
 import { SwitchTrait, type SwitchValues } from '../traits/switch';
-import { SystemTrait, type SystemValues } from '../traits/system';
-import { TimerTrait, type TimerGeneration, type TimerValues } from '../traits/timer';
-import { TriggerTrait, type TriggerGeneration, type TriggerValues } from '../traits/trigger';
+import { SystemDescriptor, SystemTrait, type SystemValues } from '../traits/system';
+import { TimerDescriptor, TimerTrait, type TimerValues } from '../traits/timer';
+import { TriggerDescriptor, TriggerTrait, type TriggerValues } from '../traits/trigger';
 import type { GraphEndpoint, PhysicalDevice } from './index';
 
 /**
@@ -147,20 +141,15 @@ export function attachEndpoint(
         }
     }
     if (graphEndpoint.traits.includes('energy')) {
-        const hasElectricity = ELECTRICITY_NAMESPACE in physical.ability;
-        energyTrait = new EnergyTrait({
-            uuid: physical.uuid,
-            channel,
-            hasElectricity,
-            hasElectricityX: !hasElectricity && ELECTRICITYX_NAMESPACE in physical.ability,
-            hasConsumptionX: CONSUMPTIONX_NAMESPACE in physical.ability,
-            hasConsumptionH: CONSUMPTIONH_NAMESPACE in physical.ability,
-            namespaces,
+        energyTrait = EnergyDescriptor.attach({
+            graphEndpoint,
+            physical,
             request,
+            channel,
+            namespaces,
             emitChange: emit.energy
         });
     }
-
     if (graphEndpoint.traits.includes('light')) {
         const abilityLight = physical.ability['Appliance.Control.Light'];
         const guessedCapacity = abilityLight && typeof abilityLight === 'object'
@@ -285,62 +274,62 @@ export function attachEndpoint(
         });
     }
     if (graphEndpoint.traits.includes('media')) {
-        mediaTrait = new MediaTrait({
-            uuid: physical.uuid,
-            channel,
+        mediaTrait = MediaDescriptor.attach({
+            graphEndpoint,
+            physical,
             request,
+            channel,
+            namespaces,
             emitChange: emit.media
         });
     }
     if (graphEndpoint.traits.includes('alarm')) {
-        alarmTrait = new AlarmTrait({
-            uuid: physical.uuid,
+        alarmTrait = AlarmDescriptor.attach({
+            graphEndpoint,
+            physical,
+            request,
             channel,
             namespaces,
-            request,
             emitChange: emit.alarm
         });
     }
     if (graphEndpoint.traits.includes('dnd')) {
-        dndTrait = new DndTrait({
-            uuid: physical.uuid,
+        dndTrait = DndDescriptor.attach({
+            graphEndpoint,
+            physical,
             request,
-            emitChange: (on: boolean): void => emit.dnd({ on })
+            channel,
+            namespaces,
+            emitChange: emit.dnd
         });
     }
     if (graphEndpoint.traits.includes('system')) {
-        systemTrait = new SystemTrait({
-            uuid: physical.uuid,
-            initialFirmware: physical.system.firmware,
-            initialHardware: physical.system.hardware,
-            initialTime: physical.system.time,
+        systemTrait = SystemDescriptor.attach({
+            graphEndpoint,
+            physical,
             request,
+            channel,
+            namespaces,
             emitChange: emit.system
         });
     }
     if (graphEndpoint.traits.includes('timer')) {
-        const generation: TimerGeneration = TIMERX_NAMESPACE in physical.ability
-            ? 'x'
-            : 'legacy';
-        timerTrait = new TimerTrait({
-            uuid: physical.uuid,
-            channel,
-            generation,
-            namespaces,
+        timerTrait = TimerDescriptor.attach({
+            graphEndpoint,
+            physical,
             request,
+            channel,
+            namespaces,
             emitChange: emit.timer
         });
     }
     if (graphEndpoint.traits.includes('trigger')) {
-        const generation: TriggerGeneration = TRIGGERX_NAMESPACE in physical.ability
-            ? 'x'
-            : 'legacy';
-        triggerTrait = new TriggerTrait({
-            uuid: physical.uuid,
-            channel,
-            generation,
-            namespaces,
+        triggerTrait = TriggerDescriptor.attach({
+            graphEndpoint,
+            physical,
             request,
+            channel,
+            namespaces,
             emitChange: emit.trigger
         });
     }
