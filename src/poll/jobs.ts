@@ -105,8 +105,42 @@ import {
 import { CONTROL_WATER_NAMESPACE, DEVICE_CFG_NAMESPACE } from '../protocol/codecs/water';
 import type { MerossPayload } from '../protocol/message';
 import type { AbilityMap } from '../protocol/codecs/ability';
-import type { PollJob, PollStrategy } from './poller';
+import type { PollJob } from './poller';
 import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
+import {
+    ALL_CHANNELS,
+    channelList,
+    DEFAULT,
+    idList,
+    ONCE,
+    POLL_RESPONSE_HEADER_SIZE,
+    SMART_ALL,
+    SMART_BATTERY,
+    SMART_CLOUDMQTT,
+    SMART_CONFIG,
+    SMART_ENERGY,
+    SMART_FAST,
+    SMART_FAST_MQTT,
+    SMART_FAST_SLOW_CLOUD,
+    SMART_SLOW,
+    subIdList,
+    SYSTEM_ALL_PERIOD_MS,
+    type PayloadSpec,
+    type PollSpec
+} from './spec';
+
+export {
+    CLOUDMQTT_PERIOD_MS,
+    ENERGY_CLOUD_PERIOD_MS,
+    ENERGY_PERIOD_MS,
+    HUB_BATTERY_PERIOD_MS,
+    POLL_RESPONSE_HEADER_SIZE,
+    SENSOR_FAST_CLOUD_PERIOD_MS,
+    SENSOR_FAST_PERIOD_MS,
+    SENSOR_SLOW_CLOUD_PERIOD_MS,
+    SENSOR_SLOW_PERIOD_MS,
+    SYSTEM_ALL_PERIOD_MS
+} from './spec';
 
 /**
  * Channel, sub-device, and traits used to pack LIST GET payloads.
@@ -115,47 +149,10 @@ import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
  * {@link buildPollJobs} argument); `model` is hub chunking (later).
  */
 export interface PollTarget {
-    channel?: number;
-    subDeviceId?: string;
-    traits: readonly TraitName[];
+    readonly channel?: number;
+    readonly subDeviceId?: string;
+    readonly traits: readonly TraitName[];
 }
-
-/**
- * Firmware heartbeat window. HTTP is also probed on this interval while MQTT
- * is current, so a dropped LAN path is noticed even while PUSH is still
- * arriving.
- */
-export const SYSTEM_ALL_PERIOD_MS = 295_000;
-
-/** Watt-hour totals do not need the instantaneous electricity period. */
-export const ENERGY_PERIOD_MS = 55_000;
-
-/** Consumption over cloud MQTT so daily totals do not fill the broker budget. */
-export const ENERGY_CLOUD_PERIOD_MS = 600_000;
-
-/** Live power / presence: due on every LAN tick. */
-export const SENSOR_FAST_PERIOD_MS = 0;
-
-/** Live sensors when the request rides cloud MQTT. */
-export const SENSOR_FAST_CLOUD_PERIOD_MS = 180_000;
-
-/** Config and slowly changing sensors on LAN. */
-export const SENSOR_SLOW_PERIOD_MS = 300_000;
-
-/** Slowly changing sensors over cloud MQTT. */
-export const SENSOR_SLOW_CLOUD_PERIOD_MS = 600_000;
-
-/** Config GETs over cloud MQTT; the slowest period, as they rarely change. */
-export const CLOUDMQTT_PERIOD_MS = 1_195_000;
-
-/** Hub battery percent barely moves; about once an hour is enough. */
-export const HUB_BATTERY_PERIOD_MS = 3_600_000;
-
-/**
- * Control.Multiple's envelope is counted before any sub-GETACK so the HTTP
- * ~3000-byte ceiling is not spent twice.
- */
-export const POLL_RESPONSE_HEADER_SIZE = 300;
 
 /**
  * Floor after a truncated-Multiple shrink, and the advertised max when
@@ -178,8 +175,8 @@ export const POLL_RESPONSE_SIZE_PER_CMD = 800;
 export const CONSUMPTIONX_DEFAULT_DAYS = 30;
 
 interface PollResponseParts {
-    base: number;
-    item: number;
+    readonly base: number;
+    readonly item: number;
 }
 
 /**
@@ -190,125 +187,6 @@ interface PollResponseParts {
 export function getDeviceResponseSizeMax(maxCmdNum: number): number {
     const advertised = maxCmdNum * POLL_RESPONSE_SIZE_PER_CMD;
     return advertised < POLL_RESPONSE_SIZE_MIN ? POLL_RESPONSE_SIZE_MIN : advertised;
-}
-
-interface PollPeriods {
-    strategy: PollStrategy;
-    periodMs: number;
-    periodCloudMs: number;
-}
-
-/**
- * GET body grammar. Omitted payload is `{}`.
- * `dict` — `{ key: { channel } }` or `{ key: {} }` when channel is omitted.
- * `list` without `by` — `{ key: [] }` (Light.Effect catalog).
- * `list` with `by` — `{ key: [{ channel | id | subId }] }` from enrolled endpoints.
- * `either` — hub children (`subId`) when present, otherwise board channels.
- */
-type PayloadSpec =
-    | { dict: string; channel?: number }
-    | {
-        list: string;
-        by?: 'channel' | 'id' | 'subId' | 'either';
-        for?: TraitName;
-        data?: string[];
-        dataId?: string[];
-    };
-
-interface PollSpec extends PollPeriods {
-    skipIf?: string;
-    payload?: PayloadSpec;
-    method?: 'GET' | 'PUSH';
-    calibrate?: (payload: MerossPayload) => number | undefined;
-    /**
-     * GETACK bytes. Omitted `base` is {@link POLL_RESPONSE_HEADER_SIZE} and
-     * omitted `item` is 0, so packing still charges the Multiple envelope
-     * instead of treating the namespace as free.
-     */
-    base?: number;
-    item?: number;
-}
-
-const DEFAULT: PollPeriods = {
-    strategy: 'default',
-    periodMs: 0,
-    periodCloudMs: CLOUDMQTT_PERIOD_MS
-};
-
-const ONCE: PollPeriods = {
-    strategy: 'once',
-    periodMs: 0,
-    periodCloudMs: 0
-};
-
-const SMART_FAST: PollPeriods = {
-    strategy: 'smart',
-    periodMs: SENSOR_FAST_PERIOD_MS,
-    periodCloudMs: SENSOR_FAST_CLOUD_PERIOD_MS
-};
-
-/** LatestX stays every LAN tick; over MQTT it uses the config cloud period. */
-const SMART_FAST_MQTT: PollPeriods = {
-    strategy: 'smart',
-    periodMs: SENSOR_FAST_PERIOD_MS,
-    periodCloudMs: CLOUDMQTT_PERIOD_MS
-};
-
-/** Latest is live on LAN; over MQTT it can wait with other slow sensors. */
-const SMART_FAST_SLOW_CLOUD: PollPeriods = {
-    strategy: 'smart',
-    periodMs: SENSOR_FAST_PERIOD_MS,
-    periodCloudMs: SENSOR_SLOW_CLOUD_PERIOD_MS
-};
-
-const SMART_SLOW: PollPeriods = {
-    strategy: 'smart',
-    periodMs: SENSOR_SLOW_PERIOD_MS,
-    periodCloudMs: SENSOR_SLOW_CLOUD_PERIOD_MS
-};
-
-const SMART_CONFIG: PollPeriods = {
-    strategy: 'smart',
-    periodMs: SENSOR_SLOW_PERIOD_MS,
-    periodCloudMs: CLOUDMQTT_PERIOD_MS
-};
-
-const SMART_ENERGY: PollPeriods = {
-    strategy: 'smart',
-    periodMs: ENERGY_PERIOD_MS,
-    periodCloudMs: ENERGY_CLOUD_PERIOD_MS
-};
-
-const SMART_CLOUDMQTT: PollPeriods = {
-    strategy: 'smart',
-    periodMs: CLOUDMQTT_PERIOD_MS,
-    periodCloudMs: CLOUDMQTT_PERIOD_MS
-};
-
-const SMART_BATTERY: PollPeriods = {
-    strategy: 'smart',
-    periodMs: HUB_BATTERY_PERIOD_MS,
-    periodCloudMs: CLOUDMQTT_PERIOD_MS
-};
-
-const SMART_ALL: PollPeriods = {
-    strategy: 'smart',
-    periodMs: SYSTEM_ALL_PERIOD_MS,
-    periodCloudMs: CLOUDMQTT_PERIOD_MS
-};
-
-const ALL_CHANNELS = { dict: 'togglex', channel: TOGGLEX_ALL_CHANNELS } as const;
-
-function channelList(list: string, trait?: TraitName): PayloadSpec {
-    return { list, by: 'channel', ...(trait ? { for: trait } : {}) };
-}
-
-function idList(list: string, trait?: TraitName): PayloadSpec {
-    return { list, by: 'id', ...(trait ? { for: trait } : {}) };
-}
-
-function subIdList(list: string, trait: TraitName): PayloadSpec {
-    return { list, by: 'subId', for: trait };
 }
 
 /**
@@ -449,11 +327,12 @@ const POLL: Record<string, PollSpec> = {
         ...SMART_ENERGY,
         base: 320,
         item: 53,
-        calibrate: (payload) => (
-            consumptionXDays(payload) === undefined
-                ? undefined
-                : estimateResponseSize(CONSUMPTIONX_NAMESPACE, payload)
-        )
+        calibrate: (payload) => {
+            if (consumptionXDays(payload) === undefined) {
+                return undefined;
+            }
+            return estimateResponseSize(CONSUMPTIONX_NAMESPACE, payload);
+        }
     },
     [CONSUMPTIONH_NAMESPACE]: {
         ...SMART_ENERGY,
@@ -774,25 +653,39 @@ function encodeList(
     const withId = picked.filter((endpoint) => endpoint.subDeviceId);
     const withChannel = picked.filter((endpoint) => endpoint.channel !== undefined);
 
-    if (spec.by === 'id') {
-        return withId.map((endpoint) => ({ id: endpoint.subDeviceId }));
+    switch (spec.by) {
+        case 'id':
+            return withId.map((endpoint) => ({ id: endpoint.subDeviceId }));
+        case 'subId':
+            return withId.map((endpoint) => ({
+                subId: endpoint.subDeviceId,
+                channel: 0
+            }));
+        case 'either':
+            if (withId.length > 0) {
+                const hub = spec.dataId ? preferTrait(withId, 'sensor') : withId;
+                return hub.map((endpoint) => ({
+                    channel: 0,
+                    subId: endpoint.subDeviceId,
+                    ...(spec.dataId ? { data: spec.dataId } : {})
+                }));
+            }
+            return encodeChannelItems(spec, withChannel);
+        case 'channel':
+            return encodeChannelItems(spec, withChannel);
+        default: {
+            const _exhaustive: never = spec.by;
+            return _exhaustive;
+        }
     }
-    if (spec.by === 'subId') {
-        return withId.map((endpoint) => ({
-            subId: endpoint.subDeviceId,
-            channel: 0
-        }));
-    }
-    if (spec.by === 'either' && withId.length > 0) {
-        const hub = spec.dataId ? preferTrait(withId, 'sensor') : withId;
-        return hub.map((endpoint) => ({
-            channel: 0,
-            subId: endpoint.subDeviceId,
-            ...(spec.dataId ? { data: spec.dataId } : {})
-        }));
-    }
+}
 
-    const targets = spec.data ? preferTrait(withChannel, 'presence') : withChannel;
+/** Board-channel LIST rows; shared by `channel` and hub-less `either`. */
+function encodeChannelItems(
+    spec: Extract<PayloadSpec, { list: string }>,
+    endpoints: readonly PollTarget[]
+): unknown[] {
+    const targets = spec.data ? preferTrait(endpoints, 'presence') : endpoints;
     return targets.map((endpoint) => ({
         channel: endpoint.channel,
         ...(spec.data ? { data: spec.data } : {})

@@ -9,6 +9,9 @@ import {
     SYSTEM_ALL_PERIOD_MS
 } from './jobs';
 import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
+import type { PollStrategy } from './spec';
+
+export type { PollStrategy };
 
 /** One shared tick so traits do not each run their own timer. */
 export const DEFAULT_POLL_INTERVAL_MS = 30_000;
@@ -26,15 +29,6 @@ export const POLL_START_STAGGER_MS = 250;
  * does not block the next tick forever.
  */
 const RESPONSE_SLACK_MS = 2_000;
-
-/**
- * How a namespace is scheduled. Traits register jobs; the poller owns the
- * timer so each trait does not run its own interval.
- *
- * `digest` jobs GET only as the System.All fallback, never alongside All
- * and never while MQTT is carrying PUSH.
- */
-export type PollStrategy = 'default' | 'digest' | 'smart' | 'once' | 'all';
 
 /**
  * One namespace GET for a physical device. Deduplicated by `namespace` so a
