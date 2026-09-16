@@ -191,7 +191,8 @@ session.on('ratelimit', (uuid, dropped) => {
 });
 
 session.on('warning', (error) => {
-  // a single device that sync() skipped, e.g. an Ability / System.All timeout.
+  // a single device that sync() skipped, e.g. an Ability / System.All timeout,
+  // or a hub whose cloud subdevice list failed (digest children still enroll).
   // Cloud-level failures reject sync() itself instead of arriving here.
 });
 
@@ -260,7 +261,7 @@ Readings such as energy and sensors update from PUSH and the internal poller. Li
 
 ## Errors
 
-Catch by class. Each error has a string `code`. Trait commands such as `setOn` reject with `CommandError`, `TransportError`, or `ProtocolError` — not `AuthError` / `CloudError`.
+Catch by class. Each error has a string `code`. Trait commands such as `setOn`, and on-demand energy reads (`energy.poll()`, `getHourlyConsumption()`), reject with `CommandError`, `TransportError`, or `ProtocolError` — not `AuthError` / `CloudError`. When `poll()` fails partway through, earlier GETs may already be in `change` / `last`; the call still rejects.
 
 
 | Class            | When                                                                                                                                      |

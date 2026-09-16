@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { Endpoint, type EndpointChange } from '../../src/endpoint';
+import { CommandError, ProtocolError, TransportError } from '../../src/errors';
 import {
     CONFIG_OVERTEMP_NAMESPACE,
     CONFIG_STANDBY_KILLER_NAMESPACE,
@@ -29,7 +30,12 @@ import {
     type MerossMessage
 } from '../../src/protocol';
 import { EnergyTrait } from '../../src/traits/energy';
-import { createRequestRecorder, recordedCalls, traitAck } from '../helpers/request';
+import {
+    createRequestRecorder,
+    recordedCalls,
+    traitAck,
+    type RequestRecorderOptions
+} from '../helpers/request';
 
 const fixturesDir = join(process.cwd(), 'test/fixtures');
 const KEY = 'stub-key';
@@ -110,12 +116,52 @@ function consumptionHAck(channel = CHANNEL): MerossMessage {
     });
 }
 
+function defaultEnergyAck(
+    opts: { namespace: string; method: string },
+    sent: MerossMessage
+): MerossMessage {
+    if (opts.namespace === ELECTRICITY_NAMESPACE) {
+        return electricityAck();
+    }
+    if (opts.namespace === ELECTRICITYX_NAMESPACE) {
+        return electricityXAck();
+    }
+    if (opts.namespace === CONSUMPTIONX_NAMESPACE) {
+        if (opts.method === 'DELETE') {
+            return traitAck(sent, { key: KEY, method: 'DELETEACK' });
+        }
+        return consumptionAck();
+    }
+    if (opts.namespace === CONSUMPTIONH_NAMESPACE) {
+        return consumptionHAck();
+    }
+    if (opts.namespace === CONSUMPTION_CONFIG_NAMESPACE) {
+        return traitAck(sent, {
+            key: KEY,
+            payload: {
+                config: {
+                    voltageRatio: 186,
+                    electricityRatio: 121,
+                    maxElectricityCurrent: 16_000
+                }
+            }
+        });
+    }
+    if (opts.namespace === CONFIG_OVERTEMP_NAMESPACE
+        || opts.namespace === CONTROL_ALERT_CONFIG_NAMESPACE
+        || opts.namespace === CONFIG_STANDBY_KILLER_NAMESPACE) {
+        return traitAck(sent, { key: KEY });
+    }
+    throw new Error(`unexpected namespace ${opts.namespace}`);
+}
+
 function createEnergyHarness(options: {
     hasElectricity?: boolean;
     hasElectricityX?: boolean;
     hasConsumptionX?: boolean;
     hasConsumptionH?: boolean;
     namespaces?: ReadonlySet<string>;
+    ack?: RequestRecorderOptions['ack'];
 } = {}): {
     endpoint: Endpoint;
     trait: EnergyTrait;
@@ -128,41 +174,7 @@ function createEnergyHarness(options: {
     const { requests, request } = createRequestRecorder({
         uuid: UUID,
         key: KEY,
-        ack: (opts, sent) => {
-            if (opts.namespace === ELECTRICITY_NAMESPACE) {
-                return electricityAck();
-            }
-            if (opts.namespace === ELECTRICITYX_NAMESPACE) {
-                return electricityXAck();
-            }
-            if (opts.namespace === CONSUMPTIONX_NAMESPACE) {
-                if (opts.method === 'DELETE') {
-                    return traitAck(sent, { key: KEY, method: 'DELETEACK' });
-                }
-                return consumptionAck();
-            }
-            if (opts.namespace === CONSUMPTIONH_NAMESPACE) {
-                return consumptionHAck();
-            }
-            if (opts.namespace === CONSUMPTION_CONFIG_NAMESPACE) {
-                return traitAck(sent, {
-                    key: KEY,
-                    payload: {
-                        config: {
-                            voltageRatio: 186,
-                            electricityRatio: 121,
-                            maxElectricityCurrent: 16_000
-                        }
-                    }
-                });
-            }
-            if (opts.namespace === CONFIG_OVERTEMP_NAMESPACE
-                || opts.namespace === CONTROL_ALERT_CONFIG_NAMESPACE
-                || opts.namespace === CONFIG_STANDBY_KILLER_NAMESPACE) {
-                return traitAck(sent, { key: KEY });
-            }
-            throw new Error(`unexpected namespace ${opts.namespace}`);
-        }
+        ack: options.ack ?? defaultEnergyAck
     });
     const trait = new EnergyTrait({
         uuid: UUID,
@@ -322,6 +334,130 @@ describe('EnergyTrait.poll', () => {
             { timestamp: 1_701_000_000, value: 12 },
             { timestamp: 1_701_003_600, value: 15 }
         ]);
+    });
+
+    it('rejects poll when Electricity throws TransportError and skips ConsumptionX', async () => {
+        const { trait, requests } = createEnergyHarness({
+            ack: () => {
+                throw new TransportError('LAN unreachable', 'LAN_UNREACHABLE');
+            }
+        });
+
+        await assert.rejects(
+            () => trait.poll(),
+            (err: unknown) => err instanceof TransportError
+        );
+        assert.deepEqual(recordedCalls(requests), [{
+            namespace: ELECTRICITY_NAMESPACE,
+            method: 'GET',
+            payload: encodeElectricityGet({ channel: CHANNEL })
+        }]);
+    });
+
+    it('applies electricity then rejects when ConsumptionX throws CommandError', async () => {
+        const { endpoint, trait, requests } = createEnergyHarness({
+            ack: (opts) => {
+                if (opts.namespace === ELECTRICITY_NAMESPACE) {
+                    return electricityAck();
+                }
+                if (opts.namespace === CONSUMPTIONX_NAMESPACE) {
+                    throw new CommandError('Device returned error: {}', 'COMMAND_FAILED');
+                }
+                throw new Error(`unexpected namespace ${opts.namespace}`);
+            }
+        });
+        const changes: EndpointChange[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        await assert.rejects(
+            () => trait.poll(),
+            (err: unknown) => err instanceof CommandError
+        );
+        assert.deepEqual(changes, [{
+            trait: 'energy',
+            values: { power: 11, current: 0.05, voltage: 230, consume: 42 }
+        }]);
+        assert.deepEqual(recordedCalls(requests), [
+            {
+                namespace: ELECTRICITY_NAMESPACE,
+                method: 'GET',
+                payload: encodeElectricityGet({ channel: CHANNEL })
+            },
+            {
+                namespace: CONSUMPTIONX_NAMESPACE,
+                method: 'GET',
+                payload: encodeConsumptionXGet()
+            }
+        ]);
+    });
+
+    it('rejects getHourlyConsumption on bad ConsumptionH payload and keeps stale hourly', async () => {
+        const { endpoint, trait } = createEnergyHarness({
+            hasElectricity: false,
+            hasElectricityX: false,
+            hasConsumptionX: false,
+            hasConsumptionH: true,
+            ack: (_opts, sent) => {
+                if (sent.header.namespace !== CONSUMPTIONH_NAMESPACE) {
+                    throw new Error(`unexpected namespace ${sent.header.namespace}`);
+                }
+                return traitAck(sent, {
+                    key: KEY,
+                    payload: { consumptionH: {} }
+                });
+            }
+        });
+        const changes: EndpointChange[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+        const stale = [
+            { timestamp: 1_700_000_000, value: 9 }
+        ];
+        const stalePush = encodeMessage({
+            namespace: CONSUMPTIONH_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                consumptionH: [{
+                    channel: CHANNEL,
+                    total: 9,
+                    data: stale
+                }]
+            }
+        });
+        trait.handlePush(stalePush);
+        assert.deepEqual(changes, [{ trait: 'energy', values: { hourly: stale } }]);
+
+        await assert.rejects(
+            () => trait.getHourlyConsumption(),
+            (err: unknown) => err instanceof ProtocolError
+        );
+
+        // Same PUSH again: skip-on-equal proves last.hourly was not cleared.
+        trait.handlePush(stalePush);
+        assert.equal(changes.length, 1);
+    });
+
+    it('fulfills poll when ElectricityX GETACK omits this channel', async () => {
+        const { endpoint, trait, requests } = createEnergyHarness({
+            hasElectricity: false,
+            hasElectricityX: true,
+            hasConsumptionX: false,
+            ack: () => electricityXAck(1)
+        });
+        const changes: EndpointChange[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const snapshot = await trait.poll();
+
+        assert.deepEqual(recordedCalls(requests), [{
+            namespace: ELECTRICITYX_NAMESPACE,
+            method: 'GET',
+            payload: encodeElectricityXGet()
+        }]);
+        assert.deepEqual(snapshot, {});
+        assert.deepEqual(changes, []);
     });
 });
 

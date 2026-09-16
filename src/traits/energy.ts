@@ -112,6 +112,12 @@ export class EnergyTrait {
         return this.namespaces.has(namespace);
     }
 
+    /**
+     * On-demand GET of advertised energy namespaces. Rejects with
+     * `CommandError` / `TransportError` / `ProtocolError` like `setOn`.
+     * Earlier GETs in this call may already be applied to `last` and emitted.
+     * DevicePoller swallows the same failures on its path.
+     */
     async poll(): Promise<EnergyValues> {
         if (this.bind.hasElectricity || this.bind.hasElectricityX) {
             await this.pollElectricity();
@@ -127,6 +133,8 @@ export class EnergyTrait {
 
     /**
      * On-demand only. Returns `undefined` when ConsumptionH is not advertised.
+     * Rejects with `CommandError` / `TransportError` / `ProtocolError` like
+     * `setOn` when the GET fails or the payload cannot be decoded.
      */
     async getHourlyConsumption(): Promise<ConsumptionHHour[] | undefined> {
         if (!this.bind.hasConsumptionH) {
@@ -301,59 +309,46 @@ export class EnergyTrait {
     }
 
     private async pollElectricity(): Promise<void> {
-        try {
-            if (this.bind.hasElectricity) {
-                const reply = await this.bind.request({
-                    namespace: ELECTRICITY_NAMESPACE,
-                    method: 'GET',
-                    payload: encodeElectricityGet({ channel: this.bind.channel })
-                });
-                const sample = decodeElectricityGetAck(reply.payload);
-                this.applyElectricity(sample);
-                return;
-            }
+        if (this.bind.hasElectricity) {
             const reply = await this.bind.request({
-                namespace: ELECTRICITYX_NAMESPACE,
+                namespace: ELECTRICITY_NAMESPACE,
                 method: 'GET',
-                payload: encodeElectricityXGet()
+                payload: encodeElectricityGet({ channel: this.bind.channel })
             });
-            const sample = decodeElectricityXGetAck(reply.payload)
-                .find((entry) => entry.channel === this.bind.channel);
-            if (sample) {
-                this.applyElectricity(sample);
-            }
-        } catch {
-            // Next poller tick or on-demand poll retries.
+            this.applyElectricity(decodeElectricityGetAck(reply.payload));
+            return;
+        }
+        const reply = await this.bind.request({
+            namespace: ELECTRICITYX_NAMESPACE,
+            method: 'GET',
+            payload: encodeElectricityXGet()
+        });
+        const sample = decodeElectricityXGetAck(reply.payload)
+            .find((entry) => entry.channel === this.bind.channel);
+        if (sample) {
+            this.applyElectricity(sample);
         }
     }
 
     private async pollConsumption(): Promise<void> {
-        try {
-            const reply = await this.bind.request({
-                namespace: CONSUMPTIONX_NAMESPACE,
-                method: 'GET',
-                payload: encodeConsumptionXGet()
-            });
-            this.applyConsumption(decodeConsumptionXGetAck(reply.payload));
-        } catch {
-            // Next poller tick or on-demand poll retries.
-        }
+        const reply = await this.bind.request({
+            namespace: CONSUMPTIONX_NAMESPACE,
+            method: 'GET',
+            payload: encodeConsumptionXGet()
+        });
+        this.applyConsumption(decodeConsumptionXGetAck(reply.payload));
     }
 
     private async pollHourlyConsumption(): Promise<void> {
-        try {
-            const reply = await this.bind.request({
-                namespace: CONSUMPTIONH_NAMESPACE,
-                method: 'GET',
-                payload: encodeConsumptionHGet(this.bind.channel)
-            });
-            const sample = decodeConsumptionHGetAck(reply.payload)
-                .find((entry) => entry.channel === this.bind.channel);
-            if (sample) {
-                this.applyHourlyConsumption(sample.hourly);
-            }
-        } catch {
-            // Next poller tick or on-demand poll retries.
+        const reply = await this.bind.request({
+            namespace: CONSUMPTIONH_NAMESPACE,
+            method: 'GET',
+            payload: encodeConsumptionHGet(this.bind.channel)
+        });
+        const sample = decodeConsumptionHGetAck(reply.payload)
+            .find((entry) => entry.channel === this.bind.channel);
+        if (sample) {
+            this.applyHourlyConsumption(sample.hourly);
         }
     }
 
