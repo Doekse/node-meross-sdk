@@ -9,6 +9,7 @@ import {
 } from '../protocol';
 import { SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 
 export interface DndValues {
@@ -22,7 +23,7 @@ export interface DndValues {
 export interface DndTraitBind {
     uuid: string;
     request: DeviceRequest;
-    emitChange: (on: boolean) => void;
+    emitChange: (values: DndValues) => void;
 }
 
 /**
@@ -30,7 +31,7 @@ export interface DndTraitBind {
  */
 export class DndTrait {
     private readonly bind: DndTraitBind;
-    private on: boolean | undefined;
+    private last: DndValues = {};
 
     constructor(bind: DndTraitBind) {
         this.bind = bind;
@@ -38,7 +39,7 @@ export class DndTrait {
 
     /** True when DND is active (LED off). Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
-        return this.on;
+        return this.last.on;
     }
 
     async setOn(on: boolean): Promise<{ on: boolean }> {
@@ -47,7 +48,7 @@ export class DndTrait {
             method: 'SET',
             payload: encodeDndSet({ on })
         });
-        this.applyState(on);
+        this.applyChange({ on });
         return { on };
     }
 
@@ -55,15 +56,11 @@ export class DndTrait {
         if (message.header.namespace !== DND_MODE_NAMESPACE) {
             return;
         }
-        this.applyState(decodeDndPush(message.payload).on);
+        this.applyChange({ on: decodeDndPush(message.payload).on });
     }
 
-    private applyState(on: boolean): void {
-        if (this.on === on) {
-            return;
-        }
-        this.on = on;
-        this.bind.emitChange(on);
+    private applyChange(patch: DndValues): void {
+        applyPatch(this.last, patch, this.bind.emitChange);
     }
 }
 
@@ -112,8 +109,7 @@ export const DndDescriptor: TraitDescriptor & {
         return new DndTrait({
             uuid: args.physical.uuid,
             request: args.request,
-            // Trait bind stays boolean; Endpoint change carries DndValues.
-            emitChange: (on: boolean): void => args.emitChange({ on })
+            emitChange: args.emitChange
         });
     }
 };

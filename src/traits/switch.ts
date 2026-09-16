@@ -21,6 +21,7 @@ import {
     type PollSpec
 } from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 
 export interface SwitchValues {
@@ -155,18 +156,7 @@ export class SwitchTrait {
     }
 
     private applyChange(patch: SwitchValues): void {
-        const next: SwitchValues = {};
-        for (const key of Object.keys(patch) as Array<keyof SwitchValues>) {
-            const value = patch[key];
-            if (value === undefined || this.last[key] === value) {
-                continue;
-            }
-            (this.last as Record<string, unknown>)[key] = value;
-            (next as Record<string, unknown>)[key] = value;
-        }
-        if (Object.keys(next).length > 0) {
-            this.bind.emitChange(next);
-        }
+        applyPatch(this.last, patch, this.bind.emitChange);
     }
 
     private has(namespace: string): boolean {

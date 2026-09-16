@@ -31,6 +31,7 @@ import {
     type PollSpec
 } from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 
 export type {
@@ -222,25 +223,7 @@ export class SystemTrait {
     }
 
     private applyChange(patch: SystemValues): void {
-        const next: SystemValues = {};
-        for (const key of Object.keys(patch) as Array<keyof SystemValues>) {
-            const value = patch[key];
-            if (value === undefined) {
-                continue;
-            }
-            const previous = this.last[key];
-            const changed = typeof value === 'object'
-                ? JSON.stringify(previous) !== JSON.stringify(value)
-                : previous !== value;
-            if (!changed) {
-                continue;
-            }
-            (this.last as Record<string, unknown>)[key] = value;
-            (next as Record<string, unknown>)[key] = value;
-        }
-        if (Object.keys(next).length > 0) {
-            this.bind.emitChange(next);
-        }
+        applyPatch(this.last, patch, this.bind.emitChange);
     }
 }
 

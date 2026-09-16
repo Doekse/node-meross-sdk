@@ -360,6 +360,41 @@ describe('LightTrait PUSH', () => {
 
         assert.deepEqual(changes, []);
     });
+
+    it('does not emit Control.Light PUSH when brightness, temperature, and RGB are unchanged', () => {
+        const { endpoint, trait } = createLightHarness({
+            hasToggleX: true,
+            lightCapacity: LIGHT_CAPACITY_LUMINANCE | LIGHT_CAPACITY_TEMPERATURE | LIGHT_CAPACITY_RGB
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const push = lightPush({
+            capacity: LIGHT_CAPACITY_LUMINANCE | LIGHT_CAPACITY_TEMPERATURE | LIGHT_CAPACITY_RGB,
+            rgb: 0x112233,
+            temperature: 10,
+            luminance: 50
+        });
+        trait.handlePush(push);
+        trait.handlePush(push);
+
+        assert.equal(changes.length, 1);
+        assert.equal(trait.getBrightness(), (50 - 1) / 99);
+        assert.equal(trait.getTemperature(), (10 - 1) / 99);
+        assert.deepEqual(trait.getRgb(), { r: 0x11, g: 0x22, b: 0x33 });
+    });
+
+    it('does not emit ToggleX PUSH when on/off is unchanged', () => {
+        const { endpoint, trait } = createLightHarness({ hasToggleX: true });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        trait.handlePush(togglexPush(true));
+        trait.handlePush(togglexPush(true));
+
+        assert.deepEqual(changes, [{ trait: 'light', values: { on: true } }]);
+        assert.equal(trait.isOn(), true);
+    });
 });
 
 describe('LightTrait.setEffect', () => {

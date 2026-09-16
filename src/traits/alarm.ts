@@ -15,6 +15,7 @@ import {
 } from '../protocol';
 import { channelList, DEFAULT, SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 
 export interface AlarmValues {
@@ -158,18 +159,7 @@ export class AlarmTrait {
     }
 
     private applyChange(patch: AlarmValues): void {
-        const next: AlarmValues = {};
-        for (const key of Object.keys(patch) as Array<keyof AlarmValues>) {
-            const value = patch[key];
-            if (value === undefined || this.last[key] === value) {
-                continue;
-            }
-            this.last[key] = value;
-            next[key] = value;
-        }
-        if (Object.keys(next).length > 0) {
-            this.bind.emitChange(next);
-        }
+        applyPatch(this.last, patch, this.bind.emitChange);
     }
 }
 

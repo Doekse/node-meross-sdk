@@ -24,6 +24,7 @@ import {
     type PollSpec
 } from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 
 const TOGGLE_NAMESPACE = 'Appliance.Control.Toggle';
@@ -69,12 +70,7 @@ export interface LightTraitBind {
 export class LightTrait {
     private readonly bind: LightTraitBind;
     private lightCapacity: number;
-
-    private on: boolean | undefined;
-    private brightness: number | undefined;
-    private temperature: number | undefined;
-    private rgb: LightRgb | undefined;
-    private effect: number | undefined;
+    private last: LightValues = {};
     private effectCatalog: LightEffectEntry[] = [];
 
     constructor(bind: LightTraitBind) {
@@ -84,25 +80,25 @@ export class LightTrait {
 
     /** Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
-        return this.on;
+        return this.last.on;
     }
 
     /** Host range is `0..1`. Undefined until GETACK or PUSH fills it. */
     getBrightness(): number | undefined {
-        return this.brightness;
+        return this.last.brightness;
     }
 
     /** Host range is `0..1`. Undefined until GETACK or PUSH fills it. */
     getTemperature(): number | undefined {
-        return this.temperature;
+        return this.last.temperature;
     }
 
     getRgb(): LightRgb | undefined {
-        return this.rgb && { ...this.rgb };
+        return this.last.rgb && { ...this.last.rgb };
     }
 
     getEffect(): number | undefined {
-        return this.effect;
+        return this.last.effect;
     }
 
     /** Empty when Light.Effect is absent. */
@@ -176,7 +172,7 @@ export class LightTrait {
         if (luminance === 0) {
             this.applyOn(false);
         }
-        return { brightness: this.brightness ?? brightness };
+        return { brightness: this.last.brightness ?? brightness };
     }
 
     async setTemperature(temperature: number): Promise<{ temperature: number }> {
@@ -187,7 +183,7 @@ export class LightTrait {
             payload: encodeLightSet({ channel: this.bind.channel, capacity: LIGHT_CAPACITY_TEMPERATURE, temperature: wire })
         });
         this.applyLight(decodeLightGetAck(reply.payload));
-        return { temperature: this.temperature ?? temperature };
+        return { temperature: this.last.temperature ?? temperature };
     }
 
     async setRgb(rgb: LightRgb): Promise<{ rgb: LightRgb }> {
@@ -197,7 +193,7 @@ export class LightTrait {
             payload: encodeLightSet({ channel: this.bind.channel, capacity: LIGHT_CAPACITY_RGB, rgb: rgbToWire(rgb) })
         });
         this.applyLight(decodeLightGetAck(reply.payload));
-        return { rgb: this.rgb ?? rgb };
+        return { rgb: this.last.rgb ?? rgb };
     }
 
     handlePush(message: MerossMessage): void {
@@ -236,43 +232,34 @@ export class LightTrait {
     }
 
     private applyOn(on: boolean): void {
-        if (this.on === on) {
-            return;
-        }
-        this.on = on;
-        this.bind.emitChange({ on });
+        this.applyChange({ on });
     }
 
     private applyLight(decoded: LightChannelWireState, applyOnoff = false): void {
-        const patch: LightValues = {};
-
         if (decoded.capacity !== 0) {
             this.lightCapacity = decoded.capacity;
         }
+        const patch: LightValues = {};
         if (decoded.luminance !== undefined) {
-            this.brightness = wireToHost01(decoded.luminance);
-            patch.brightness = this.brightness;
+            patch.brightness = wireToHost01(decoded.luminance);
         }
         if (decoded.temperature !== undefined) {
-            this.temperature = wireToHost01(decoded.temperature);
-            patch.temperature = this.temperature;
+            patch.temperature = wireToHost01(decoded.temperature);
         }
         if (decoded.rgb !== undefined) {
-            this.rgb = wireToRgb(decoded.rgb);
-            patch.rgb = this.rgb;
+            patch.rgb = wireToRgb(decoded.rgb);
         }
         if (decoded.effect !== undefined) {
-            this.effect = decoded.effect;
-            patch.effect = this.effect;
+            patch.effect = decoded.effect;
         }
         if (applyOnoff && typeof decoded.onoff === 'boolean') {
-            this.on = decoded.onoff;
-            patch.on = this.on;
+            patch.on = decoded.onoff;
         }
+        this.applyChange(patch);
+    }
 
-        if (Object.keys(patch).length > 0) {
-            this.bind.emitChange(patch);
-        }
+    private applyChange(patch: LightValues): void {
+        applyPatch(this.last, patch, this.bind.emitChange);
     }
 }
 

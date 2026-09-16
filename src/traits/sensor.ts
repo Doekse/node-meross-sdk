@@ -51,6 +51,7 @@ import {
     type PollSpec
 } from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import { applyPatch } from './patch';
 import type { HubChildRule, TraitDescriptor } from './descriptor';
 
 /** Hub child sensor families. Digest type strings do not match cloud subDeviceType. */
@@ -405,25 +406,7 @@ export class SensorTrait {
     }
 
     private applyChange(patch: SensorValues): void {
-        const next: SensorValues = {};
-        for (const key of Object.keys(patch) as Array<keyof SensorValues>) {
-            const value = patch[key];
-            if (value === undefined) {
-                continue;
-            }
-            const previous = this.last[key];
-            const changed = typeof value === 'object'
-                ? JSON.stringify(previous) !== JSON.stringify(value)
-                : previous !== value;
-            if (!changed) {
-                continue;
-            }
-            (this.last as Record<string, unknown>)[key] = value;
-            (next as Record<string, unknown>)[key] = value;
-        }
-        if (Object.keys(next).length > 0) {
-            this.bind.emitChange(next);
-        }
+        applyPatch(this.last, patch, this.bind.emitChange);
     }
 
     private has(namespace: string): boolean {

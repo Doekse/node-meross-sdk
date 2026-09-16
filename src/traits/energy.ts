@@ -52,6 +52,7 @@ import {
     type PollSpec
 } from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 
 export interface EnergyValues {
@@ -352,10 +353,6 @@ export class EnergyTrait {
         }
     }
 
-    /**
-     * Skip-on-equal would hide a successful live poll from hosts when watts
-     * are unchanged.
-     */
     private applyElectricity(sample: ElectricitySample): void {
         const values: EnergyValues = {};
         if (sample.power !== undefined) {
@@ -373,27 +370,15 @@ export class EnergyTrait {
         if (sample.powerFactor !== undefined) {
             values.powerFactor = sample.powerFactor;
         }
-        if (Object.keys(values).length === 0) {
-            return;
-        }
-        this.last = { ...this.last, ...values };
-        this.bind.emitChange(values);
+        this.applyChange(values);
     }
 
     private applyConsumption(consumption: ConsumptionXDay[]): void {
-        if (JSON.stringify(this.last.consumption) === JSON.stringify(consumption)) {
-            return;
-        }
-        this.last = { ...this.last, consumption };
-        this.bind.emitChange({ consumption });
+        this.applyChange({ consumption });
     }
 
     private applyHourlyConsumption(hourly: ConsumptionHHour[]): void {
-        if (JSON.stringify(this.last.hourly) === JSON.stringify(hourly)) {
-            return;
-        }
-        this.last = { ...this.last, hourly };
-        this.bind.emitChange({ hourly });
+        this.applyChange({ hourly });
     }
 
     private applyConfigOverTemp(state: ConfigOverTempState): void {
@@ -401,14 +386,7 @@ export class EnergyTrait {
         if (state.type !== undefined) {
             values.overTempType = state.type;
         }
-        if (
-            this.last.overTempEnabled === values.overTempEnabled
-            && this.last.overTempType === values.overTempType
-        ) {
-            return;
-        }
-        this.last = { ...this.last, ...values };
-        this.bind.emitChange(values);
+        this.applyChange(values);
     }
 
     private applyControlOverTemp(entry: ControlOverTempState): void {
@@ -416,14 +394,7 @@ export class EnergyTrait {
         if (entry.timestamp !== undefined) {
             values.overTempTimestamp = entry.timestamp;
         }
-        if (
-            this.last.overTempActive === values.overTempActive
-            && this.last.overTempTimestamp === values.overTempTimestamp
-        ) {
-            return;
-        }
-        this.last = { ...this.last, ...values };
-        this.bind.emitChange(values);
+        this.applyChange(values);
     }
 
     private applyAlertConfig(entry: AlertConfigEntry): void {
@@ -434,23 +405,11 @@ export class EnergyTrait {
         if (entry.value !== undefined) {
             values.alertConfig = entry.value;
         }
-        if (
-            this.last.alertConfigType === values.alertConfigType
-            && JSON.stringify(this.last.alertConfig) === JSON.stringify(values.alertConfig)
-        ) {
-            return;
-        }
-        this.last = { ...this.last, ...values };
-        this.bind.emitChange(values);
+        this.applyChange(values);
     }
 
     private applyAlertReport(entry: AlertReportEntry): void {
-        const values: EnergyValues = { alertReport: entry.fields };
-        if (JSON.stringify(this.last.alertReport) === JSON.stringify(values.alertReport)) {
-            return;
-        }
-        this.last = { ...this.last, ...values };
-        this.bind.emitChange(values);
+        this.applyChange({ alertReport: entry.fields });
     }
 
     private applyStandbyKiller(entry: StandbyKillerEntry): void {
@@ -467,16 +426,11 @@ export class EnergyTrait {
         if (entry.alert !== undefined) {
             values.standbyKillerAlert = entry.alert;
         }
-        if (
-            this.last.standbyKillerEnabled === values.standbyKillerEnabled
-            && this.last.standbyKillerPower === values.standbyKillerPower
-            && this.last.standbyKillerTime === values.standbyKillerTime
-            && this.last.standbyKillerAlert === values.standbyKillerAlert
-        ) {
-            return;
-        }
-        this.last = { ...this.last, ...values };
-        this.bind.emitChange(values);
+        this.applyChange(values);
+    }
+
+    private applyChange(patch: EnergyValues): void {
+        applyPatch(this.last, patch, this.bind.emitChange);
     }
 }
 

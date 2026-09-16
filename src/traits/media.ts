@@ -10,6 +10,7 @@ import {
 } from '../protocol';
 import { DEFAULT, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 
 export interface MediaValues {
@@ -107,18 +108,7 @@ export class MediaTrait {
     }
 
     private applyChange(patch: MediaValues): void {
-        const next: MediaValues = {};
-        for (const key of Object.keys(patch) as Array<keyof MediaValues>) {
-            const value = patch[key];
-            if (value === undefined || this.last[key] === value) {
-                continue;
-            }
-            (this.last as Record<string, unknown>)[key] = value;
-            (next as Record<string, unknown>)[key] = value;
-        }
-        if (Object.keys(next).length > 0) {
-            this.bind.emitChange(next);
-        }
+        applyPatch(this.last, patch, this.bind.emitChange);
     }
 }
 

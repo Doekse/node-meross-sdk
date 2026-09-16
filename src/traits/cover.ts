@@ -37,6 +37,7 @@ import {
     type PollSpec
 } from '../poll/spec';
 import type { DeviceRequest } from '../request';
+import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 
 export interface CoverValues {
@@ -70,9 +71,7 @@ export interface CoverTraitBind {
  */
 export class CoverTrait {
     private readonly bind: CoverTraitBind;
-    private on: boolean | undefined;
-    private position: number | undefined;
-    private moving: boolean | undefined;
+    private last: CoverValues = {};
     private lastGarageConfig: GarageDoorConfig | undefined;
     private lastMultipleConfig: GarageMultipleConfigEntry | undefined;
     private lastShutterConfig: ShutterConfig | undefined;
@@ -80,7 +79,7 @@ export class CoverTrait {
     constructor(bind: CoverTraitBind) {
         this.bind = bind;
         if (bind.initialOpen !== undefined) {
-            this.on = bind.initialOpen;
+            this.last.open = bind.initialOpen;
         }
     }
 
@@ -90,12 +89,12 @@ export class CoverTrait {
 
     /** Undefined until digest, SET, or PUSH fills it. */
     isOpen(): boolean | undefined {
-        return this.on;
+        return this.last.open;
     }
 
     /** Shutter only. Undefined for garage or until GETACK/PUSH fills it. */
     getPosition(): number | undefined {
-        return this.position;
+        return this.last.position;
     }
 
     async open(): Promise<{ open: boolean }> {
@@ -153,7 +152,7 @@ export class CoverTrait {
             payload: encodeShutterPositionSet({ channel: this.bind.channel, position: wire })
         });
         this.applyShutter(wire);
-        return { position: this.position ?? clamped };
+        return { position: this.last.position ?? clamped };
     }
 
     /**
@@ -273,7 +272,7 @@ export class CoverTrait {
                 for (const entry of decodeGaragePush(message.payload)) {
                     if (entry.channel === this.bind.channel) {
                         this.applyGarage(entry.open);
-                        if (this.moving === true) {
+                        if (this.last.moving === true) {
                             this.applyMoving(false);
                         }
                     }
@@ -338,47 +337,32 @@ export class CoverTrait {
             }
             this.applyGarage(entry.open);
             const moving = entry.execute === true && entry.open !== open;
-            if (moving || this.moving === true) {
+            if (moving || this.last.moving === true) {
                 this.applyMoving(moving);
             }
         }
-        return this.on ?? open;
+        return this.last.open ?? open;
     }
 
     private applyGarage(open: boolean): void {
-        if (this.on === open) {
-            return;
-        }
-        this.on = open;
-        this.bind.emitChange({ open });
+        this.applyChange({ open });
     }
 
     private applyShutter(wirePosition: number): void {
         if (wirePosition === -1) {
             return;
         }
-        const patch: CoverValues = {};
-        const hostPosition = wirePosition / 100;
+        const position = wirePosition / 100;
         const open = wirePosition === 100;
-        if (this.position !== hostPosition) {
-            this.position = hostPosition;
-            patch.position = hostPosition;
-        }
-        if (this.on !== open) {
-            this.on = open;
-            patch.open = open;
-        }
-        if (Object.keys(patch).length > 0) {
-            this.bind.emitChange(patch);
-        }
+        this.applyChange({ position, open });
     }
 
     private applyMoving(moving: boolean): void {
-        if (this.moving === moving) {
-            return;
-        }
-        this.moving = moving;
-        this.bind.emitChange({ moving });
+        this.applyChange({ moving });
+    }
+
+    private applyChange(patch: CoverValues): void {
+        applyPatch(this.last, patch, this.bind.emitChange);
     }
 }
 

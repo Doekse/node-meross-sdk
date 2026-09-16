@@ -8,7 +8,7 @@ import {
     type MerossMessage
 } from '../../src/protocol';
 import { DndTrait } from '../../src/traits/dnd';
-import type { DndTraitBind } from '../../src/traits/dnd';
+import type { DndTraitBind, DndValues } from '../../src/traits/dnd';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
@@ -17,9 +17,9 @@ const UUID = '2206138957096651080248e1e99705a4';
 function createHarness(): {
     trait: DndTrait;
     requests: MerossMessage[];
-    changes: boolean[];
+    changes: DndValues[];
 } {
-    const changes: boolean[] = [];
+    const changes: DndValues[] = [];
     const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['dnd'] });
     const { requests, request } = createRequestRecorder({
         uuid: UUID,
@@ -33,9 +33,9 @@ function createHarness(): {
     const bind: DndTraitBind = {
         uuid: UUID,
         request,
-        emitChange: (on) => {
-            changes.push(on);
-            endpoint.emit('change', { trait: 'dnd', values: { on } });
+        emitChange: (values) => {
+            changes.push({ ...values });
+            endpoint.emit('change', { trait: 'dnd', values: { ...values } });
         }
     };
     return { trait: new DndTrait(bind), requests, changes };
@@ -65,7 +65,7 @@ describe('DndTrait', () => {
         const { trait, changes } = createHarness();
         trait.handlePush(pushMessage({ DNDMode: { mode: 1 } }));
         assert.equal(trait.isOn(), true);
-        assert.deepEqual(changes, [true]);
+        assert.deepEqual(changes, [{ on: true }]);
     });
 
     it('does not emit change when PUSH repeats the same DND mode', () => {
@@ -74,7 +74,7 @@ describe('DndTrait', () => {
         trait.handlePush(pushMessage({ DNDMode: { mode: 1 } }));
         trait.handlePush(pushMessage({ DNDMode: { mode: 1 } }));
 
-        assert.deepEqual(changes, [true]);
+        assert.deepEqual(changes, [{ on: true }]);
     });
 
 });

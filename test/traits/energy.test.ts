@@ -244,20 +244,57 @@ describe('EnergyTrait.poll', () => {
         ]);
     });
 
-    it('emits electricity on every poll including repeated readings', async () => {
+    it('does not emit electricity when a repeated poll returns the same sample', async () => {
         const { endpoint, trait } = createEnergyHarness({ hasConsumptionX: false });
         const changes: unknown[] = [];
         endpoint.on('change', (change) => changes.push(change));
 
-        await trait.poll();
+        const first = await trait.poll();
         assert.deepEqual(changes, [
             { trait: 'energy', values: { power: 11, current: 0.05, voltage: 230, consume: 42 } }
         ]);
+        assert.deepEqual(first, { power: 11, current: 0.05, voltage: 230, consume: 42 });
+
+        const second = await trait.poll();
+        assert.deepEqual(changes, [
+            { trait: 'energy', values: { power: 11, current: 0.05, voltage: 230, consume: 42 } }
+        ]);
+        assert.deepEqual(second, { power: 11, current: 0.05, voltage: 230, consume: 42 });
+    });
+
+    it('emits only the electricity keys that changed on a later poll', async () => {
+        let polls = 0;
+        const { endpoint, trait } = createEnergyHarness({
+            hasConsumptionX: false,
+            ack: () => {
+                polls += 1;
+                return encodeMessage({
+                    namespace: ELECTRICITY_NAMESPACE,
+                    method: 'GETACK',
+                    key: KEY,
+                    from: `/appliance/${UUID}/publish`,
+                    uuid: UUID,
+                    payload: {
+                        electricity: {
+                            channel: CHANNEL,
+                            power: polls === 1 ? 11_000 : 12_000,
+                            current: 50,
+                            voltage: 2300,
+                            consume: 42
+                        }
+                    }
+                });
+            }
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
 
         await trait.poll();
+        await trait.poll();
+
         assert.deepEqual(changes, [
             { trait: 'energy', values: { power: 11, current: 0.05, voltage: 230, consume: 42 } },
-            { trait: 'energy', values: { power: 11, current: 0.05, voltage: 230, consume: 42 } }
+            { trait: 'energy', values: { power: 12 } }
         ]);
     });
 
@@ -474,6 +511,24 @@ describe('EnergyTrait PUSH', () => {
         assert.deepEqual(changes, [
             { trait: 'energy', values: { power: 11, current: 0.05, voltage: 230, consume: 42 } }
         ]);
+    });
+
+    it('does not emit Electricity PUSH when the sample is unchanged', async () => {
+        const { endpoint, trait } = createEnergyHarness({ hasConsumptionX: false });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const push = electricityAck();
+        push.header.method = 'PUSH';
+        trait.handlePush(push);
+        trait.handlePush(push);
+
+        assert.deepEqual(changes, [
+            { trait: 'energy', values: { power: 11, current: 0.05, voltage: 230, consume: 42 } }
+        ]);
+        const snapshot = await trait.poll();
+        assert.deepEqual(snapshot, { power: 11, current: 0.05, voltage: 230, consume: 42 });
+        assert.equal(changes.length, 1);
     });
 
     it('applies board Electricity PUSH regardless of payload channel', () => {
