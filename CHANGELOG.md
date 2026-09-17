@@ -9,10 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dedicated `overtemp`, `alert`, and `standbykiller` traits (Ability-gated, not electricity-gated). Hosts use `endpoint.overtemp` / `endpoint.alert` / `endpoint.standbykiller` (`poll()`, loud `set` with `NAMESPACE_NOT_ADVERTISED` when absent). `dnd.poll()` GETs `System.DNDMode`.
 - `Endpoint.protocol()` and a `protocol` event report whether the next request will use LAN HTTP or cloud MQTT. Hosts can display this; they cannot pick a protocol.
 - Public `CommandError`, `TransportError`, and `ProtocolError` so hosts can `instanceof` trait-command failures.
 - Type-only `SessionOptions` next to `LoginOptions` / `TokenData`.
-- `EndpointChange` is a per-trait discriminated union; remaining trait `*Values` types (`SwitchValues`, `EnergyValues`, `LightValues`, `LightRgb`, `CoverValues`, `ClimateValues`, `ClimatePid`, `DndValues`) are on the public barrel.
+- `EndpointChange` is a per-trait discriminated union; remaining trait `*Values` types (`SwitchValues`, `EnergyValues`, `LightValues`, `LightRgb`, `CoverValues`, `ClimateValues`, `ClimatePid`, `DndValues`, `OverTempValues`, `AlertValues`, `StandbyKillerValues`) are on the public barrel.
 
 ### Changed
 
@@ -25,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking (alpha)
 
+- `energy.setOverTemp` / `setAlertConfig` / `setStandbyKiller` and `overTemp*` / `alertConfig*` / `standbyKiller*` values are removed. `climate.setAlertConfig` and climate alert fields are removed. Hosts use `endpoint.overtemp` / `endpoint.alert` / `endpoint.standbykiller` instead. Silent no-op setters are gone: missing namespaces throw `MerossError` `NAMESPACE_NOT_ADVERTISED`.
 - `EndpointChange.values` is no longer `Record<string, unknown>` — narrow on `change.trait` before reading fields.
 - `NotImplementedError` is not exported from the public barrel.
 - `energy.poll()` and `getHourlyConsumption()` reject with `CommandError` / `TransportError` / `ProtocolError` on request or decode failure instead of returning stale `last`. A partial `poll()` may already have applied earlier GETs to `change` before rejecting. Background `DevicePoller` still swallows the same failures.

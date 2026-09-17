@@ -133,32 +133,22 @@ describe('AlertTrait', () => {
         assert.equal(trait.getType(), undefined);
     });
 
-    it('SETs AlertConfig and emits change', async () => {
-        const { trait, requests, changes } = createHarness();
-        const value = { em06: { threshold: 10 } };
+    it('SETs AlertConfig value shapes (em06 / mts300) and emits change', async () => {
+        const cases = [
+            { type: 1, value: { em06: { threshold: 10 } } },
+            { type: 5, value: { mts300: { hcMal: 1, auxLO: 1, auxLOT: 240 } } }
+        ];
 
-        await trait.set({ type: 1, value });
-
-        assert.deepEqual(recordedCalls(requests), [{
-            namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
-            method: 'SET',
-            payload: encodeAlertConfigSet({ channel: CHANNEL, type: 1, value })
-        }]);
-        assert.deepEqual(changes, [{ type: 1, value }]);
-    });
-
-    it('SETs mts300-shaped value for climate payloads', async () => {
-        const { trait, requests, changes } = createHarness();
-        const value = { mts300: { hcMal: 1, auxLO: 1, auxLOT: 240 } };
-
-        await trait.set({ type: 5, value });
-
-        assert.deepEqual(recordedCalls(requests), [{
-            namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
-            method: 'SET',
-            payload: encodeAlertConfigSet({ channel: CHANNEL, type: 5, value })
-        }]);
-        assert.deepEqual(changes, [{ type: 5, value }]);
+        for (const options of cases) {
+            const { trait, requests, changes } = createHarness();
+            await trait.set(options);
+            assert.deepEqual(recordedCalls(requests), [{
+                namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
+                method: 'SET',
+                payload: encodeAlertConfigSet({ channel: CHANNEL, ...options })
+            }]);
+            assert.deepEqual(changes, [options]);
+        }
     });
 
     it('throws NAMESPACE_NOT_ADVERTISED when AlertConfig is absent', async () => {
@@ -207,19 +197,12 @@ describe('AlertTrait', () => {
         assert.equal(changes.length, 1);
     });
 
-    it('ignores malformed AlertReport PUSH', () => {
+    it('ignores soft-decode AlertReport PUSH (malformed or empty)', () => {
         const { trait, changes } = createHarness();
 
         trait.handlePush(pushMessage(CONTROL_ALERT_REPORT_NAMESPACE, {
             alert: { not: 'a list' }
         }));
-
-        assert.deepEqual(changes, []);
-    });
-
-    it('ignores empty AlertReport PUSH', () => {
-        const { trait, changes } = createHarness();
-
         trait.handlePush(pushMessage(CONTROL_ALERT_REPORT_NAMESPACE, {}));
 
         assert.deepEqual(changes, []);

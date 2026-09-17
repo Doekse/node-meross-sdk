@@ -8,6 +8,7 @@ import {
     CONTROL_TIMER_NAMESPACE,
     CONTROL_TRIGGER_NAMESPACE,
     CONTROL_ALERT_CONFIG_NAMESPACE,
+    CONFIG_OVERTEMP_NAMESPACE,
     CONFIG_STANDBY_KILLER_NAMESPACE,
     DND_MODE_NAMESPACE,
     FAN_NAMESPACE,
@@ -224,6 +225,26 @@ describe('attachEndpoint dnd', () => {
 
         assert.deepEqual(changes, [{ trait: 'dnd', values: { on: true } }]);
         assert.deepEqual(narrowedOn, [true]);
+    });
+});
+
+describe('attachEndpoint overtemp', () => {
+    it('emits { trait: overtemp, values } on Config.OverTemp PUSH', () => {
+        const { endpoint } = createHarness({
+            traits: ['overtemp'],
+            ability: { [CONFIG_OVERTEMP_NAMESPACE]: {} }
+        });
+        const changes: EndpointChange[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        endpoint.handlePush(pushMessage(CONFIG_OVERTEMP_NAMESPACE, {
+            overTemp: { enable: 1, type: 2 }
+        }));
+
+        assert.deepEqual(changes, [{
+            trait: 'overtemp',
+            values: { enabled: true, type: 2 }
+        }]);
     });
 });
 

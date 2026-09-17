@@ -35,7 +35,7 @@ export interface StandbyKillerTraitBind {
 }
 
 /**
- * Per-channel standby cut-off (MSS305). Enroll rides socket channels only.
+ * Per-channel standby cut-off. Enroll rides socket channels only.
  */
 export class StandbyKillerTrait {
     private readonly bind: StandbyKillerTraitBind;
@@ -115,7 +115,8 @@ export class StandbyKillerTrait {
     }
 
     handlePush(message: MerossMessage): void {
-        if (message.header.namespace === CONFIG_STANDBY_KILLER_NAMESPACE && this.has(CONFIG_STANDBY_KILLER_NAMESPACE)) {
+        const { namespace } = message.header;
+        if (namespace === CONFIG_STANDBY_KILLER_NAMESPACE && this.has(CONFIG_STANDBY_KILLER_NAMESPACE)) {
             const entry = decodeStandbyKillerPush(message.payload)
                 .find((row) => row.channel === this.bind.channel);
             if (entry) {
@@ -124,6 +125,10 @@ export class StandbyKillerTrait {
         }
     }
 
+    /**
+     * Copies only defined config keys so GETACK rows can carry `channel`
+     * without leaking it into the snapshot.
+     */
     private applyConfig(entry: StandbyKillerValues): StandbyKillerValues {
         const values: StandbyKillerValues = {};
         if (entry.enabled !== undefined) {

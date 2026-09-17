@@ -118,11 +118,12 @@ export class OverTempTrait {
     }
 
     handlePush(message: MerossMessage): void {
-        if (message.header.namespace === CONFIG_OVERTEMP_NAMESPACE && this.has(CONFIG_OVERTEMP_NAMESPACE)) {
+        const { namespace } = message.header;
+        if (namespace === CONFIG_OVERTEMP_NAMESPACE && this.has(CONFIG_OVERTEMP_NAMESPACE)) {
             this.applyChange(decodeConfigOverTempPush(message.payload));
             return;
         }
-        if (message.header.namespace === CONTROL_OVERTEMP_NAMESPACE && this.has(CONTROL_OVERTEMP_NAMESPACE)) {
+        if (namespace === CONTROL_OVERTEMP_NAMESPACE && this.has(CONTROL_OVERTEMP_NAMESPACE)) {
             // Device-wide: firmware SET may omit channel (codec defaults to 0).
             const entry = decodeControlOverTempPush(message.payload)
                 .find((row) => row.channel === 0);

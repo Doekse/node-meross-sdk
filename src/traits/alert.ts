@@ -112,7 +112,8 @@ export class AlertTrait {
     }
 
     handlePush(message: MerossMessage): void {
-        if (message.header.namespace === CONTROL_ALERT_CONFIG_NAMESPACE && this.has(CONTROL_ALERT_CONFIG_NAMESPACE)) {
+        const { namespace } = message.header;
+        if (namespace === CONTROL_ALERT_CONFIG_NAMESPACE && this.has(CONTROL_ALERT_CONFIG_NAMESPACE)) {
             const entry = decodeAlertConfigPush(message.payload)
                 .find((row) => row.channel === this.bind.channel);
             if (entry) {
@@ -120,7 +121,7 @@ export class AlertTrait {
             }
             return;
         }
-        if (message.header.namespace === CONTROL_ALERT_REPORT_NAMESPACE && this.has(CONTROL_ALERT_REPORT_NAMESPACE)) {
+        if (namespace === CONTROL_ALERT_REPORT_NAMESPACE && this.has(CONTROL_ALERT_REPORT_NAMESPACE)) {
             const entry = decodeAlertReportPush(message.payload)
                 .find((row) => row.channel === this.bind.channel);
             if (entry) {
@@ -129,6 +130,10 @@ export class AlertTrait {
         }
     }
 
+    /**
+     * Copies only defined config keys so GETACK rows can carry `channel`
+     * without leaking it into the snapshot.
+     */
     private applyConfig(entry: {
         type?: number;
         value?: Record<string, unknown>;
