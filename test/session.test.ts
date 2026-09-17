@@ -6,6 +6,8 @@ import { describe, it } from 'node:test';
 import { ABILITY_NAMESPACE, SYSTEM_ALL_NAMESPACE } from '../src/device';
 import { AuthError, CloudError, MerossError, TransportError } from '../src/errors';
 import {
+    ONLINE_NAMESPACE,
+    TOGGLEX_NAMESPACE,
     decodeMessage,
     decryptPayload,
     deriveEncryptionKey,
@@ -382,25 +384,88 @@ describe('Session.connect', () => {
         await session.disconnect();
     });
 
-    it('updates endpoint availability from System.Online PUSH', async () => {
+    it('ignores MQTT System.Online unless PUSH with status 1', async () => {
         const { session, client } = await loginConnected();
 
         const endpoint = session.endpoint(`${UUID}:0`);
         const availability: boolean[] = [];
         endpoint.on('availability', (online) => availability.push(online));
 
+        // Broker session state — dropped before recordPush / handleMessage.
         client.deliver(encodeMessage({
-            namespace: 'Appliance.System.Online',
+            namespace: ONLINE_NAMESPACE,
             method: 'PUSH',
             key: KEY,
             from: `/appliance/${UUID}/publish`,
             uuid: UUID,
             payload: { online: { status: 2 } }
         }));
+        assert.deepEqual(availability, []);
+        assert.equal(endpoint.isOnline(), true);
 
-        assert.deepEqual(availability, [false]);
-        assert.equal(endpoint.isOnline(), false);
+        // Not PUSH — also aborted on MQTT even when status is 1.
+        client.deliver(encodeMessage({
+            namespace: ONLINE_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { online: { status: 1 } }
+        }));
+        assert.deepEqual(availability, []);
+        assert.equal(endpoint.isOnline(), true);
+
+        // PUSH status 1 reaches handleMessage; already-live board stays live.
+        // Dead-board online from this path is covered in availability.test.ts.
+        client.deliver(encodeMessage({
+            namespace: ONLINE_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { online: { status: 1 } }
+        }));
+        assert.deepEqual(availability, []);
+        assert.equal(endpoint.isOnline(), true);
         assert.equal('online' in (session.inventory.endpoints()[0] ?? {}), false);
+        await session.disconnect();
+    });
+
+    it('applies LAN System.Online GETACK with POST uuid', async () => {
+        const lanFetch: typeof fetch = async (_url, init) => {
+            const sent = decodeMessage(String(init?.body), KEY);
+            // Inject Online GETACK on a host SET so handleInbound sees originUuid.
+            if (
+                sent.header.namespace === TOGGLEX_NAMESPACE
+                && sent.header.method === 'SET'
+            ) {
+                return jsonResponse(encodeMessage({
+                    namespace: ONLINE_NAMESPACE,
+                    method: 'GETACK',
+                    key: KEY,
+                    from: `/appliance/${UUID}/publish`,
+                    messageId: sent.header.messageId,
+                    uuid: UUID,
+                    payload: { online: { status: 2 } }
+                }));
+            }
+            return jsonResponse(enrollmentAck(sent, { innerIp: true }));
+        };
+        const { session } = await loginConnected({
+            lanFetch,
+            ack: { innerIp: true }
+        });
+
+        const endpoint = session.endpoint(`${UUID}:0`);
+        const availability: boolean[] = [];
+        endpoint.on('availability', (online) => availability.push(online));
+
+        // PendingRequests settles SETACK/GETACK; Online GETACK status 2 still
+        // reaches handleMessage and must not offline a live board.
+        await endpoint.switch!.setOn(false);
+
+        assert.deepEqual(availability, []);
+        assert.equal(endpoint.isOnline(), true);
         await session.disconnect();
     });
 

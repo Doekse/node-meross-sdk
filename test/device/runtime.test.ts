@@ -10,17 +10,6 @@ const UUID = '2206138957096651080248e1e99705a4';
 const KEY = 'stub-key';
 const INTERVAL_MS = 1_000;
 
-function onlineMessage(status: number): MerossMessage {
-    return encodeMessage({
-        namespace: 'Appliance.System.Online',
-        method: 'PUSH',
-        key: KEY,
-        from: `/appliance/${UUID}/publish`,
-        uuid: UUID,
-        payload: { online: { status } }
-    });
-}
-
 function flushMicrotasks(): Promise<void> {
     return Promise.resolve().then(() => Promise.resolve());
 }
@@ -126,17 +115,23 @@ describe('DeviceRuntime', () => {
     });
 
     it('propagates an availability online transition into an immediate poll', async (t: TestContext) => {
-        const harness = createHarness(t);
+        const harness = createHarness(t, { initialOnline: false });
 
         harness.runtime.start();
         await harness.advance(0);
-        assert.equal(harness.requestGets.mock.callCount(), 1);
+        const pollsWhileOffline = harness.requestGets.mock.callCount();
 
-        harness.runtime.handleMessage(onlineMessage(0));
-        harness.runtime.handleMessage(onlineMessage(1));
+        harness.runtime.handleMessage(encodeMessage({
+            namespace: 'Appliance.Control.ToggleX',
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { togglex: [{ channel: 0, onoff: 1 }] }
+        }));
         await harness.advance(0);
 
-        assert.equal(harness.requestGets.mock.callCount(), 2);
+        assert.equal(harness.requestGets.mock.callCount(), pollsWhileOffline + 1);
         harness.runtime.stop();
     });
 

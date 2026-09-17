@@ -1,13 +1,12 @@
 import type { Endpoint } from '../endpoint';
 import type { MerossMessage, MerossPayload } from '../protocol/message';
-import {
-    HUB_ONLINE_NAMESPACE,
-    ONLINE_NAMESPACE,
-    decodeHubOnline,
-    decodeOnlineStatus
-} from '../protocol/codecs/online';
-import { Heartbeat } from './heartbeat';
+import { HUB_ONLINE_NAMESPACE, decodeHubOnline } from '../protocol/codecs/online';
 import { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from '../protocol/codecs/system-all';
+import { Heartbeat } from './heartbeat';
+
+function isPushOrGetAck(method: string): boolean {
+    return method === 'PUSH' || method === 'GETACK';
+}
 
 export interface DeviceAvailabilityOptions {
     uuid: string;
@@ -20,6 +19,8 @@ export interface DeviceAvailabilityOptions {
     ) => Promise<MerossMessage>;
     /** Notifies DevicePoller so cold-start / MQTT-active reset stay in sync. */
     onOnlineChange?: (online: boolean) => void;
+    /** Same identifier as DevicePoller.clearMqtt — All status !== 1 drops MQTT-active. */
+    clearMqtt?: () => void;
     /** System.All `firmware.innerIp` can change after DHCP. */
     onInnerIp?: (innerIp: string | undefined) => void;
     heartbeatIntervalMs?: number;
@@ -27,25 +28,25 @@ export interface DeviceAvailabilityOptions {
 }
 
 /**
- * Board online is independent of hub children: a live hub can still have an
- * out-of-range sensor. `{uuid}#{subDeviceId}` rows follow Hub.Online and
- * System.All digest; a dead hub still forces every child offline.
+ * Board online is heard-from-the-device, not firmware `online.status`. A live
+ * hub can still have an out-of-range sensor. `{uuid}#{subDeviceId}` rows follow
+ * Hub.Online and System.All digest; a dead hub still forces every child offline.
  */
 export class DeviceAvailability {
-    private readonly uuid: string;
     private readonly board: Endpoint[] = [];
     private readonly children = new Map<string, Endpoint>();
     private readonly request: DeviceAvailabilityOptions['request'];
     private readonly onOnlineChange?: (online: boolean) => void;
+    private readonly clearMqtt?: () => void;
     private readonly onInnerIp?: (innerIp: string | undefined) => void;
     private readonly heartbeat: Heartbeat;
 
     private online: boolean;
 
     constructor(options: DeviceAvailabilityOptions) {
-        this.uuid = options.uuid;
         this.request = options.request;
         this.onOnlineChange = options.onOnlineChange;
+        this.clearMqtt = options.clearMqtt;
         this.onInnerIp = options.onInnerIp;
         this.online = options.initialOnline;
         const prefix = `${options.uuid}#`;
@@ -89,17 +90,12 @@ export class DeviceAvailability {
 
     handleMessage(message: MerossMessage): void {
         this.heartbeat.recordResponse();
+        // setOnline no-ops when already true; recordResponse first so an
+        // inbound while offline still resets the probe backoff.
+        this.setOnline(true);
 
         const { namespace, method } = message.header;
-        if (namespace === ONLINE_NAMESPACE && (method === 'PUSH' || method === 'GETACK')) {
-            const status = decodeOnlineStatus(message.payload);
-            if (status !== undefined) {
-                this.setOnline(status === 1);
-            }
-            return;
-        }
-
-        if (namespace === HUB_ONLINE_NAMESPACE && (method === 'PUSH' || method === 'GETACK')) {
+        if (namespace === HUB_ONLINE_NAMESPACE && isPushOrGetAck(method)) {
             try {
                 for (const entry of decodeHubOnline(message.payload)) {
                     this.setChildOnline(entry.id, entry.online);
@@ -110,19 +106,8 @@ export class DeviceAvailability {
             return;
         }
 
-        if (namespace === SYSTEM_ALL_NAMESPACE && (method === 'PUSH' || method === 'GETACK')) {
+        if (namespace === SYSTEM_ALL_NAMESPACE && isPushOrGetAck(method)) {
             this.applySystemAll(message);
-            return;
-        }
-
-        if (namespace === 'Appliance.System.Runtime' && method === 'GETACK') {
-            const runtime = message.payload.runtime;
-            if (runtime && typeof runtime === 'object' && !Array.isArray(runtime)) {
-                const iotStatus = (runtime as { iotStatus?: unknown }).iotStatus;
-                if (iotStatus === 2) {
-                    this.setOnline(false);
-                }
-            }
         }
     }
 
@@ -137,12 +122,15 @@ export class DeviceAvailability {
     /**
      * LAN has no Hub.Online poll; child status rides the System.All digest.
      * Digest omits status when the hub has no recent child info; a missing
-     * status is not treated as offline.
+     * status is not treated as offline. Board reachability is not taken from
+     * `online.status` — status !== 1 only clears MQTT-active.
      */
     private applySystemAll(message: MerossMessage): void {
         try {
             const all = decodeSystemAllGetAck(message.payload);
-            this.setOnline(all.online.status === 1);
+            if (all.online.status !== 1) {
+                this.clearMqtt?.();
+            }
             this.onInnerIp?.(all.firmware.innerIp);
             for (const sub of all.digest.hub?.subdevice ?? []) {
                 if (sub.status !== undefined) {
@@ -150,7 +138,7 @@ export class DeviceAvailability {
                 }
             }
         } catch {
-            // Malformed All is ignored; Heartbeat silence still marks offline.
+            // Malformed All is ignored; a failed heartbeat probe still marks offline.
         }
     }
 

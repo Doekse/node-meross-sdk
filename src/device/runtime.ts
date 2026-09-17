@@ -58,6 +58,7 @@ export class DeviceRuntime {
             endpoints: options.endpoints,
             request: options.request,
             onOnlineChange: (online) => poller.setOnline(online),
+            clearMqtt: () => poller.clearMqtt(),
             onInnerIp: (innerIp) => {
                 options.onInnerIp?.(innerIp);
                 this.publishProtocol();
