@@ -44,6 +44,8 @@ describe('CJS public surface', () => {
         assert.equal(sdk.DeviceGraph, undefined);
         assert.equal(sdk.enrollPhysicalDevice, undefined);
         assert.equal(sdk.decodeAbilityGetAck, undefined);
+        assert.equal(sdk.encodeArray, undefined);
+        assert.equal(sdk.decodeArray, undefined);
         assert.equal(sdk.NotImplementedError, undefined);
         assert.equal(sdk.SessionOptions, undefined);
     });

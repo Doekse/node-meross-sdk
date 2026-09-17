@@ -1,4 +1,5 @@
 import { ProtocolError } from '../../errors';
+import { encodeArray } from './payload';
 import type { MerossPayload } from '../message';
 
 export const CONTROL_ALARM_NAMESPACE = 'Appliance.Control.Alarm';
@@ -48,10 +49,6 @@ export interface AlarmChannelState {
     maSecurity?: boolean;
     /** True when `event.interConn.value` is execute. Undefined if interConn is absent. */
     linked?: boolean;
-}
-
-function encodeArray(key: string, entry: Record<string, unknown>): MerossPayload {
-    return { [key]: [entry] };
 }
 
 function alarmRow(options: { channel: number; subId?: string }): Record<string, unknown> {

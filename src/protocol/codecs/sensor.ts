@@ -1,4 +1,5 @@
 import { ProtocolError } from '../../errors';
+import { decodeArray, encodeArray } from './payload';
 import type { MerossPayload } from '../message';
 
 export const HUB_SENSOR_TEMPHUM_NAMESPACE = 'Appliance.Hub.Sensor.TempHum';
@@ -226,23 +227,6 @@ export interface SensorAssociationSetOptions {
     channel: number;
     subId?: string;
     tempAssociation: number;
-}
-
-function encodeArray(key: string, entry: Record<string, unknown>): MerossPayload {
-    return { [key]: [entry] };
-}
-
-function decodeArray(payload: MerossPayload, key: string, label: string): Record<string, unknown>[] {
-    const raw = payload[key];
-    if (!Array.isArray(raw)) {
-        throw new ProtocolError(`${label} payload must contain a ${key} array`);
-    }
-    return raw.map((item) => {
-        if (typeof item !== 'object' || item === null) {
-            throw new ProtocolError(`${label} entry must be an object`);
-        }
-        return item as Record<string, unknown>;
-    });
 }
 
 function encodeIdGet(key: string, id: string): MerossPayload {

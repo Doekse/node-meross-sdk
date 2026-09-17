@@ -1,4 +1,5 @@
 import { ProtocolError } from '../../errors';
+import { decodeArray } from './payload';
 import type { MerossPayload } from '../message';
 
 export const DIFFUSER_LIGHT_NAMESPACE = 'Appliance.Control.Diffuser.Light';
@@ -139,11 +140,11 @@ export function decodeDiffuserSensorPush(payload: MerossPayload): DiffuserSensor
 }
 
 function decodeDiffuserLight(payload: MerossPayload): DiffuserLightState[] {
-    return decodeKeyedList(payload, 'light', 'Diffuser.Light').map(decodeLightEntry);
+    return decodeArray(payload, 'light', 'Diffuser.Light').map(decodeLightEntry);
 }
 
 function decodeDiffuserSpray(payload: MerossPayload): DiffuserSprayState[] {
-    return decodeKeyedList(payload, 'spray', 'Diffuser.Spray').map(decodeSprayEntry);
+    return decodeArray(payload, 'spray', 'Diffuser.Spray').map(decodeSprayEntry);
 }
 
 function decodeDiffuserSensor(payload: MerossPayload): DiffuserSensorState {
@@ -194,23 +195,6 @@ function decodeSprayEntry(item: Record<string, unknown>): DiffuserSprayState {
         throw new ProtocolError('Diffuser.Spray mode is unknown');
     }
     return { channel, mode: mapped };
-}
-
-function decodeKeyedList(
-    payload: MerossPayload,
-    key: string,
-    label: string
-): Record<string, unknown>[] {
-    const raw = payload[key];
-    if (!Array.isArray(raw)) {
-        throw new ProtocolError(`${label} payload must contain a ${key} array`);
-    }
-    return raw.map((item) => {
-        if (typeof item !== 'object' || item === null) {
-            throw new ProtocolError(`${label} entry must be an object`);
-        }
-        return item as Record<string, unknown>;
-    });
 }
 
 function nestedNumber(raw: unknown, field: string): number | undefined {

@@ -1,4 +1,5 @@
 import { ProtocolError } from '../../errors';
+import { decodeArray, encodeArray } from './payload';
 import type { MerossPayload } from '../message';
 
 export const CONTROL_WATER_NAMESPACE = 'Appliance.Control.Water';
@@ -66,23 +67,6 @@ export interface DeviceCfgSetOptions {
 
 export interface WaterPlanGetOptions {
     subId: string;
-}
-
-function encodeArray(key: string, entry: Record<string, unknown>): MerossPayload {
-    return { [key]: [entry] };
-}
-
-function decodeArray(payload: MerossPayload, key: string, label: string): Record<string, unknown>[] {
-    const raw = payload[key];
-    if (!Array.isArray(raw)) {
-        throw new ProtocolError(`${label} payload must contain a ${key} array`);
-    }
-    return raw.map((item) => {
-        if (typeof item !== 'object' || item === null) {
-            throw new ProtocolError(`${label} entry must be an object`);
-        }
-        return item as Record<string, unknown>;
-    });
 }
 
 function decodeWaterControl(payload: MerossPayload): WaterControlState[] {
