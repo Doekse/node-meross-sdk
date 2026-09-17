@@ -50,8 +50,7 @@ import {
 import { LIGHT_EFFECT_NAMESPACE } from '../../src/protocol/codecs/light';
 import { MP3_NAMESPACE } from '../../src/protocol/codecs/mp3';
 import {
-    CONFIG_OVERTEMP_NAMESPACE,
-    CONTROL_OVERTEMP_NAMESPACE
+    CONFIG_OVERTEMP_NAMESPACE
 } from '../../src/protocol/codecs/overtemp';
 import { PRESENCE_CONFIG_NAMESPACE } from '../../src/protocol/codecs/presence';
 import {
@@ -779,28 +778,14 @@ describe('buildPollJobs', () => {
     it('registers Config.OverTemp as smart config', () => {
         const jobs = buildPollJobs(
             ability(CONFIG_OVERTEMP_NAMESPACE),
-            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
+            endpoints([{ channel: CHANNEL, traits: ['overtemp'] }])
         );
         assert.deepEqual(job(jobs, CONFIG_OVERTEMP_NAMESPACE), {
             namespace: CONFIG_OVERTEMP_NAMESPACE,
             strategy: 'smart',
             periodMs: SENSOR_SLOW_PERIOD_MS,
             periodCloudMs: CLOUDMQTT_PERIOD_MS,
-            payload: {}
-        });
-    });
-
-    it('registers Control.OverTemp as smart config', () => {
-        const jobs = buildPollJobs(
-            ability(CONTROL_OVERTEMP_NAMESPACE),
-            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
-        );
-        assert.deepEqual(job(jobs, CONTROL_OVERTEMP_NAMESPACE), {
-            namespace: CONTROL_OVERTEMP_NAMESPACE,
-            strategy: 'smart',
-            periodMs: SENSOR_SLOW_PERIOD_MS,
-            periodCloudMs: CLOUDMQTT_PERIOD_MS,
-            payload: { overTemp: [{ channel: CHANNEL }] }
+            payload: { overTemp: {} }
         });
     });
 

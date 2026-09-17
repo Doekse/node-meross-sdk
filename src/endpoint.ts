@@ -10,6 +10,7 @@ import type { EnergyTrait, EnergyValues } from './traits/energy';
 import type { FanTrait, FanValues } from './traits/fan';
 import type { LightTrait, LightValues } from './traits/light';
 import type { MediaTrait, MediaValues } from './traits/media';
+import type { OverTempTrait, OverTempValues } from './traits/overtemp';
 import type { PresenceTrait, PresenceValues } from './traits/presence';
 import type { SensorTrait, SensorValues } from './traits/sensor';
 import type { SprayTrait, SprayValues } from './traits/spray';
@@ -21,7 +22,7 @@ import type { TriggerTrait, TriggerValues } from './traits/trigger';
 
 export type TraitName =
     | 'switch' | 'energy' | 'light' | 'climate' | 'cover'
-    | 'sensor' | 'presence' | 'sprinkler' | 'spray' | 'fan' | 'diffuser' | 'media' | 'alarm' | 'dnd'
+    | 'sensor' | 'presence' | 'sprinkler' | 'spray' | 'fan' | 'diffuser' | 'media' | 'alarm' | 'dnd' | 'overtemp'
     | 'system' | 'timer' | 'trigger';
 
 /**
@@ -43,6 +44,7 @@ export interface TraitValues {
     media: MediaValues;
     alarm: AlarmValues;
     dnd: DndValues;
+    overtemp: OverTempValues;
     system: SystemValues;
     timer: TimerValues;
     trigger: TriggerValues;
@@ -76,6 +78,7 @@ export interface EndpointOptions {
     media?: MediaTrait;
     alarm?: AlarmTrait;
     dnd?: DndTrait;
+    overtemp?: OverTempTrait;
     system?: SystemTrait;
     timer?: TimerTrait;
     trigger?: TriggerTrait;
@@ -118,6 +121,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     readonly media?: MediaTrait;
     readonly alarm?: AlarmTrait;
     readonly dnd?: DndTrait;
+    readonly overtemp?: OverTempTrait;
     readonly system?: SystemTrait;
     readonly timer?: TimerTrait;
     readonly trigger?: TriggerTrait;
@@ -143,6 +147,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         this.media = options.media;
         this.alarm = options.alarm;
         this.dnd = options.dnd;
+        this.overtemp = options.overtemp;
         this.system = options.system;
         this.timer = options.timer;
         this.trigger = options.trigger;

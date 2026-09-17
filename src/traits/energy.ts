@@ -460,11 +460,6 @@ export const EnergyDescriptor: TraitDescriptor & {
 } = {
     name: 'energy',
     poll: {
-        [CONFIG_OVERTEMP_NAMESPACE]: { ...SMART_CONFIG, base: 340 },
-        [CONTROL_OVERTEMP_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: channelList('overTemp', 'energy')
-        },
         /**
          * Shared with climate board SET/PUSH; keep unfiltered
          * `channelList('config')` so MTS300 GETs are not dropped.

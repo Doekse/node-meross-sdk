@@ -7,7 +7,7 @@ import { TRAIT_DESCRIPTORS } from '../../src/traits/registry';
 describe('TRAIT_DESCRIPTORS', () => {
     it('covers every TraitName exactly once', () => {
         const entries = Object.entries(TRAIT_DESCRIPTORS);
-        assert.equal(entries.length, 17);
+        assert.equal(entries.length, 18);
         for (const [key, descriptor] of entries) {
             assert.equal(descriptor.name, key);
         }

@@ -9,6 +9,7 @@ import { EnergyDescriptor } from './energy';
 import { FanDescriptor } from './fan';
 import { LightDescriptor } from './light';
 import { MediaDescriptor } from './media';
+import { OverTempDescriptor } from './overtemp';
 import { PresenceDescriptor } from './presence';
 import { SensorDescriptor } from './sensor';
 import { SprayDescriptor } from './spray';
@@ -38,6 +39,7 @@ export const TRAIT_DESCRIPTORS = {
     media: MediaDescriptor,
     alarm: AlarmDescriptor,
     dnd: DndDescriptor,
+    overtemp: OverTempDescriptor,
     system: SystemDescriptor,
     timer: TimerDescriptor,
     trigger: TriggerDescriptor

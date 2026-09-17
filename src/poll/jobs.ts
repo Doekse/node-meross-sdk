@@ -58,8 +58,7 @@ import { FAN_CONFIG_NAMESPACE, FAN_NAMESPACE, FILTER_MAINTENANCE_NAMESPACE } fro
 import { LIGHT_EFFECT_NAMESPACE, LIGHT_NAMESPACE } from '../protocol/codecs/light';
 import { MP3_NAMESPACE } from '../protocol/codecs/mp3';
 import {
-    CONFIG_OVERTEMP_NAMESPACE,
-    CONTROL_OVERTEMP_NAMESPACE
+    CONFIG_OVERTEMP_NAMESPACE
 } from '../protocol/codecs/overtemp';
 import {
     CONTROL_ALERT_CONFIG_NAMESPACE
@@ -111,6 +110,7 @@ import { EnergyDescriptor } from '../traits/energy';
 import { FanDescriptor } from '../traits/fan';
 import { LightDescriptor } from '../traits/light';
 import { MediaDescriptor } from '../traits/media';
+import { OverTempDescriptor } from '../traits/overtemp';
 import { PresenceDescriptor } from '../traits/presence';
 import { SensorDescriptor } from '../traits/sensor';
 import { SprayDescriptor } from '../traits/spray';
@@ -201,8 +201,7 @@ export const POLL: Record<string, PollSpec> = {
     [SYSTEM_TIME_NAMESPACE]: SystemDescriptor.poll[SYSTEM_TIME_NAMESPACE],
     [SYSTEM_POSITION_NAMESPACE]: SystemDescriptor.poll[SYSTEM_POSITION_NAMESPACE],
     [SYSTEM_DEBUG_NAMESPACE]: SystemDescriptor.poll[SYSTEM_DEBUG_NAMESPACE],
-    [CONFIG_OVERTEMP_NAMESPACE]: EnergyDescriptor.poll[CONFIG_OVERTEMP_NAMESPACE],
-    [CONTROL_OVERTEMP_NAMESPACE]: EnergyDescriptor.poll[CONTROL_OVERTEMP_NAMESPACE],
+    [CONFIG_OVERTEMP_NAMESPACE]: OverTempDescriptor.poll[CONFIG_OVERTEMP_NAMESPACE],
     [CONFIG_SENSOR_ASSOCIATION_NAMESPACE]: SensorDescriptor.poll[CONFIG_SENSOR_ASSOCIATION_NAMESPACE],
     [CONTROL_ALERT_CONFIG_NAMESPACE]: EnergyDescriptor.poll[CONTROL_ALERT_CONFIG_NAMESPACE],
     [CONFIG_STANDBY_KILLER_NAMESPACE]: EnergyDescriptor.poll[CONFIG_STANDBY_KILLER_NAMESPACE],
