@@ -391,6 +391,7 @@ describe('Session.connect', () => {
         const availability: boolean[] = [];
         endpoint.on('availability', (online) => availability.push(online));
 
+        // Broker session state — dropped before recordPush / handleMessage.
         client.deliver(encodeMessage({
             namespace: ONLINE_NAMESPACE,
             method: 'PUSH',
@@ -399,25 +400,23 @@ describe('Session.connect', () => {
             uuid: UUID,
             payload: { online: { status: 2 } }
         }));
-
         assert.deepEqual(availability, []);
         assert.equal(endpoint.isOnline(), true);
 
-        const allPayload = structuredClone(loadFixture('system-all-getack.json')) as {
-            all: { system: { online: { status: number } } };
-        };
-        allPayload.all.system.online.status = 2;
+        // Not PUSH — also aborted on MQTT even when status is 1.
         client.deliver(encodeMessage({
-            namespace: SYSTEM_ALL_NAMESPACE,
-            method: 'PUSH',
+            namespace: ONLINE_NAMESPACE,
+            method: 'GETACK',
             key: KEY,
             from: `/appliance/${UUID}/publish`,
             uuid: UUID,
-            payload: allPayload
+            payload: { online: { status: 1 } }
         }));
-        assert.deepEqual(availability, [false]);
-        assert.equal(endpoint.isOnline(), false);
+        assert.deepEqual(availability, []);
+        assert.equal(endpoint.isOnline(), true);
 
+        // PUSH status 1 reaches handleMessage; already-live board stays live.
+        // Dead-board online from this path is covered in availability.test.ts.
         client.deliver(encodeMessage({
             namespace: ONLINE_NAMESPACE,
             method: 'PUSH',
@@ -426,8 +425,7 @@ describe('Session.connect', () => {
             uuid: UUID,
             payload: { online: { status: 1 } }
         }));
-
-        assert.deepEqual(availability, [false, true]);
+        assert.deepEqual(availability, []);
         assert.equal(endpoint.isOnline(), true);
         assert.equal('online' in (session.inventory.endpoints()[0] ?? {}), false);
         await session.disconnect();
@@ -462,10 +460,12 @@ describe('Session.connect', () => {
         const availability: boolean[] = [];
         endpoint.on('availability', (online) => availability.push(online));
 
+        // PendingRequests settles SETACK/GETACK; Online GETACK status 2 still
+        // reaches handleMessage and must not offline a live board.
         await endpoint.switch!.setOn(false);
 
-        assert.deepEqual(availability, [false]);
-        assert.equal(endpoint.isOnline(), false);
+        assert.deepEqual(availability, []);
+        assert.equal(endpoint.isOnline(), true);
         await session.disconnect();
     });
 

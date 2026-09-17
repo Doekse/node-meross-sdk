@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `NotImplementedError` is not exported from the public barrel.
 - `energy.poll()` and `getHourlyConsumption()` reject with `CommandError` / `TransportError` / `ProtocolError` on request or decode failure instead of returning stale `last`. A partial `poll()` may already have applied earlier GETs to `change` before rejecting. Background `DevicePoller` still swallows the same failures.
 - Endpoint `change` is skip-on-equal for every trait, including energy live samples and light color/brightness. Hosts that treated those events as a poll heartbeat should use `energy.poll()`'s return value or another liveness signal (`protocol`, `availability`).
+- Board `availability` is heard-from-the-device (any inbound that reaches the board; silence only after a failed heartbeat probe), not firmware `online.status`, System.All `online.status`, or Runtime `iotStatus`. MQTT `Appliance.System.Online` that is not PUSH status 1 is dropped before push/liveness; All `status !== 1` only clears MQTT-active on the poller.
 
 ### Fixed
 
