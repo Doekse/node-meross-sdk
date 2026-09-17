@@ -63,6 +63,11 @@ export class OverTempTrait {
         return this.last.enabled;
     }
 
+    /**
+     * Firmware `type`: 1 = alert only, 2 = alert and relay off. Last value from
+     * Config.OverTemp or a Control.OverTemp trip — the trip carries the mode
+     * that actually fired.
+     */
     getType(): number | undefined {
         return this.last.type;
     }
@@ -128,7 +133,11 @@ export class OverTempTrait {
             const entry = decodeControlOverTempPush(message.payload)
                 .find((row) => row.channel === 0);
             if (entry) {
-                this.applyChange({ active: entry.active, timestamp: entry.timestamp });
+                this.applyChange({
+                    active: entry.active,
+                    timestamp: entry.timestamp,
+                    type: entry.type
+                });
             }
         }
     }

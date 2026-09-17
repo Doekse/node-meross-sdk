@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Control.OverTemp SET/PUSH now applies firmware `type` (1 = alert only, 2 = alert and relay off) on the same change as `active`, instead of keeping only `active` / `timestamp`.
 - Hub `listSubDevices` failure during enroll emits session `warning` with the original error instead of looking like an empty cloud list. Digest children still enroll; cloud names/extra ids from that call are omitted.
 - Device polling follows meross_lan's handler walk: HTTP flushes `Control.Multiple` as it fills and applies each GETACK immediately, so a later timeout cannot drop Electricity already received. Cloud MQTT uses `async_request_smartpoll` (one publish per cycle unless `polling_period_cloud` has elapsed). A failed GET or namespace parse no longer aborts the rest of the cycle. Packing also uses meross_lan's HTTP response-size budget (header + per-namespace estimate, ConsumptionX starts at 30 days) so a large ConsumptionX GETACK cannot truncate live power.
 - Control.Multiple SETACK is parallel to SET: when firmware leaves a sub-header namespace empty (seen on Electricity GETACK), unpack fills it from that GET's slot so the trait still applies.

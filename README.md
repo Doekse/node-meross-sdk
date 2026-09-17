@@ -252,7 +252,7 @@ Traits are present only when the device advertised the matching ability. Use opt
 | `media`          | Speakers                           | `setMuted`, `setVolume`, `setSong`                                                    |
 | `alarm`          | Hub sirens, board chimes           | `setOn(on, durationSeconds?)`, `setLinked`, `setBeep`                                 |
 | `dnd`            | Status LED on the device           | `isOn()`, `setOn(boolean)`, `poll()`                                                  |
-| `overtemp`       | Plugs with Config.OverTemp         | `poll()`, `set({ enabled, type? })`; Control.OverTemp PUSH updates `active` / `timestamp` |
+| `overtemp`       | Plugs with Config.OverTemp         | `poll()`, `set({ enabled, type? })`; Control.OverTemp PUSH updates `active` / `timestamp` / `type` |
 | `alert`          | EM06 / MTS300 AlertConfig          | `poll()`, `set({ type?, value? })`; AlertReport PUSH updates `report` (not polled)    |
 | `standbykiller`  | Plugs with Config.StandbyKiller    | `poll()`, `set({ enabled?, power?, time?, alert? })` (power in watts)                 |
 | `system`         | Device firmware, time, diagnostics | `getFirmware` / `getHardware` / `getTime`, `setTimezone`, `getDebug`, `getPosition` / `setPosition`, `clockSkewSeconds` |

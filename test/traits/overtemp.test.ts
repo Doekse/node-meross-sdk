@@ -174,6 +174,23 @@ describe('OverTempTrait', () => {
 
         assert.equal(trait.isActive(), true);
         assert.equal(trait.getTimestamp(), 42);
-        assert.deepEqual(changes, [{ active: true, timestamp: 42 }]);
+        assert.equal(trait.getType(), 1);
+        assert.deepEqual(changes, [{ active: true, timestamp: 42, type: 1 }]);
+    });
+
+    it('applies Control.OverTemp SET type 2 when the relay is shut down', () => {
+        const { trait, changes } = createHarness();
+
+        trait.handlePush(pushMessage(CONTROL_OVERTEMP_NAMESPACE, {
+            overTemp: {
+                value: 1,
+                timestamp: 42,
+                type: 2
+            }
+        }, 'SET'));
+
+        assert.equal(trait.isActive(), true);
+        assert.equal(trait.getType(), 2);
+        assert.deepEqual(changes, [{ active: true, timestamp: 42, type: 2 }]);
     });
 });
