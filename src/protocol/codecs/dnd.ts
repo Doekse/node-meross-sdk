@@ -4,6 +4,7 @@ import type { MerossPayload } from '../message';
 export const DND_MODE_NAMESPACE = 'Appliance.System.DNDMode';
 
 export interface DndState {
+    /** Status LED on. Firmware DNDMode is the inverse (`mode` 1 = LED off). */
     on: boolean;
 }
 
@@ -12,10 +13,13 @@ export function encodeDndGet(): MerossPayload {
     return { DNDMode: {} };
 }
 
-/** SET is `{ DNDMode: { mode: 0|1 } }`. */
+/**
+ * SET `{ DNDMode: { mode: 0|1 } }`. `on` is the status LED so hosts never
+ * invert; firmware DND is `mode` 1 when the LED is off.
+ */
 export function encodeDndSet(options: { on: boolean }): MerossPayload {
     return {
-        DNDMode: { mode: options.on ? 1 : 0 }
+        DNDMode: { mode: options.on ? 0 : 1 }
     };
 }
 
@@ -36,5 +40,5 @@ function decodeDnd(payload: MerossPayload): DndState {
     if (typeof mode !== 'number' || (mode !== 0 && mode !== 1)) {
         throw new ProtocolError('System.DNDMode mode must be 0 or 1');
     }
-    return { on: mode === 1 };
+    return { on: mode === 0 };
 }

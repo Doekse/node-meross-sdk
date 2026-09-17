@@ -20,6 +20,7 @@ import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 
 export interface DndValues {
+    /** Status LED on. Undefined until poller GETACK or PUSH. */
     on?: boolean;
 }
 
@@ -33,7 +34,7 @@ export interface DndTraitBind {
 }
 
 /**
- * Device-wide do-not-disturb (status LED off when on). Not per channel.
+ * Device-wide status LED. Firmware DNDMode is inverted in the codec. Not per channel.
  */
 export class DndTrait {
     private readonly bind: DndTraitBind;
@@ -43,7 +44,7 @@ export class DndTrait {
         this.bind = bind;
     }
 
-    /** True when DND is active (LED off). Undefined until poller GETACK or PUSH fills it. */
+    /** True when the status LED is on. Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.last.on;
     }

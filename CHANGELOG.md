@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking (alpha)
 
+- `dnd` `on` / `isOn()` / `setOn()` is the status LED (`DNDMode.mode === 0`), not DND active. Hosts must not invert.
 - `energy.setOverTemp` / `setAlertConfig` / `setStandbyKiller` and `overTemp*` / `alertConfig*` / `standbyKiller*` values are removed. `climate.setAlertConfig` and climate alert fields are removed. Hosts use `endpoint.overtemp` / `endpoint.alert` / `endpoint.standbykiller` instead. Silent no-op setters are gone: missing namespaces throw `MerossError` `NAMESPACE_NOT_ADVERTISED`.
 - `EndpointChange.values` is no longer `Record<string, unknown>` — narrow on `change.trait` before reading fields.
 - `NotImplementedError` is not exported from the public barrel.

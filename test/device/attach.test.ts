@@ -223,8 +223,8 @@ describe('attachEndpoint dnd', () => {
 
         endpoint.handlePush(pushMessage(DND_MODE_NAMESPACE, { DNDMode: { mode: 1 } }));
 
-        assert.deepEqual(changes, [{ trait: 'dnd', values: { on: true } }]);
-        assert.deepEqual(narrowedOn, [true]);
+        assert.deepEqual(changes, [{ trait: 'dnd', values: { on: false } }]);
+        assert.deepEqual(narrowedOn, [false]);
     });
 });
 

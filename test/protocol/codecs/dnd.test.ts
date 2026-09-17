@@ -14,21 +14,21 @@ describe('System.DNDMode codec', () => {
         assert.deepEqual(encodeDndGet(), { DNDMode: {} });
     });
 
-    it('encodes SET with mode 0/1', () => {
+    it('encodes SET with LED on as mode 0', () => {
         assert.deepEqual(encodeDndSet({ on: true }), {
-            DNDMode: { mode: 1 }
-        });
-        assert.deepEqual(encodeDndSet({ on: false }), {
             DNDMode: { mode: 0 }
         });
+        assert.deepEqual(encodeDndSet({ on: false }), {
+            DNDMode: { mode: 1 }
+        });
     });
 
-    it('decodes GETACK mode 1 as on', () => {
-        assert.deepEqual(decodeDndGetAck({ DNDMode: { mode: 1 } }), { on: true });
+    it('decodes GETACK mode 1 as LED off', () => {
+        assert.deepEqual(decodeDndGetAck({ DNDMode: { mode: 1 } }), { on: false });
     });
 
-    it('decodes PUSH mode 0 as off', () => {
-        assert.deepEqual(decodeDndPush({ DNDMode: { mode: 0 } }), { on: false });
+    it('decodes PUSH mode 0 as LED on', () => {
+        assert.deepEqual(decodeDndPush({ DNDMode: { mode: 0 } }), { on: true });
     });
 
     it('rejects a missing DNDMode object', () => {

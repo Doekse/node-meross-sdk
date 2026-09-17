@@ -71,9 +71,9 @@ describe('DndTrait', () => {
             method: 'GET',
             payload: encodeDndGet()
         }]);
-        assert.equal(trait.isOn(), true);
-        assert.deepEqual(snapshot, { on: true });
-        assert.deepEqual(changes, [{ on: true }]);
+        assert.equal(trait.isOn(), false);
+        assert.deepEqual(snapshot, { on: false });
+        assert.deepEqual(changes, [{ on: false }]);
     });
 
     it('rejects poll when the GET throws TransportError', async () => {
@@ -95,19 +95,19 @@ describe('DndTrait', () => {
         assert.equal(trait.isOn(), undefined);
     });
 
-    it('setOn sends a SET with mode 0/1', async () => {
+    it('setOn sends a SET with LED off as mode 1', async () => {
         const { trait, requests } = createHarness();
         await trait.setOn(false);
         assert.equal(requests[0]?.header.method, 'SET');
-        assert.deepEqual(requests[0]?.payload, { DNDMode: { mode: 0 } });
+        assert.deepEqual(requests[0]?.payload, { DNDMode: { mode: 1 } });
         assert.equal(trait.isOn(), false);
     });
 
     it('handlePush updates state and emits change', () => {
         const { trait, changes } = createHarness();
         trait.handlePush(pushMessage({ DNDMode: { mode: 1 } }));
-        assert.equal(trait.isOn(), true);
-        assert.deepEqual(changes, [{ on: true }]);
+        assert.equal(trait.isOn(), false);
+        assert.deepEqual(changes, [{ on: false }]);
     });
 
     it('does not emit change when PUSH repeats the same DND mode', () => {
@@ -116,6 +116,6 @@ describe('DndTrait', () => {
         trait.handlePush(pushMessage({ DNDMode: { mode: 1 } }));
         trait.handlePush(pushMessage({ DNDMode: { mode: 1 } }));
 
-        assert.deepEqual(changes, [{ on: true }]);
+        assert.deepEqual(changes, [{ on: false }]);
     });
 });
