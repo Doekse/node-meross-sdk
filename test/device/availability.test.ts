@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, type TestContext } from 'node:test';
 
-import { Endpoint } from '../../src/endpoint';
 import { DeviceAvailability } from '../../src/device/availability';
 import { Heartbeat } from '../../src/device/heartbeat';
+import { Endpoint } from '../../src/endpoint';
 import { decodeMessage, encodeMessage, type MerossMessage } from '../../src/protocol';
 
 const fixturesDir = join(process.cwd(), 'test/fixtures');
@@ -17,8 +17,19 @@ function loadFixture(name: string): MerossMessage {
     return decodeMessage(JSON.parse(readFileSync(join(fixturesDir, name), 'utf8')) as unknown);
 }
 
+function stubRequest(uuid = UUID): () => Promise<MerossMessage> {
+    return async () => encodeMessage({
+        namespace: 'Appliance.System.All',
+        method: 'GETACK',
+        key: KEY,
+        from: `/appliance/${uuid}/publish`,
+        uuid,
+        payload: {}
+    });
+}
+
 describe('Heartbeat silence detection', () => {
-    it('polls System.Online when silence exceeds the interval', async (t: TestContext) => {
+    it('polls System.All when silence exceeds the interval', async (t: TestContext) => {
         t.mock.timers.enable({ apis: ['setTimeout'] });
         let clock = 0;
         const pollOnline = t.mock.fn(async () => {});
@@ -237,14 +248,7 @@ describe('DeviceAvailability', () => {
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
-            request: async () => encodeMessage({
-                namespace: 'Appliance.System.Online',
-                method: 'GETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                uuid: UUID,
-                payload: { online: { status: 1 } }
-            })
+            request: stubRequest()
         });
 
         monitor.start();
@@ -252,7 +256,7 @@ describe('DeviceAvailability', () => {
         monitor.stop();
     });
 
-    it('applies System.Online PUSH to all endpoints on the device', () => {
+    it('does not offline from System.Online status 2', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
         const seen: boolean[] = [];
         endpoint.on('availability', (online) => seen.push(online));
@@ -261,25 +265,19 @@ describe('DeviceAvailability', () => {
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
-            request: async () => encodeMessage({
-                namespace: 'Appliance.System.Online',
-                method: 'GETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                uuid: UUID,
-                payload: {}
-            })
+            request: stubRequest()
         });
         monitor.start();
         seen.length = 0;
 
         monitor.handleMessage(loadFixture('online-push.json'));
 
-        assert.deepEqual(seen, [false]);
+        assert.deepEqual(seen, []);
+        assert.equal(endpoint.isOnline(), true);
         monitor.stop();
     });
 
-    it('applies GETACK that omits uuid and echoes the app from', () => {
+    it('does not offline from Online GETACK status 2', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
         const seen: boolean[] = [];
         endpoint.on('availability', (online) => seen.push(online));
@@ -288,14 +286,7 @@ describe('DeviceAvailability', () => {
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
-            request: async () => encodeMessage({
-                namespace: 'Appliance.System.Online',
-                method: 'GETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                uuid: UUID,
-                payload: {}
-            })
+            request: stubRequest()
         });
         monitor.start();
         seen.length = 0;
@@ -310,28 +301,53 @@ describe('DeviceAvailability', () => {
 
         monitor.handleMessage(ack);
 
-        assert.deepEqual(seen, [false]);
+        assert.deepEqual(seen, []);
+        assert.equal(endpoint.isOnline(), true);
         monitor.stop();
     });
 
-    it('applies System.All GETACK online.status to all endpoints', () => {
+    it('onlines a dead board on any inbound message', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: false });
         const seen: boolean[] = [];
-        const ips: Array<string | undefined> = [];
         endpoint.on('availability', (online) => seen.push(online));
 
         const monitor = new DeviceAvailability({
             uuid: UUID,
             initialOnline: false,
             endpoints: [endpoint],
-            request: async () => encodeMessage({
-                namespace: 'Appliance.System.All',
-                method: 'GETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                uuid: UUID,
-                payload: {}
-            }),
+            request: stubRequest()
+        });
+        monitor.start();
+        seen.length = 0;
+
+        monitor.handleMessage(encodeMessage({
+            namespace: 'Appliance.Control.ToggleX',
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { togglex: [{ channel: 0, onoff: 1 }] }
+        }));
+
+        assert.deepEqual(seen, [true]);
+        monitor.stop();
+    });
+
+    it('onlines a dead board from System.All and reports innerIp without clearMqtt when status is 1', () => {
+        const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: false });
+        const seen: boolean[] = [];
+        const ips: Array<string | undefined> = [];
+        let clearMqttCalls = 0;
+        endpoint.on('availability', (online) => seen.push(online));
+
+        const monitor = new DeviceAvailability({
+            uuid: UUID,
+            initialOnline: false,
+            endpoints: [endpoint],
+            request: stubRequest(),
+            clearMqtt: () => {
+                clearMqttCalls += 1;
+            },
             onInnerIp: (innerIp) => ips.push(innerIp)
         });
         monitor.start();
@@ -341,10 +357,74 @@ describe('DeviceAvailability', () => {
 
         assert.deepEqual(seen, [true]);
         assert.deepEqual(ips, ['192.168.201.190']);
+        assert.equal(clearMqttCalls, 0);
         monitor.stop();
     });
 
-    it('marks offline when Runtime reports abnormal iotStatus', () => {
+    it('calls clearMqtt on All status !== 1 without offlining the board', () => {
+        const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
+        const seen: boolean[] = [];
+        let clearMqttCalls = 0;
+        endpoint.on('availability', (online) => seen.push(online));
+
+        const monitor = new DeviceAvailability({
+            uuid: UUID,
+            initialOnline: true,
+            endpoints: [endpoint],
+            request: stubRequest(),
+            clearMqtt: () => {
+                clearMqttCalls += 1;
+            }
+        });
+        monitor.start();
+        seen.length = 0;
+
+        monitor.handleMessage(encodeMessage({
+            namespace: 'Appliance.System.All',
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                all: {
+                    system: {
+                        hardware: { type: 'mss110', uuid: UUID },
+                        firmware: {},
+                        online: { status: 2 }
+                    },
+                    digest: {}
+                }
+            }
+        }));
+
+        assert.deepEqual(seen, []);
+        assert.equal(clearMqttCalls, 1);
+        assert.equal(endpoint.isOnline(), true);
+        monitor.stop();
+    });
+
+    it('does not call clearMqtt on All status 1', () => {
+        const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
+        let clearMqttCalls = 0;
+
+        const monitor = new DeviceAvailability({
+            uuid: UUID,
+            initialOnline: true,
+            endpoints: [endpoint],
+            request: stubRequest(),
+            clearMqtt: () => {
+                clearMqttCalls += 1;
+            }
+        });
+        monitor.start();
+
+        monitor.handleMessage(loadFixture('system-all-getack.json'));
+
+        assert.equal(clearMqttCalls, 0);
+        monitor.stop();
+    });
+
+    it('does not offline from Runtime abnormal iotStatus', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
         const seen: boolean[] = [];
         endpoint.on('availability', (online) => seen.push(online));
@@ -353,67 +433,15 @@ describe('DeviceAvailability', () => {
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
-            request: async () => encodeMessage({
-                namespace: 'Appliance.System.Online',
-                method: 'GETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                uuid: UUID,
-                payload: {}
-            })
+            request: stubRequest()
         });
         monitor.start();
         seen.length = 0;
 
         monitor.handleMessage(loadFixture('runtime-getack-abnormal.json'));
 
-        assert.deepEqual(seen, [false]);
-        monitor.stop();
-    });
-
-    it('marks offline after heartbeat silence', async (t: TestContext) => {
-        t.mock.timers.enable({ apis: ['setTimeout'] });
-        let clock = 0;
-        const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
-        const seen: boolean[] = [];
-        endpoint.on('availability', (online) => seen.push(online));
-
-        const monitor = new DeviceAvailability({
-            uuid: UUID,
-            initialOnline: true,
-            endpoints: [endpoint],
-            heartbeatIntervalMs: INTERVAL_MS,
-            now: () => clock,
-            request: async () => encodeMessage({
-                namespace: 'Appliance.System.All',
-                method: 'GETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                uuid: UUID,
-                payload: {
-                    all: {
-                        system: {
-                            hardware: { type: 'mss110', uuid: UUID },
-                            firmware: {},
-                            online: { status: 2 }
-                        },
-                        digest: {}
-                    }
-                }
-            })
-        });
-
-        monitor.start();
-        monitor.handleMessage(loadFixture('online-getack.json'));
-        seen.length = 0;
-        clock = INTERVAL_MS + 1;
-
-        t.mock.timers.tick(INTERVAL_MS + 1);
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-
-        assert.deepEqual(seen, [false]);
+        assert.deepEqual(seen, []);
+        assert.equal(endpoint.isOnline(), true);
         monitor.stop();
     });
 
@@ -449,7 +477,7 @@ describe('DeviceAvailability', () => {
         monitor.stop();
     });
 
-    it('recovers online when the silence probe System.All reports online', async (t: TestContext) => {
+    it('recovers online on any inbound after silence offline', async (t: TestContext) => {
         t.mock.timers.enable({ apis: ['setTimeout'] });
         let clock = 0;
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
@@ -462,7 +490,9 @@ describe('DeviceAvailability', () => {
             endpoints: [endpoint],
             heartbeatIntervalMs: INTERVAL_MS,
             now: () => clock,
-            request: async () => loadFixture('system-all-getack.json')
+            request: async () => {
+                throw new Error('unreachable');
+            }
         });
 
         monitor.start();
@@ -474,6 +504,17 @@ describe('DeviceAvailability', () => {
         await Promise.resolve();
         await Promise.resolve();
         await Promise.resolve();
+
+        assert.deepEqual(seen, [false]);
+
+        monitor.handleMessage(encodeMessage({
+            namespace: 'Appliance.Control.ToggleX',
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { togglex: [{ channel: 0, onoff: 1 }] }
+        }));
 
         assert.deepEqual(seen, [false, true]);
         assert.equal(endpoint.isOnline(), true);
@@ -493,14 +534,7 @@ describe('DeviceAvailability', () => {
             endpoints: [endpoint],
             heartbeatIntervalMs: INTERVAL_MS,
             now: () => clock,
-            request: async () => encodeMessage({
-                namespace: 'Appliance.System.Online',
-                method: 'GETACK',
-                key: KEY,
-                from: `/appliance/${UUID}/publish`,
-                uuid: UUID,
-                payload: { online: { status: 1 } }
-            })
+            request: stubRequest()
         });
 
         monitor.start();
@@ -524,19 +558,22 @@ describe('DeviceAvailability hub children', () => {
     const SENSOR_ID = '120027D21C19';
     const VALVE_ID = '01008C11';
 
-    function hubMonitor(hub: Endpoint, ...children: Endpoint[]): DeviceAvailability {
+    function hubMonitor(
+        hub: Endpoint,
+        children: Endpoint[],
+        options: {
+            request?: () => Promise<MerossMessage>;
+            heartbeatIntervalMs?: number;
+            now?: () => number;
+        } = {}
+    ): DeviceAvailability {
         const monitor = new DeviceAvailability({
             uuid: HUB_UUID,
             initialOnline: hub.isOnline(),
             endpoints: [hub, ...children],
-            request: async () => encodeMessage({
-                namespace: 'Appliance.System.All',
-                method: 'GETACK',
-                key: KEY,
-                from: `/appliance/${HUB_UUID}/publish`,
-                uuid: HUB_UUID,
-                payload: {}
-            })
+            request: options.request ?? stubRequest(HUB_UUID),
+            heartbeatIntervalMs: options.heartbeatIntervalMs,
+            now: options.now
         });
         monitor.start();
         return monitor;
@@ -565,7 +602,7 @@ describe('DeviceAvailability hub children', () => {
         hub.on('availability', (online) => hubSeen.push(online));
         sensor.on('availability', (online) => sensorSeen.push(online));
 
-        hubMonitor(hub, sensor).stop();
+        hubMonitor(hub, [sensor]).stop();
 
         assert.deepEqual(hubSeen, [true]);
         assert.deepEqual(sensorSeen, [false]);
@@ -588,7 +625,7 @@ describe('DeviceAvailability hub children', () => {
         sensor.on('availability', (online) => sensorSeen.push(online));
         valve.on('availability', (online) => valveSeen.push(online));
 
-        const monitor = hubMonitor(hub, sensor, valve);
+        const monitor = hubMonitor(hub, [sensor, valve]);
         sensorSeen.length = 0;
         valveSeen.length = 0;
         monitor.handleMessage(fromHub('Appliance.Hub.Online', {
@@ -610,7 +647,7 @@ describe('DeviceAvailability hub children', () => {
         const sensorSeen: boolean[] = [];
         sensor.on('availability', (online) => sensorSeen.push(online));
 
-        const monitor = hubMonitor(hub, sensor);
+        const monitor = hubMonitor(hub, [sensor]);
         sensorSeen.length = 0;
         monitor.handleMessage(fromHub('Appliance.System.All', {
             all: {
@@ -629,7 +666,9 @@ describe('DeviceAvailability hub children', () => {
         monitor.stop();
     });
 
-    it('forces children offline when the hub board goes offline', () => {
+    it('forces children offline when the hub board goes offline from a failed heartbeat', async (t: TestContext) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let clock = 0;
         const hub = new Endpoint({ id: HUB_UUID, traits: ['dnd'], initialOnline: true });
         const sensor = new Endpoint({
             id: `${HUB_UUID}#${SENSOR_ID}`,
@@ -641,10 +680,24 @@ describe('DeviceAvailability hub children', () => {
         hub.on('availability', (online) => hubSeen.push(online));
         sensor.on('availability', (online) => sensorSeen.push(online));
 
-        const monitor = hubMonitor(hub, sensor);
+        const monitor = hubMonitor(hub, [sensor], {
+            heartbeatIntervalMs: INTERVAL_MS,
+            now: () => clock,
+            request: async () => {
+                throw new Error('unreachable');
+            }
+        });
+        monitor.handleMessage(fromHub('Appliance.Control.ToggleX', {
+            togglex: [{ channel: 0, onoff: 1 }]
+        }));
         hubSeen.length = 0;
         sensorSeen.length = 0;
-        monitor.handleMessage(fromHub('Appliance.System.Online', { online: { status: 2 } }));
+        clock = INTERVAL_MS + 1;
+
+        t.mock.timers.tick(INTERVAL_MS + 1);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
 
         assert.deepEqual(hubSeen, [false]);
         assert.deepEqual(sensorSeen, [false]);
@@ -661,9 +714,11 @@ describe('DeviceAvailability hub children', () => {
         const sensorSeen: boolean[] = [];
         sensor.on('availability', (online) => sensorSeen.push(online));
 
-        const monitor = hubMonitor(hub, sensor);
+        const monitor = hubMonitor(hub, [sensor]);
         sensorSeen.length = 0;
-        monitor.handleMessage(fromHub('Appliance.System.Online', { online: { status: 1 } }));
+        monitor.handleMessage(fromHub('Appliance.Control.ToggleX', {
+            togglex: [{ channel: 0, onoff: 1 }]
+        }));
 
         assert.equal(hub.isOnline(), true);
         assert.deepEqual(sensorSeen, []);
@@ -680,9 +735,11 @@ describe('DeviceAvailability hub children', () => {
         const sensorSeen: boolean[] = [];
         sensor.on('availability', (online) => sensorSeen.push(online));
 
-        const monitor = hubMonitor(hub, sensor);
+        const monitor = hubMonitor(hub, [sensor]);
         sensorSeen.length = 0;
-        monitor.handleMessage(fromHub('Appliance.System.Online', { online: { status: 1 } }));
+        monitor.handleMessage(fromHub('Appliance.Control.ToggleX', {
+            togglex: [{ channel: 0, onoff: 1 }]
+        }));
         monitor.handleMessage(fromHub('Appliance.Hub.Online', {
             online: [{ id: SENSOR_ID, status: 1 }]
         }));
