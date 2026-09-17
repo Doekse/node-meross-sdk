@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-alpha] - 2026-09-17
+
 ### Added
 
 - Dedicated `overtemp`, `alert`, and `standbykiller` traits (Ability-gated, not electricity-gated). Hosts use `endpoint.overtemp` / `endpoint.alert` / `endpoint.standbykiller` (`poll()`, loud `set` with `NAMESPACE_NOT_ADVERTISED` when absent). `dnd.poll()` GETs `System.DNDMode`.
@@ -36,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Cover `isOpen()` seeds from System.All `digest.garageDoor` at enroll, so hosts do not wait for PUSH or the next poll. Channels with `doorEnable` 0 are skipped so unused MSG200 doors are not enrolled as cover or switch.
+- Heartbeat silence checks reschedule at the remaining window when a response lands between ticks, so a live device is not probed up to a full interval late. A check in flight no longer races a later `start()` timer.
+- `npm test` runs tsx with `process.execPath` so the suite starts on Windows (`npx.cmd` ENOENT/EINVAL).
 - Control.OverTemp SET/PUSH now applies firmware `type` (1 = alert only, 2 = alert and relay off) on the same change as `active`, instead of keeping only `active` / `timestamp`.
 - Hub `listSubDevices` failure during enroll emits session `warning` with the original error instead of looking like an empty cloud list. Digest children still enroll; cloud names/extra ids from that call are omitted.
 - Device polling follows meross_lan's handler walk: HTTP flushes `Control.Multiple` as it fills and applies each GETACK immediately, so a later timeout cannot drop Electricity already received. Cloud MQTT uses `async_request_smartpoll` (one publish per cycle unless `polling_period_cloud` has elapsed). A failed GET or namespace parse no longer aborts the rest of the cycle. Packing also uses meross_lan's HTTP response-size budget (header + per-namespace estimate, ConsumptionX starts at 30 days) so a large ConsumptionX GETACK cannot truncate live power.
@@ -65,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Traits: switch, light, energy, cover, climate, sensor, presence, fan, spray, diffuser, sprinkler, media, alarm, dnd, system, timer, trigger.
 - TypeScript types shipped next to CommonJS `dist/` so `require()` hosts (including Homey) load without a bundler.
 
-[unreleased]: https://github.com/Doekse/node-meross-sdk/compare/v0.1.1-alpha...HEAD
+[unreleased]: https://github.com/Doekse/node-meross-sdk/compare/v0.2.0-alpha...HEAD
+[0.2.0-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.1.1-alpha...v0.2.0-alpha
 [0.1.1-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.1.0-alpha...v0.1.1-alpha
 [0.1.0-alpha]: https://github.com/Doekse/node-meross-sdk/releases/tag/v0.1.0-alpha
