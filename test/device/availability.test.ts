@@ -28,29 +28,83 @@ function stubRequest(uuid = UUID): () => Promise<MerossMessage> {
     });
 }
 
+async function unreachable(): Promise<never> {
+    throw new Error('unreachable');
+}
+
+async function resolveProbe(): Promise<void> {}
+
+function noop(): void {}
+
+function alwaysOnline(): boolean {
+    return true;
+}
+
+/** Drain queued `perform` microtasks after a fake-timer tick. */
+async function settle(hops: number): Promise<void> {
+    for (let i = 0; i < hops; i++) {
+        await Promise.resolve();
+    }
+}
+
+function systemAllGetAck(status: number): MerossMessage {
+    return encodeMessage({
+        namespace: 'Appliance.System.All',
+        method: 'GETACK',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload: {
+            all: {
+                system: {
+                    hardware: { type: 'mss110', uuid: UUID },
+                    firmware: {},
+                    online: { status }
+                },
+                digest: {}
+            }
+        }
+    });
+}
+
+async function probeAllStatus2(): Promise<MerossMessage> {
+    return systemAllGetAck(2);
+}
+
+async function runSilenceProbe(
+    t: TestContext,
+    pollOnlineImpl: () => Promise<void>
+): Promise<{ offline: boolean; pollCount: number }> {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    let clock = 0;
+    let offline = false;
+    const pollOnline = t.mock.fn(pollOnlineImpl);
+    const heartbeat = new Heartbeat({
+        intervalMs: INTERVAL_MS,
+        isOnline(): boolean {
+            return !offline;
+        },
+        pollOnline,
+        onSilenceOffline(): void {
+            offline = true;
+        },
+        now(): number {
+            return clock;
+        }
+    });
+    heartbeat.start();
+    heartbeat.recordResponse();
+    clock = INTERVAL_MS + 1;
+    t.mock.timers.tick(INTERVAL_MS + 1);
+    await settle(2);
+    heartbeat.stop();
+    return { offline, pollCount: pollOnline.mock.callCount() };
+}
+
 describe('Heartbeat silence detection', () => {
     it('polls System.All when silence exceeds the interval', async (t: TestContext) => {
-        t.mock.timers.enable({ apis: ['setTimeout'] });
-        let clock = 0;
-        const pollOnline = t.mock.fn(async () => {});
-
-        const heartbeat = new Heartbeat({
-            intervalMs: INTERVAL_MS,
-            isOnline: () => true,
-            pollOnline,
-            onSilenceOffline: () => {},
-            now: () => clock
-        });
-
-        heartbeat.start();
-        heartbeat.recordResponse();
-        clock = INTERVAL_MS + 1;
-        t.mock.timers.tick(INTERVAL_MS + 1);
-        await Promise.resolve();
-        await Promise.resolve();
-
-        assert.equal(pollOnline.mock.callCount(), 1);
-        heartbeat.stop();
+        const { pollCount } = await runSilenceProbe(t, resolveProbe);
+        assert.equal(pollCount, 1);
     });
 
     it('does not mark offline before any response was recorded', async (t: TestContext) => {
@@ -59,91 +113,73 @@ describe('Heartbeat silence detection', () => {
 
         const heartbeat = new Heartbeat({
             intervalMs: INTERVAL_MS,
-            isOnline: () => true,
-            pollOnline: async () => {},
-            onSilenceOffline: () => {
+            isOnline: alwaysOnline,
+            pollOnline: unreachable,
+            onSilenceOffline(): void {
                 offline = true;
             }
         });
 
         heartbeat.start();
         t.mock.timers.tick(INTERVAL_MS * 2);
-        await Promise.resolve();
-        await Promise.resolve();
+        await settle(2);
 
         assert.equal(offline, false);
         heartbeat.stop();
     });
 
     it('marks offline after silence when the liveness probe fails', async (t: TestContext) => {
-        t.mock.timers.enable({ apis: ['setTimeout'] });
-        let clock = 0;
-        let offline = false;
-        const pollOnline = t.mock.fn(async () => {
-            throw new Error('unreachable');
-        });
-
-        const heartbeat = new Heartbeat({
-            intervalMs: INTERVAL_MS,
-            isOnline: () => !offline,
-            pollOnline,
-            onSilenceOffline: () => {
-                offline = true;
-            },
-            now: () => clock
-        });
-
-        heartbeat.start();
-        heartbeat.recordResponse();
-        clock = INTERVAL_MS + 1;
-        t.mock.timers.tick(INTERVAL_MS + 1);
-        await Promise.resolve();
-        await Promise.resolve();
-
+        const { offline, pollCount } = await runSilenceProbe(t, unreachable);
         assert.equal(offline, true);
-        assert.equal(pollOnline.mock.callCount(), 1);
-        heartbeat.stop();
+        assert.equal(pollCount, 1);
     });
 
-    it('marks offline after silence even when the liveness probe succeeds', async (t: TestContext) => {
-        t.mock.timers.enable({ apis: ['setTimeout'] });
+    it('does not mark offline after silence when the liveness probe succeeds', async (t: TestContext) => {
+        const { offline, pollCount } = await runSilenceProbe(t, resolveProbe);
+        assert.equal(offline, false);
+        assert.equal(pollCount, 1);
+    });
+
+    it('does not mark offline from recordResponse after the silence window', () => {
         let clock = 0;
         let offline = false;
-        const pollOnline = t.mock.fn(async () => {});
 
         const heartbeat = new Heartbeat({
             intervalMs: INTERVAL_MS,
-            isOnline: () => !offline,
-            pollOnline,
-            onSilenceOffline: () => {
+            isOnline(): boolean {
+                return !offline;
+            },
+            pollOnline: resolveProbe,
+            onSilenceOffline(): void {
                 offline = true;
             },
-            now: () => clock
+            now(): number {
+                return clock;
+            }
         });
 
         heartbeat.start();
         heartbeat.recordResponse();
         clock = INTERVAL_MS + 1;
-        t.mock.timers.tick(INTERVAL_MS + 1);
-        await Promise.resolve();
-        await Promise.resolve();
+        heartbeat.recordResponse();
 
-        assert.equal(offline, true);
-        assert.equal(pollOnline.mock.callCount(), 1);
+        assert.equal(offline, false);
         heartbeat.stop();
     });
 
     it('reschedules the next check at the remaining silence window, not a full interval', async (t: TestContext) => {
         t.mock.timers.enable({ apis: ['setTimeout'] });
         let clock = 0;
-        const pollOnline = t.mock.fn(async () => {});
+        const pollOnline = t.mock.fn(resolveProbe);
 
         const heartbeat = new Heartbeat({
             intervalMs: INTERVAL_MS,
-            isOnline: () => true,
+            isOnline: alwaysOnline,
             pollOnline,
-            onSilenceOffline: () => {},
-            now: () => clock
+            onSilenceOffline: noop,
+            now(): number {
+                return clock;
+            }
         });
 
         heartbeat.start();
@@ -154,15 +190,13 @@ describe('Heartbeat silence detection', () => {
 
         clock = 10_000;
         t.mock.timers.tick(10_000);
-        await Promise.resolve();
-        await Promise.resolve();
+        await settle(2);
 
         assert.equal(pollOnline.mock.callCount(), 0);
 
         clock = 16_000;
         t.mock.timers.tick(6_000);
-        await Promise.resolve();
-        await Promise.resolve();
+        await settle(2);
 
         assert.equal(pollOnline.mock.callCount(), 1);
         heartbeat.stop();
@@ -178,10 +212,12 @@ describe('Heartbeat silence detection', () => {
 
         const heartbeat = new Heartbeat({
             intervalMs: INTERVAL_MS,
-            isOnline: () => true,
+            isOnline: alwaysOnline,
             pollOnline,
-            onSilenceOffline: () => {},
-            now: () => clock
+            onSilenceOffline: noop,
+            now(): number {
+                return clock;
+            }
         });
 
         heartbeat.start();
@@ -189,8 +225,7 @@ describe('Heartbeat silence detection', () => {
 
         clock = INTERVAL_MS;
         t.mock.timers.tick(INTERVAL_MS);
-        await Promise.resolve();
-        await Promise.resolve();
+        await settle(2);
 
         assert.equal(pollOnline.mock.callCount(), 1);
         const firstResolve = resolvePoll;
@@ -199,15 +234,13 @@ describe('Heartbeat silence detection', () => {
         heartbeat.start();
 
         firstResolve();
-        await Promise.resolve();
-        await Promise.resolve();
+        await settle(2);
 
         assert.equal(pollOnline.mock.callCount(), 1);
 
         clock = INTERVAL_MS * 2;
         t.mock.timers.tick(INTERVAL_MS);
-        await Promise.resolve();
-        await Promise.resolve();
+        await settle(2);
 
         assert.equal(pollOnline.mock.callCount(), 2);
         heartbeat.stop();
@@ -217,9 +250,9 @@ describe('Heartbeat silence detection', () => {
         assert.throws(
             () => new Heartbeat({
                 intervalMs: 0,
-                isOnline: () => true,
-                pollOnline: async () => {},
-                onSilenceOffline: () => {}
+                isOnline: alwaysOnline,
+                pollOnline: resolveProbe,
+                onSilenceOffline: noop
             }),
             RangeError
         );
@@ -229,9 +262,9 @@ describe('Heartbeat silence detection', () => {
         assert.throws(
             () => new Heartbeat({
                 intervalMs: -1,
-                isOnline: () => true,
-                pollOnline: async () => {},
-                onSilenceOffline: () => {}
+                isOnline: alwaysOnline,
+                pollOnline: resolveProbe,
+                onSilenceOffline: noop
             }),
             RangeError
         );
@@ -345,10 +378,12 @@ describe('DeviceAvailability', () => {
             initialOnline: false,
             endpoints: [endpoint],
             request: stubRequest(),
-            clearMqtt: () => {
+            clearMqtt(): void {
                 clearMqttCalls += 1;
             },
-            onInnerIp: (innerIp) => ips.push(innerIp)
+            onInnerIp(innerIp: string | undefined): void {
+                ips.push(innerIp);
+            }
         });
         monitor.start();
         seen.length = 0;
@@ -372,30 +407,14 @@ describe('DeviceAvailability', () => {
             initialOnline: true,
             endpoints: [endpoint],
             request: stubRequest(),
-            clearMqtt: () => {
+            clearMqtt(): void {
                 clearMqttCalls += 1;
             }
         });
         monitor.start();
         seen.length = 0;
 
-        monitor.handleMessage(encodeMessage({
-            namespace: 'Appliance.System.All',
-            method: 'GETACK',
-            key: KEY,
-            from: `/appliance/${UUID}/publish`,
-            uuid: UUID,
-            payload: {
-                all: {
-                    system: {
-                        hardware: { type: 'mss110', uuid: UUID },
-                        firmware: {},
-                        online: { status: 2 }
-                    },
-                    digest: {}
-                }
-            }
-        }));
+        monitor.handleMessage(systemAllGetAck(2));
 
         assert.deepEqual(seen, []);
         assert.equal(clearMqttCalls, 1);
@@ -412,7 +431,7 @@ describe('DeviceAvailability', () => {
             initialOnline: true,
             endpoints: [endpoint],
             request: stubRequest(),
-            clearMqtt: () => {
+            clearMqtt(): void {
                 clearMqttCalls += 1;
             }
         });
@@ -445,6 +464,42 @@ describe('DeviceAvailability', () => {
         monitor.stop();
     });
 
+    it('does not offline after silence when the liveness probe All succeeds', async (t: TestContext) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let clock = 0;
+        let clearMqttCalls = 0;
+        const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
+        const seen: boolean[] = [];
+        endpoint.on('availability', (online) => seen.push(online));
+
+        const monitor = new DeviceAvailability({
+            uuid: UUID,
+            initialOnline: true,
+            endpoints: [endpoint],
+            heartbeatIntervalMs: INTERVAL_MS,
+            now(): number {
+                return clock;
+            },
+            clearMqtt(): void {
+                clearMqttCalls += 1;
+            },
+            request: probeAllStatus2
+        });
+
+        monitor.start();
+        monitor.handleMessage(loadFixture('online-getack.json'));
+        seen.length = 0;
+        clock = INTERVAL_MS + 1;
+
+        t.mock.timers.tick(INTERVAL_MS + 1);
+        await settle(3);
+
+        assert.deepEqual(seen, []);
+        assert.equal(endpoint.isOnline(), true);
+        assert.equal(clearMqttCalls, 1);
+        monitor.stop();
+    });
+
     it('marks offline after heartbeat silence when the liveness probe fails', async (t: TestContext) => {
         t.mock.timers.enable({ apis: ['setTimeout'] });
         let clock = 0;
@@ -457,10 +512,10 @@ describe('DeviceAvailability', () => {
             initialOnline: true,
             endpoints: [endpoint],
             heartbeatIntervalMs: INTERVAL_MS,
-            now: () => clock,
-            request: async () => {
-                throw new Error('unreachable');
-            }
+            now(): number {
+                return clock;
+            },
+            request: unreachable
         });
 
         monitor.start();
@@ -469,9 +524,7 @@ describe('DeviceAvailability', () => {
         clock = INTERVAL_MS + 1;
 
         t.mock.timers.tick(INTERVAL_MS + 1);
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
+        await settle(3);
 
         assert.deepEqual(seen, [false]);
         monitor.stop();
@@ -489,10 +542,10 @@ describe('DeviceAvailability', () => {
             initialOnline: true,
             endpoints: [endpoint],
             heartbeatIntervalMs: INTERVAL_MS,
-            now: () => clock,
-            request: async () => {
-                throw new Error('unreachable');
-            }
+            now(): number {
+                return clock;
+            },
+            request: unreachable
         });
 
         monitor.start();
@@ -501,9 +554,7 @@ describe('DeviceAvailability', () => {
         clock = INTERVAL_MS + 1;
 
         t.mock.timers.tick(INTERVAL_MS + 1);
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
+        await settle(3);
 
         assert.deepEqual(seen, [false]);
 
@@ -533,7 +584,9 @@ describe('DeviceAvailability', () => {
             initialOnline: true,
             endpoints: [endpoint],
             heartbeatIntervalMs: INTERVAL_MS,
-            now: () => clock,
+            now(): number {
+                return clock;
+            },
             request: stubRequest()
         });
 
@@ -545,8 +598,7 @@ describe('DeviceAvailability', () => {
         clock = INTERVAL_MS;
 
         t.mock.timers.tick(INTERVAL_MS);
-        await Promise.resolve();
-        await Promise.resolve();
+        await settle(2);
 
         assert.deepEqual(seen, []);
         monitor.stop();
@@ -682,10 +734,10 @@ describe('DeviceAvailability hub children', () => {
 
         const monitor = hubMonitor(hub, [sensor], {
             heartbeatIntervalMs: INTERVAL_MS,
-            now: () => clock,
-            request: async () => {
-                throw new Error('unreachable');
-            }
+            now(): number {
+                return clock;
+            },
+            request: unreachable
         });
         monitor.handleMessage(fromHub('Appliance.Control.ToggleX', {
             togglex: [{ channel: 0, onoff: 1 }]
@@ -695,9 +747,7 @@ describe('DeviceAvailability hub children', () => {
         clock = INTERVAL_MS + 1;
 
         t.mock.timers.tick(INTERVAL_MS + 1);
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
+        await settle(3);
 
         assert.deepEqual(hubSeen, [false]);
         assert.deepEqual(sensorSeen, [false]);

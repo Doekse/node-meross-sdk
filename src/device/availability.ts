@@ -4,6 +4,10 @@ import { HUB_ONLINE_NAMESPACE, decodeHubOnline } from '../protocol/codecs/online
 import { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from '../protocol/codecs/system-all';
 import { Heartbeat } from './heartbeat';
 
+function isPushOrGetAck(method: string): boolean {
+    return method === 'PUSH' || method === 'GETACK';
+}
+
 export interface DeviceAvailabilityOptions {
     uuid: string;
     initialOnline: boolean;
@@ -86,12 +90,12 @@ export class DeviceAvailability {
 
     handleMessage(message: MerossMessage): void {
         this.heartbeat.recordResponse();
-        if (!this.online) {
-            this.setOnline(true);
-        }
+        // setOnline no-ops when already true; recordResponse first so an
+        // inbound while offline still resets the probe backoff.
+        this.setOnline(true);
 
         const { namespace, method } = message.header;
-        if (namespace === HUB_ONLINE_NAMESPACE && (method === 'PUSH' || method === 'GETACK')) {
+        if (namespace === HUB_ONLINE_NAMESPACE && isPushOrGetAck(method)) {
             try {
                 for (const entry of decodeHubOnline(message.payload)) {
                     this.setChildOnline(entry.id, entry.online);
@@ -102,7 +106,7 @@ export class DeviceAvailability {
             return;
         }
 
-        if (namespace === SYSTEM_ALL_NAMESPACE && (method === 'PUSH' || method === 'GETACK')) {
+        if (namespace === SYSTEM_ALL_NAMESPACE && isPushOrGetAck(method)) {
             this.applySystemAll(message);
         }
     }
@@ -134,7 +138,7 @@ export class DeviceAvailability {
                 }
             }
         } catch {
-            // Malformed All is ignored; Heartbeat silence still marks offline.
+            // Malformed All is ignored; a failed heartbeat probe still marks offline.
         }
     }
 

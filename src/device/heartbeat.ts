@@ -10,9 +10,9 @@ export interface HeartbeatOptions {
 }
 
 /**
- * Marks a device offline after extended silence instead of on a single failed
- * poll, matching Meross app behaviour and avoiding LAN blips as false offline.
- * The probe itself is System.All (see DeviceAvailability.pollOnline).
+ * After {@link DEFAULT_HEARTBEAT_INTERVAL_MS} without inbound traffic, GET
+ * System.All. Offline only if that probe throws — meross_lan inquires first
+ * so a quiet but reachable board is not a false unavailable blip.
  */
 export class Heartbeat {
     private readonly intervalMs: number;
@@ -28,15 +28,13 @@ export class Heartbeat {
     private pollingDelay: number;
 
     constructor(options: HeartbeatOptions) {
-        if (
-            options.intervalMs !== undefined
-            && !(Number.isFinite(options.intervalMs) && options.intervalMs > 0)
-        ) {
+        const intervalMs = options.intervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
+        if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
             throw new RangeError(
                 `Heartbeat intervalMs must be a positive finite number, got ${options.intervalMs}`
             );
         }
-        this.intervalMs = options.intervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
+        this.intervalMs = intervalMs;
         this.isOnline = options.isOnline;
         this.pollOnline = options.pollOnline;
         this.onSilenceOffline = options.onSilenceOffline;
@@ -61,21 +59,21 @@ export class Heartbeat {
     }
 
     recordResponse(): void {
-        const wasOffline = !this.isOnline();
         this.lastResponseTime = this.now();
-        if (wasOffline) {
-            this.pollingDelay = Math.floor(this.intervalMs / 2);
-        }
-        if (this.running && this.shouldBeOffline() && this.isOnline()) {
-            this.onSilenceOffline();
+        if (!this.isOnline()) {
+            this.resetPollingDelay();
         }
     }
 
-    private shouldBeOffline(): boolean {
-        if (this.lastResponseTime === null || !this.isOnline()) {
-            return false;
+    private resetPollingDelay(): void {
+        this.pollingDelay = Math.floor(this.intervalMs / 2);
+    }
+
+    private nextDelayMs(): number {
+        if (this.isOnline()) {
+            return this.intervalMs;
         }
-        return this.now() - this.lastResponseTime >= this.intervalMs;
+        return this.pollingDelay;
     }
 
     private schedule(delayMs?: number): void {
@@ -85,12 +83,11 @@ export class Heartbeat {
         if (this.timer !== undefined) {
             clearTimeout(this.timer);
         }
-        const delay = delayMs ?? (this.isOnline() ? this.intervalMs : this.pollingDelay);
         // Do not unref: see DevicePoller.schedule — hosts like Homey can drop
         // unref'd timers while the app process remains alive.
         this.timer = setTimeout(() => {
             void this.perform();
-        }, delay);
+        }, delayMs ?? this.nextDelayMs());
     }
 
     private async perform(): Promise<void> {
@@ -103,22 +100,21 @@ export class Heartbeat {
         this.timer = undefined;
 
         if (this.lastResponseTime !== null) {
-            const elapsed = this.now() - this.lastResponseTime;
-            if (elapsed < this.intervalMs) {
+            const remainingMs = this.intervalMs - (this.now() - this.lastResponseTime);
+            if (remainingMs > 0) {
                 // A response landed since this timer was armed: recheck at the
                 // true remaining silence, not a full interval from now.
-                this.schedule(this.intervalMs - elapsed);
+                this.schedule(remainingMs);
                 return;
             }
-        }
-
-        if (this.shouldBeOffline() && this.isOnline()) {
-            this.onSilenceOffline();
         }
 
         try {
             await this.pollOnline();
         } catch {
+            if (this.lastResponseTime !== null) {
+                this.onSilenceOffline();
+            }
             if (!this.isOnline()) {
                 this.pollingDelay = Math.min(this.pollingDelay * 2, this.intervalMs);
             }
