@@ -15,7 +15,7 @@ export type { EndpointChange, Protocol, TraitName } from './endpoint';
 export {
     SwitchTrait, EnergyTrait, LightTrait, CoverTrait, ClimateTrait,
     SensorTrait, PresenceTrait, SprinklerTrait, SprayTrait, FanTrait, DiffuserTrait, MediaTrait,
-    AlarmTrait, AlertTrait, DndTrait, OverTempTrait, SystemTrait, TimerTrait, TriggerTrait
+    AlarmTrait, AlertTrait, DndTrait, OverTempTrait, StandbyKillerTrait, SystemTrait, TimerTrait, TriggerTrait
 } from './traits';
 export type {
     SwitchValues, EnergyValues, ElectricityConfig, LightValues, LightRgb,
@@ -24,6 +24,7 @@ export type {
     PresenceValues, SprinklerValues, SprinklerScheduleEntry, SprinklerCycleSummary, SprayValues, SprayMode, FanValues,
     FanButtonConfig, FanButtonConfigSetOptions,
     DiffuserValues, DiffuserLightMode, DiffuserSprayMode, MediaValues, AlarmValues, AlertValues, DndValues, OverTempValues,
+    StandbyKillerValues,
     SystemValues, SystemDebugState, SystemFirmwareState, SystemHardwareState,
     SystemPositionState, SystemTimeState,
     TimerEntry, TimerSetInput, TimerValues,

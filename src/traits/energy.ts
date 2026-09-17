@@ -2,7 +2,6 @@ import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-co
 import type { TraitName } from '../endpoint';
 import {
     CONFIG_OVERTEMP_NAMESPACE,
-    CONFIG_STANDBY_KILLER_NAMESPACE,
     CONSUMPTIONH_NAMESPACE,
     CONSUMPTIONX_NAMESPACE,
     CONSUMPTION_CONFIG_NAMESPACE,
@@ -18,7 +17,6 @@ import {
     decodeControlOverTempPush,
     decodeElectricityGetAck,
     decodeElectricityXGetAck,
-    decodeStandbyKillerPush,
     encodeConfigOverTempSet,
     encodeConsumptionConfigGet,
     encodeConsumptionHGet,
@@ -26,20 +24,17 @@ import {
     encodeConsumptionXGet,
     encodeElectricityGet,
     encodeElectricityXGet,
-    encodeStandbyKillerSet,
     type ConfigOverTempState,
     type ConsumptionHHour,
     type ConsumptionXDay,
     type ControlOverTempState,
     type ElectricityConfig,
     type ElectricitySample,
-    type MerossMessage,
-    type StandbyKillerEntry
+    type MerossMessage
 } from '../protocol';
 import {
     channelList,
     pollSpecSize,
-    SMART_CONFIG,
     SMART_ENERGY,
     SMART_FAST,
     type PollSpec
@@ -60,10 +55,6 @@ export interface EnergyValues {
     overTempType?: number;
     overTempActive?: boolean;
     overTempTimestamp?: number;
-    standbyKillerEnabled?: boolean;
-    standbyKillerPower?: number;
-    standbyKillerTime?: number;
-    standbyKillerAlert?: boolean;
 }
 
 /**
@@ -165,35 +156,6 @@ export class EnergyTrait {
     }
 
     /**
-     * SET Config.StandbyKiller for this channel (MSS305). No-op when absent.
-     */
-    async setStandbyKiller(options: {
-        enabled?: boolean;
-        power?: number;
-        time?: number;
-        alert?: boolean;
-    }): Promise<void> {
-        if (!this.has(CONFIG_STANDBY_KILLER_NAMESPACE)) {
-            return;
-        }
-        await this.bind.request({
-            namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
-            method: 'SET',
-            payload: encodeStandbyKillerSet({
-                channel: this.bind.channel,
-                ...options
-            })
-        });
-        this.applyStandbyKiller({
-            channel: this.bind.channel,
-            ...(options.enabled !== undefined ? { enabled: options.enabled } : {}),
-            ...(options.power !== undefined ? { power: options.power } : {}),
-            ...(options.time !== undefined ? { time: options.time } : {}),
-            ...(options.alert !== undefined ? { alert: options.alert } : {})
-        });
-    }
-
-    /**
      * DELETE is all-or-nothing and does not PUSH, so the local list updates here.
      * No-op when ConsumptionX is not advertised.
      */
@@ -245,14 +207,6 @@ export class EnergyTrait {
                 .find((row) => row.channel === this.bind.channel);
             if (entry) {
                 this.applyControlOverTemp(entry);
-            }
-            return;
-        }
-        if (message.header.namespace === CONFIG_STANDBY_KILLER_NAMESPACE && this.has(CONFIG_STANDBY_KILLER_NAMESPACE)) {
-            const entry = decodeStandbyKillerPush(message.payload)
-                .find((row) => row.channel === this.bind.channel);
-            if (entry) {
-                this.applyStandbyKiller(entry);
             }
         }
     }
@@ -345,23 +299,6 @@ export class EnergyTrait {
         this.applyChange(values);
     }
 
-    private applyStandbyKiller(entry: StandbyKillerEntry): void {
-        const values: EnergyValues = {};
-        if (entry.enabled !== undefined) {
-            values.standbyKillerEnabled = entry.enabled;
-        }
-        if (entry.power !== undefined) {
-            values.standbyKillerPower = entry.power;
-        }
-        if (entry.time !== undefined) {
-            values.standbyKillerTime = entry.time;
-        }
-        if (entry.alert !== undefined) {
-            values.standbyKillerAlert = entry.alert;
-        }
-        this.applyChange(values);
-    }
-
     private applyChange(patch: EnergyValues): void {
         applyPatch(this.last, patch, this.bind.emitChange);
     }
@@ -394,10 +331,6 @@ export const EnergyDescriptor: TraitDescriptor & {
 } = {
     name: 'energy',
     poll: {
-        [CONFIG_STANDBY_KILLER_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: channelList('config', 'energy')
-        },
         [ELECTRICITY_NAMESPACE]: {
             ...SMART_FAST,
             payload: { dict: 'electricity', channel: 0 },

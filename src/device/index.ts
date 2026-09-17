@@ -34,6 +34,7 @@ import { enrollPresence } from '../traits/presence';
 import { SensorDescriptor } from '../traits/sensor';
 import { enrollSpray } from '../traits/spray';
 import { SprinklerDescriptor } from '../traits/sprinkler';
+import { enrollBoardStandbyKillerExtra } from '../traits/standbykiller';
 import { enrollBoardSystemExtra } from '../traits/system';
 import {
     enrollHubUntypedOnoff,
@@ -347,6 +348,7 @@ function enrollBoard(
         extra.push(...enrollBoardMediaExtra(input));
         extra.push(...enrollBoardDndExtra(input));
         extra.push(...enrollBoardAlertExtra(input));
+        extra.push(...enrollBoardStandbyKillerExtra(input));
         extra.push(...enrollBoardAlarmExtra(input));
         extra.push(...enrollBoardTimerExtra(input));
         extra.push(...enrollBoardTriggerExtra(input));

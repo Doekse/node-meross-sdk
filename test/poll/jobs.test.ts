@@ -837,7 +837,7 @@ describe('buildPollJobs', () => {
     it('registers StandbyKiller as smart config', () => {
         const jobs = buildPollJobs(
             ability(CONFIG_STANDBY_KILLER_NAMESPACE),
-            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
+            endpoints([{ channel: CHANNEL, traits: ['standbykiller'] }])
         );
         assert.deepEqual(job(jobs, CONFIG_STANDBY_KILLER_NAMESPACE), {
             namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
@@ -845,6 +845,23 @@ describe('buildPollJobs', () => {
             periodMs: SENSOR_SLOW_PERIOD_MS,
             periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { config: [{ channel: CHANNEL }] }
+        });
+    });
+
+    it('omits StandbyKiller channels that did not enroll standbykiller', () => {
+        const jobs = buildPollJobs(
+            ability(CONFIG_STANDBY_KILLER_NAMESPACE),
+            endpoints([
+                { channel: CHANNEL, traits: ['energy'] },
+                { channel: 1, traits: ['standbykiller'] }
+            ])
+        );
+        assert.deepEqual(job(jobs, CONFIG_STANDBY_KILLER_NAMESPACE), {
+            namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
+            strategy: 'smart',
+            periodMs: SENSOR_SLOW_PERIOD_MS,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
+            payload: { config: [{ channel: 1 }] }
         });
     });
 

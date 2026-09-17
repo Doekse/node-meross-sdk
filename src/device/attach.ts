@@ -14,6 +14,7 @@ import { PresenceDescriptor, PresenceTrait, type PresenceValues } from '../trait
 import { SensorDescriptor, SensorTrait, type SensorValues } from '../traits/sensor';
 import { SprayDescriptor, SprayTrait, type SprayValues } from '../traits/spray';
 import { SprinklerDescriptor, SprinklerTrait, type SprinklerValues } from '../traits/sprinkler';
+import { StandbyKillerDescriptor, StandbyKillerTrait, type StandbyKillerValues } from '../traits/standbykiller';
 import { SwitchDescriptor, SwitchTrait, type SwitchValues } from '../traits/switch';
 import { SystemDescriptor, SystemTrait, type SystemValues } from '../traits/system';
 import { TimerDescriptor, TimerTrait, type TimerValues } from '../traits/timer';
@@ -88,6 +89,9 @@ export function attachEndpoint(
         dnd: (values: DndValues) => {
             endpoint.emit('change', { trait: 'dnd', values: { ...values } });
         },
+        standbykiller: (values: StandbyKillerValues) => {
+            endpoint.emit('change', { trait: 'standbykiller', values: { ...values } });
+        },
         system: (values: SystemValues) => {
             endpoint.emit('change', { trait: 'system', values: { ...values } });
         },
@@ -113,6 +117,7 @@ export function attachEndpoint(
     let alarmTrait: AlarmTrait | undefined;
     let alertTrait: AlertTrait | undefined;
     let dndTrait: DndTrait | undefined;
+    let standbyKillerTrait: StandbyKillerTrait | undefined;
     let systemTrait: SystemTrait | undefined;
     let timerTrait: TimerTrait | undefined;
     let triggerTrait: TriggerTrait | undefined;
@@ -266,6 +271,16 @@ export function attachEndpoint(
             emitChange: emit.dnd
         });
     }
+    if (graphEndpoint.traits.includes('standbykiller')) {
+        standbyKillerTrait = StandbyKillerDescriptor.attach({
+            graphEndpoint,
+            physical,
+            request,
+            channel,
+            namespaces,
+            emitChange: emit.standbykiller
+        });
+    }
     if (graphEndpoint.traits.includes('system')) {
         systemTrait = SystemDescriptor.attach({
             graphEndpoint,
@@ -314,6 +329,7 @@ export function attachEndpoint(
         alarm: alarmTrait,
         alert: alertTrait,
         dnd: dndTrait,
+        standbykiller: standbyKillerTrait,
         system: systemTrait,
         timer: timerTrait,
         trigger: triggerTrait,

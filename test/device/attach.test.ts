@@ -8,6 +8,7 @@ import {
     CONTROL_TIMER_NAMESPACE,
     CONTROL_TRIGGER_NAMESPACE,
     CONTROL_ALERT_CONFIG_NAMESPACE,
+    CONFIG_STANDBY_KILLER_NAMESPACE,
     DND_MODE_NAMESPACE,
     FAN_NAMESPACE,
     GARAGE_STATE_NAMESPACE,
@@ -242,6 +243,37 @@ describe('attachEndpoint alert', () => {
         assert.deepEqual(changes, [{
             trait: 'alert',
             values: { type: 3, value: { em06: { a: 1 } } }
+        }]);
+    });
+});
+
+describe('attachEndpoint standbykiller', () => {
+    it('emits { trait: standbykiller, values } on StandbyKiller PUSH', () => {
+        const { endpoint } = createHarness({
+            traits: ['standbykiller'],
+            ability: { [CONFIG_STANDBY_KILLER_NAMESPACE]: {} }
+        });
+        const changes: EndpointChange[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        endpoint.handlePush(pushMessage(CONFIG_STANDBY_KILLER_NAMESPACE, {
+            config: [{
+                channel: CHANNEL,
+                power: 0,
+                time: 300,
+                enable: 2,
+                alert: 2
+            }]
+        }));
+
+        assert.deepEqual(changes, [{
+            trait: 'standbykiller',
+            values: {
+                enabled: false,
+                power: 0,
+                time: 300,
+                alert: false
+            }
         }]);
     });
 });

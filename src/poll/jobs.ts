@@ -116,6 +116,7 @@ import { PresenceDescriptor } from '../traits/presence';
 import { SensorDescriptor } from '../traits/sensor';
 import { SprayDescriptor } from '../traits/spray';
 import { SprinklerDescriptor } from '../traits/sprinkler';
+import { StandbyKillerDescriptor } from '../traits/standbykiller';
 import { SwitchDescriptor, TOGGLE_NAMESPACE } from '../traits/switch';
 import { SystemDescriptor } from '../traits/system';
 import { TimerDescriptor } from '../traits/timer';
@@ -205,7 +206,7 @@ export const POLL: Record<string, PollSpec> = {
     [CONFIG_OVERTEMP_NAMESPACE]: OverTempDescriptor.poll[CONFIG_OVERTEMP_NAMESPACE],
     [CONFIG_SENSOR_ASSOCIATION_NAMESPACE]: SensorDescriptor.poll[CONFIG_SENSOR_ASSOCIATION_NAMESPACE],
     [CONTROL_ALERT_CONFIG_NAMESPACE]: AlertDescriptor.poll[CONTROL_ALERT_CONFIG_NAMESPACE],
-    [CONFIG_STANDBY_KILLER_NAMESPACE]: EnergyDescriptor.poll[CONFIG_STANDBY_KILLER_NAMESPACE],
+    [CONFIG_STANDBY_KILLER_NAMESPACE]: StandbyKillerDescriptor.poll[CONFIG_STANDBY_KILLER_NAMESPACE],
 
     // Digest / device state
     [TOGGLEX_NAMESPACE]: SwitchDescriptor.poll[TOGGLEX_NAMESPACE],

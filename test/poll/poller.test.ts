@@ -26,6 +26,7 @@ import { TOGGLEX_NAMESPACE } from '../../src/protocol/codecs/togglex';
 import { encodeMessage, type MerossMessage } from '../../src/protocol';
 import { MP3_NAMESPACE } from '../../src/protocol/codecs/mp3';
 import { EnergyTrait } from '../../src/traits/energy';
+import { StandbyKillerTrait } from '../../src/traits/standbykiller';
 import type { GetCommand } from '../../src/transport/router';
 
 const UUID = '2206138957096651080248e1e99705a4';
@@ -975,14 +976,22 @@ describe('DevicePoller', () => {
         const warnings: Array<{ error: Error; trait: string }> = [];
         const endpoint = new Endpoint({
             id: UUID,
-            traits: ['energy'],
+            traits: ['standbykiller', 'energy'],
+            standbykiller: new StandbyKillerTrait({
+                channel: 0,
+                namespaces: new Set([CONFIG_STANDBY_KILLER_NAMESPACE]),
+                request: async () => ack(CONFIG_STANDBY_KILLER_NAMESPACE),
+                emitChange: () => {
+                    applied.push(CONFIG_STANDBY_KILLER_NAMESPACE);
+                }
+            }),
             energy: new EnergyTrait({
                 channel: 0,
                 hasElectricity: true,
                 hasElectricityX: false,
                 hasConsumptionX: false,
                 hasConsumptionH: false,
-                namespaces: new Set([CONFIG_STANDBY_KILLER_NAMESPACE]),
+                namespaces: new Set([ELECTRICITY_NAMESPACE]),
                 request: async () => ack(ELECTRICITY_NAMESPACE),
                 emitChange: () => {
                     applied.push(ELECTRICITY_NAMESPACE);
@@ -1024,7 +1033,7 @@ describe('DevicePoller', () => {
         );
         assert.deepEqual(applied, [ELECTRICITY_NAMESPACE]);
         assert.equal(warnings.length, 1);
-        assert.equal(warnings[0]?.trait, 'energy');
+        assert.equal(warnings[0]?.trait, 'standbykiller');
 
         harness.poller.stop();
     });

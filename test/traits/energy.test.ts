@@ -7,7 +7,6 @@ import { Endpoint, type EndpointChange } from '../../src/endpoint';
 import { CommandError, ProtocolError, TransportError } from '../../src/errors';
 import {
     CONFIG_OVERTEMP_NAMESPACE,
-    CONFIG_STANDBY_KILLER_NAMESPACE,
     CONSUMPTIONH_NAMESPACE,
     CONSUMPTIONX_NAMESPACE,
     CONSUMPTION_CONFIG_NAMESPACE,
@@ -23,7 +22,6 @@ import {
     encodeElectricityGet,
     encodeElectricityXGet,
     encodeMessage,
-    encodeStandbyKillerSet,
     type MerossMessage
 } from '../../src/protocol';
 import { EnergyTrait } from '../../src/traits/energy';
@@ -144,8 +142,7 @@ function defaultEnergyAck(
             }
         });
     }
-    if (opts.namespace === CONFIG_OVERTEMP_NAMESPACE
-        || opts.namespace === CONFIG_STANDBY_KILLER_NAMESPACE) {
+    if (opts.namespace === CONFIG_OVERTEMP_NAMESPACE) {
         return traitAck(sent, { key: KEY });
     }
     throw new Error(`unexpected namespace ${opts.namespace}`);
@@ -849,145 +846,4 @@ describe('EnergyTrait consumption delete', () => {
 
         assert.equal(requests.length, 0);
     });
-});
-
-describe('EnergyTrait standby killer', () => {
-    const namespaces = new Set([CONFIG_STANDBY_KILLER_NAMESPACE]);
-
-    it('SETs StandbyKiller thresholds and emits change', async () => {
-        const { endpoint, trait, requests } = createEnergyHarness({
-            hasConsumptionX: false,
-            namespaces
-        });
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        await trait.setStandbyKiller({
-            enabled: true,
-            power: 5,
-            time: 300,
-            alert: false
-        });
-
-        assert.deepEqual(recordedCalls(requests), [{
-            namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
-            method: 'SET',
-            payload: encodeStandbyKillerSet({
-                channel: CHANNEL,
-                enabled: true,
-                power: 5,
-                time: 300,
-                alert: false
-            })
-        }]);
-        assert.deepEqual(changes, [{
-            trait: 'energy',
-            values: {
-                standbyKillerEnabled: true,
-                standbyKillerPower: 5,
-                standbyKillerTime: 300,
-                standbyKillerAlert: false
-            }
-        }]);
-    });
-
-    it('no-ops setStandbyKiller when StandbyKiller is absent', async () => {
-        const { trait, requests } = createEnergyHarness({ hasConsumptionX: false });
-        await trait.setStandbyKiller({ enabled: true, power: 1 });
-        assert.equal(requests.length, 0);
-    });
-
-    it('applies StandbyKiller PUSH for the bound channel', () => {
-        const { endpoint, trait } = createEnergyHarness({
-            hasConsumptionX: false,
-            namespaces
-        });
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        trait.handlePush(encodeMessage({
-            namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: `/appliance/${UUID}/publish`,
-            uuid: UUID,
-            payload: {
-                config: [{
-                    channel: CHANNEL,
-                    power: 0,
-                    time: 300,
-                    enable: 2,
-                    alert: 2
-                }]
-            }
-        }));
-
-        assert.deepEqual(changes, [{
-            trait: 'energy',
-            values: {
-                standbyKillerEnabled: false,
-                standbyKillerPower: 0,
-                standbyKillerTime: 300,
-                standbyKillerAlert: false
-            }
-        }]);
-    });
-
-    it('does not emit change when StandbyKiller PUSH repeats', () => {
-        const { endpoint, trait } = createEnergyHarness({
-            hasConsumptionX: false,
-            namespaces
-        });
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-        const push = encodeMessage({
-            namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: `/appliance/${UUID}/publish`,
-            uuid: UUID,
-            payload: {
-                config: [{
-                    channel: CHANNEL,
-                    power: 0,
-                    time: 300,
-                    enable: 2,
-                    alert: 2
-                }]
-            }
-        });
-
-        trait.handlePush(push);
-        trait.handlePush(push);
-
-        assert.equal(changes.length, 1);
-    });
-
-    it('applies StandbyKiller PUSH for the bound channel only', () => {
-        const { endpoint, trait } = createEnergyHarness({
-            hasConsumptionX: false,
-            namespaces
-        });
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        trait.handlePush(encodeMessage({
-            namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: `/appliance/${UUID}/publish`,
-            uuid: UUID,
-            payload: {
-                config: [{
-                    channel: 1,
-                    power: 1000,
-                    time: 60,
-                    enable: 1,
-                    alert: 1
-                }]
-            }
-        }));
-        assert.deepEqual(changes, []);
-    });
-
 });

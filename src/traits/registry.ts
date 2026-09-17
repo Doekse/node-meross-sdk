@@ -15,6 +15,7 @@ import { PresenceDescriptor } from './presence';
 import { SensorDescriptor } from './sensor';
 import { SprayDescriptor } from './spray';
 import { SprinklerDescriptor } from './sprinkler';
+import { StandbyKillerDescriptor } from './standbykiller';
 import { SwitchDescriptor } from './switch';
 import { SystemDescriptor } from './system';
 import { TimerDescriptor } from './timer';
@@ -42,6 +43,7 @@ export const TRAIT_DESCRIPTORS = {
     alert: AlertDescriptor,
     dnd: DndDescriptor,
     overtemp: OverTempDescriptor,
+    standbykiller: StandbyKillerDescriptor,
     system: SystemDescriptor,
     timer: TimerDescriptor,
     trigger: TriggerDescriptor

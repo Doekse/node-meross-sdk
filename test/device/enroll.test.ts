@@ -348,6 +348,90 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(hub?.traits.includes('alert'), false);
     });
 
+    it('adds standbykiller on a socket when StandbyKiller is advertised', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.Config.StandbyKiller': {}
+            }),
+            allPayload: payload('system-all-getack.json')
+        });
+
+        assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'system', 'standbykiller']);
+        assert.equal(device.endpoints[0]?.traits.includes('energy'), false);
+    });
+
+    it('adds standbykiller on strip children when StandbyKiller is advertised', () => {
+        const strip = loadFixture('togglex-getack-all.json');
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.Control.ElectricityX': {},
+                'Appliance.Config.StandbyKiller': {}
+            }),
+            allPayload: systemAllWithDigest({ togglex: strip.payload.togglex })
+        });
+
+        const sockets = device.endpoints.filter((endpoint) => endpoint.classHint === 'socket');
+        assert.ok(sockets.length > 1);
+        for (const endpoint of sockets) {
+            assert.ok(endpoint.traits.includes('standbykiller'), endpoint.id);
+        }
+    });
+
+    it('does not add standbykiller to climate', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Thermostat.ModeC': {},
+                    'Appliance.Config.StandbyKiller': {}
+                }
+            },
+            allPayload: systemAllWithDigest({})
+        });
+
+        assert.equal(device.endpoints[0]?.classHint, 'climate');
+        assert.equal(device.endpoints[0]?.traits.includes('standbykiller'), false);
+    });
+
+    it('does not add standbykiller to the hub parent', () => {
+        const graph = new DeviceGraph();
+        const { device } = graph.enroll({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Hub.SubdeviceList': {},
+                    'Appliance.Config.StandbyKiller': {}
+                }
+            },
+            allPayload: {
+                all: {
+                    system: {
+                        hardware: { type: 'msh300', uuid: HUB_UUID },
+                        firmware: {},
+                        online: { status: 1 }
+                    },
+                    digest: {
+                        hub: {
+                            hubId: 1,
+                            mode: 0,
+                            subdevice: []
+                        }
+                    }
+                }
+            },
+            cloud: {
+                uuid: HUB_UUID,
+                devName: 'Hub',
+                deviceType: 'msh300',
+                onlineStatus: 1,
+                channels: []
+            },
+            subDevices: []
+        });
+
+        const hub = device.endpoints.find((endpoint) => endpoint.id === HUB_UUID);
+        assert.ok(hub);
+        assert.equal(hub?.traits.includes('standbykiller'), false);
+    });
+
     it('keeps the strip master as switch + energy and links extra outlets via parentId', () => {
         const strip = loadFixture('togglex-getack-all.json');
         const device = enrollPhysicalDevice({

@@ -30,6 +30,8 @@ export { DndTrait } from './dnd';
 export type { DndValues } from './dnd';
 export { OverTempTrait } from './overtemp';
 export type { OverTempValues } from './overtemp';
+export { StandbyKillerTrait } from './standbykiller';
+export type { StandbyKillerValues } from './standbykiller';
 export { SystemTrait } from './system';
 export type { SystemValues, SystemDebugState, SystemFirmwareState, SystemHardwareState, SystemPositionState, SystemTimeState } from './system';
 export { TimerTrait } from './timer';
