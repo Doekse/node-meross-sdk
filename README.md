@@ -236,28 +236,31 @@ Unknown ids throw `MerossError` with code `ENDPOINT_NOT_FOUND`. Commands on a se
 Traits are present only when the device advertised the matching ability. Use optional chaining or an `if` guard.
 
 
-| Trait       | Typical devices                    | Host API                                                                              |
-| ----------- | ---------------------------------- | ------------------------------------------------------------------------------------- |
-| `switch`    | Plugs, strips, wall switches       | `isOn()`, `setOn(boolean)`                                                            |
-| `light`     | Bulbs and light strips             | `setOn`, `setBrightness` / `setTemperature` (`0..1`), `setRgb`, `setEffect`           |
-| `energy`    | Metered plugs and strips           | `poll()` (power / current / voltage), `getHourlyConsumption()`, `deleteConsumption()` |
-| `cover`     | Garage doors, roller shutters      | `open()`, `close()`, `stop()`, `setPosition()`                                        |
-| `climate`   | Thermostats and hub valves         | `setOn`, `setMode`, `setTargetTemperature`, schedule / extras                         |
-| `sensor`    | Hub temp/hum, contact, leak, motion, smoke | Live values on `change`; `setCalibration`, `setAlerts`, smoke `mute` / `test`         |
-| `presence`  | Wi-Fi presence sensors             | `change` values; `getConfig()`, `setConfig()`, `startStudy()`                         |
-| `fan`       | Fans                               | `setOn`, `setSpeed`, `getButtonConfig` / `setButtonConfig`                            |
-| `spray`     | Humidifiers                        | `getMode()`, `setMode('off'                                                           |
-| `diffuser`  | Diffusers                          | Light + spray mode, brightness, RGB                                                   |
-| `sprinkler` | Hub sprinkler valves               | `setOn`, `setDuration`, `getSchedule`; last cycle on `change`                         |
-| `media`     | Speakers                           | `setMuted`, `setVolume`, `setSong`                                                    |
-| `alarm`     | Hub sirens, board chimes           | `setOn(on, durationSeconds?)`, `setLinked`, `setBeep`                                 |
-| `dnd`       | LED mute on the device             | `isOn()`, `setOn(boolean)`                                                            |
-| `system`    | Device firmware, time, diagnostics | `getFirmware` / `getHardware` / `getTime`, `setTimezone`, `getDebug`, `getPosition` / `setPosition`, `clockSkewSeconds` |
-| `timer`     | Toggle / ToggleX clock schedules   | `list()`, `set()`, `setEnabled()`, `remove()`                                         |
-| `trigger`   | Toggle / ToggleX countdown rules   | `list()`, `set()`, `setEnabled()`, `remove()`                                         |
+| Trait            | Typical devices                    | Host API                                                                              |
+| ---------------- | ---------------------------------- | ------------------------------------------------------------------------------------- |
+| `switch`         | Plugs, strips, wall switches       | `isOn()`, `setOn(boolean)`                                                            |
+| `light`          | Bulbs and light strips             | `setOn`, `setBrightness` / `setTemperature` (`0..1`), `setRgb`, `setEffect`           |
+| `energy`         | Metered plugs and strips           | `poll()` (power / current / voltage), `getHourlyConsumption()`, `deleteConsumption()` |
+| `cover`          | Garage doors, roller shutters      | `open()`, `close()`, `stop()`, `setPosition()`                                        |
+| `climate`        | Thermostats and hub valves         | `setOn`, `setMode`, `setTargetTemperature`, schedule / extras                         |
+| `sensor`         | Hub temp/hum, contact, leak, motion, smoke | Live values on `change`; `setCalibration`, `setAlerts`, smoke `mute` / `test`         |
+| `presence`       | Wi-Fi presence sensors             | `change` values; `getConfig()`, `setConfig()`, `startStudy()`                         |
+| `fan`            | Fans                               | `setOn`, `setSpeed`, `getButtonConfig` / `setButtonConfig`                            |
+| `spray`          | Humidifiers                        | `getMode()`, `setMode('off'                                                           |
+| `diffuser`       | Diffusers                          | Light + spray mode, brightness, RGB                                                   |
+| `sprinkler`      | Hub sprinkler valves               | `setOn`, `setDuration`, `getSchedule`; last cycle on `change`                         |
+| `media`          | Speakers                           | `setMuted`, `setVolume`, `setSong`                                                    |
+| `alarm`          | Hub sirens, board chimes           | `setOn(on, durationSeconds?)`, `setLinked`, `setBeep`                                 |
+| `dnd`            | LED mute on the device             | `isOn()`, `setOn(boolean)`, `poll()`                                                  |
+| `overtemp`       | Plugs with Config.OverTemp         | `poll()`, `set({ enabled, type? })`; Control.OverTemp PUSH updates `active` / `timestamp` |
+| `alert`          | EM06 / MTS300 AlertConfig          | `poll()`, `set({ type?, value? })`; AlertReport PUSH updates `report` (not polled)    |
+| `standbykiller`  | Plugs with Config.StandbyKiller    | `poll()`, `set({ enabled?, power?, time?, alert? })` (power in watts)                 |
+| `system`         | Device firmware, time, diagnostics | `getFirmware` / `getHardware` / `getTime`, `setTimezone`, `getDebug`, `getPosition` / `setPosition`, `clockSkewSeconds` |
+| `timer`          | Toggle / ToggleX clock schedules   | `list()`, `set()`, `setEnabled()`, `remove()`                                         |
+| `trigger`        | Toggle / ToggleX countdown rules   | `list()`, `set()`, `setEnabled()`, `remove()`                                         |
 
 
-Readings such as energy and sensors update from PUSH and the internal poller. Listen on `change`; call `energy.poll()` when you need an on-demand sample.
+Readings such as energy and sensors update from PUSH and the internal poller. Listen on `change`; call a trait's `poll()` when you need an on-demand sample. `dnd`, `overtemp`, `alert`, and `standbykiller` are independent of `energy`.
 
 ## Errors
 
@@ -269,7 +272,7 @@ Catch by class. Each error has a string `code`. Trait commands such as `setOn`, 
 | `CommandError`   | `COMMAND_TIMEOUT`, device `ERROR` (`COMMAND_FAILED` + `deviceCode`), `COMMAND_CANCELLED`, wrong key (`INVALID_KEY`, `deviceCode` 5001)   |
 | `TransportError` | MQTT/LAN connect or publish failure after failover (`MQTT_RATE_LIMITED`, …)                                                             |
 | `ProtocolError`  | Malformed envelope, `SIGNATURE_ERROR`, or a LAN body that is not a pending reply                                                          |
-| `MerossError`    | `NOT_CONNECTED`, `ENDPOINT_NOT_FOUND`, `TIMER_NOT_FOUND`, `TRIGGER_NOT_FOUND`, and other operational failures                             |
+| `MerossError`    | `NOT_CONNECTED`, `ENDPOINT_NOT_FOUND`, `TIMER_NOT_FOUND`, `TRIGGER_NOT_FOUND`, `NAMESPACE_NOT_ADVERTISED`, and other operational failures |
 | `AuthError`      | Login, `sync()`, or `reauthenticate()` — bad credentials, MFA, or an incomplete / expired token                                           |
 | `CloudError`     | Login, `sync()`, or `reauthenticate()` — cloud HTTP failure, region redirect exhaustion, or a non-auth `apiStatus`                        |
 

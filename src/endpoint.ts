@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 
 import type { MerossMessage } from './protocol';
 import type { AlarmTrait, AlarmValues } from './traits/alarm';
+import type { AlertTrait, AlertValues } from './traits/alert';
 import type { ClimateTrait, ClimateValues } from './traits/climate';
 import type { CoverTrait, CoverValues } from './traits/cover';
 import type { DiffuserTrait, DiffuserValues } from './traits/diffuser';
@@ -10,10 +11,12 @@ import type { EnergyTrait, EnergyValues } from './traits/energy';
 import type { FanTrait, FanValues } from './traits/fan';
 import type { LightTrait, LightValues } from './traits/light';
 import type { MediaTrait, MediaValues } from './traits/media';
+import type { OverTempTrait, OverTempValues } from './traits/overtemp';
 import type { PresenceTrait, PresenceValues } from './traits/presence';
 import type { SensorTrait, SensorValues } from './traits/sensor';
 import type { SprayTrait, SprayValues } from './traits/spray';
 import type { SprinklerTrait, SprinklerValues } from './traits/sprinkler';
+import type { StandbyKillerTrait, StandbyKillerValues } from './traits/standbykiller';
 import type { SwitchTrait, SwitchValues } from './traits/switch';
 import type { SystemTrait, SystemValues } from './traits/system';
 import type { TimerTrait, TimerValues } from './traits/timer';
@@ -21,7 +24,8 @@ import type { TriggerTrait, TriggerValues } from './traits/trigger';
 
 export type TraitName =
     | 'switch' | 'energy' | 'light' | 'climate' | 'cover'
-    | 'sensor' | 'presence' | 'sprinkler' | 'spray' | 'fan' | 'diffuser' | 'media' | 'alarm' | 'dnd'
+    | 'sensor' | 'presence' | 'sprinkler' | 'spray' | 'fan' | 'diffuser' | 'media'
+    | 'alarm' | 'alert' | 'dnd' | 'overtemp' | 'standbykiller'
     | 'system' | 'timer' | 'trigger';
 
 /**
@@ -42,7 +46,10 @@ export interface TraitValues {
     diffuser: DiffuserValues;
     media: MediaValues;
     alarm: AlarmValues;
+    alert: AlertValues;
     dnd: DndValues;
+    overtemp: OverTempValues;
+    standbykiller: StandbyKillerValues;
     system: SystemValues;
     timer: TimerValues;
     trigger: TriggerValues;
@@ -75,7 +82,10 @@ export interface EndpointOptions {
     diffuser?: DiffuserTrait;
     media?: MediaTrait;
     alarm?: AlarmTrait;
+    alert?: AlertTrait;
     dnd?: DndTrait;
+    overtemp?: OverTempTrait;
+    standbykiller?: StandbyKillerTrait;
     system?: SystemTrait;
     timer?: TimerTrait;
     trigger?: TriggerTrait;
@@ -117,7 +127,10 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     readonly diffuser?: DiffuserTrait;
     readonly media?: MediaTrait;
     readonly alarm?: AlarmTrait;
+    readonly alert?: AlertTrait;
     readonly dnd?: DndTrait;
+    readonly overtemp?: OverTempTrait;
+    readonly standbykiller?: StandbyKillerTrait;
     readonly system?: SystemTrait;
     readonly timer?: TimerTrait;
     readonly trigger?: TriggerTrait;
@@ -142,7 +155,10 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         this.diffuser = options.diffuser;
         this.media = options.media;
         this.alarm = options.alarm;
+        this.alert = options.alert;
         this.dnd = options.dnd;
+        this.overtemp = options.overtemp;
+        this.standbykiller = options.standbykiller;
         this.system = options.system;
         this.timer = options.timer;
         this.trigger = options.trigger;

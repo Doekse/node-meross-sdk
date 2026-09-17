@@ -7,6 +7,9 @@ import type { Endpoint, EndpointChange, TraitName } from '../../src/endpoint';
 import {
     CONTROL_TIMER_NAMESPACE,
     CONTROL_TRIGGER_NAMESPACE,
+    CONTROL_ALERT_CONFIG_NAMESPACE,
+    CONFIG_OVERTEMP_NAMESPACE,
+    CONFIG_STANDBY_KILLER_NAMESPACE,
     DND_MODE_NAMESPACE,
     FAN_NAMESPACE,
     GARAGE_STATE_NAMESPACE,
@@ -222,6 +225,77 @@ describe('attachEndpoint dnd', () => {
 
         assert.deepEqual(changes, [{ trait: 'dnd', values: { on: true } }]);
         assert.deepEqual(narrowedOn, [true]);
+    });
+});
+
+describe('attachEndpoint overtemp', () => {
+    it('emits { trait: overtemp, values } on Config.OverTemp PUSH', () => {
+        const { endpoint } = createHarness({
+            traits: ['overtemp'],
+            ability: { [CONFIG_OVERTEMP_NAMESPACE]: {} }
+        });
+        const changes: EndpointChange[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        endpoint.handlePush(pushMessage(CONFIG_OVERTEMP_NAMESPACE, {
+            overTemp: { enable: 1, type: 2 }
+        }));
+
+        assert.deepEqual(changes, [{
+            trait: 'overtemp',
+            values: { enabled: true, type: 2 }
+        }]);
+    });
+});
+
+describe('attachEndpoint alert', () => {
+    it('emits { trait: alert, values } on AlertConfig PUSH', () => {
+        const { endpoint } = createHarness({
+            traits: ['alert'],
+            ability: { [CONTROL_ALERT_CONFIG_NAMESPACE]: {} }
+        });
+        const changes: EndpointChange[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        endpoint.handlePush(pushMessage(CONTROL_ALERT_CONFIG_NAMESPACE, {
+            config: [{ channel: CHANNEL, type: 3, value: { em06: { a: 1 } } }]
+        }));
+
+        assert.deepEqual(changes, [{
+            trait: 'alert',
+            values: { type: 3, value: { em06: { a: 1 } } }
+        }]);
+    });
+});
+
+describe('attachEndpoint standbykiller', () => {
+    it('emits { trait: standbykiller, values } on StandbyKiller PUSH', () => {
+        const { endpoint } = createHarness({
+            traits: ['standbykiller'],
+            ability: { [CONFIG_STANDBY_KILLER_NAMESPACE]: {} }
+        });
+        const changes: EndpointChange[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        endpoint.handlePush(pushMessage(CONFIG_STANDBY_KILLER_NAMESPACE, {
+            config: [{
+                channel: CHANNEL,
+                power: 0,
+                time: 300,
+                enable: 2,
+                alert: 2
+            }]
+        }));
+
+        assert.deepEqual(changes, [{
+            trait: 'standbykiller',
+            values: {
+                enabled: false,
+                power: 0,
+                time: 300,
+                alert: false
+            }
+        }]);
     });
 });
 

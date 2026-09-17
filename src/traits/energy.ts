@@ -1,52 +1,33 @@
 import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
 import type { TraitName } from '../endpoint';
 import {
-    CONFIG_OVERTEMP_NAMESPACE,
-    CONFIG_STANDBY_KILLER_NAMESPACE,
     CONSUMPTIONH_NAMESPACE,
     CONSUMPTIONX_NAMESPACE,
     CONSUMPTION_CONFIG_NAMESPACE,
-    CONTROL_ALERT_CONFIG_NAMESPACE,
-    CONTROL_ALERT_REPORT_NAMESPACE,
-    CONTROL_OVERTEMP_NAMESPACE,
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_ALL_CHANNELS,
     ELECTRICITYX_NAMESPACE,
     consumptionXDays,
-    decodeAlertConfigPush,
-    decodeAlertReportPush,
-    decodeConfigOverTempPush,
     decodeConsumptionConfigGetAck,
     decodeConsumptionHGetAck,
     decodeConsumptionXGetAck,
-    decodeControlOverTempPush,
     decodeElectricityGetAck,
     decodeElectricityXGetAck,
-    decodeStandbyKillerPush,
-    encodeAlertConfigSet,
-    encodeConfigOverTempSet,
     encodeConsumptionConfigGet,
     encodeConsumptionHGet,
     encodeConsumptionXDelete,
     encodeConsumptionXGet,
     encodeElectricityGet,
     encodeElectricityXGet,
-    encodeStandbyKillerSet,
-    type AlertConfigEntry,
-    type AlertReportEntry,
-    type ConfigOverTempState,
     type ConsumptionHHour,
     type ConsumptionXDay,
-    type ControlOverTempState,
     type ElectricityConfig,
     type ElectricitySample,
-    type MerossMessage,
-    type StandbyKillerEntry
+    type MerossMessage
 } from '../protocol';
 import {
     channelList,
     pollSpecSize,
-    SMART_CONFIG,
     SMART_ENERGY,
     SMART_FAST,
     type PollSpec
@@ -63,17 +44,6 @@ export interface EnergyValues {
     powerFactor?: number;
     consumption?: ConsumptionXDay[];
     hourly?: ConsumptionHHour[];
-    overTempEnabled?: boolean;
-    overTempType?: number;
-    overTempActive?: boolean;
-    overTempTimestamp?: number;
-    alertConfigType?: number;
-    alertConfig?: Record<string, unknown>;
-    alertReport?: Record<string, unknown>;
-    standbyKillerEnabled?: boolean;
-    standbyKillerPower?: number;
-    standbyKillerTime?: number;
-    standbyKillerAlert?: boolean;
 }
 
 /**
@@ -86,7 +56,7 @@ export interface EnergyTraitBind {
     hasElectricityX: boolean;
     hasConsumptionX: boolean;
     hasConsumptionH: boolean;
-    /** Ability keys; extras no-op when the namespace is absent. */
+    /** Ability keys; ConsumptionConfig no-ops when absent. */
     namespaces?: ReadonlySet<string>;
     request: DeviceRequest;
     emitChange: (values: EnergyValues) => void;
@@ -160,75 +130,6 @@ export class EnergyTrait {
     }
 
     /**
-     * SET Config.OverTemp. No-op when the namespace is not advertised.
-     */
-    async setOverTemp(enabled: boolean, type?: number): Promise<void> {
-        if (!this.has(CONFIG_OVERTEMP_NAMESPACE)) {
-            return;
-        }
-        await this.bind.request({
-            namespace: CONFIG_OVERTEMP_NAMESPACE,
-            method: 'SET',
-            payload: encodeConfigOverTempSet({ enabled, type })
-        });
-        this.applyConfigOverTemp({ enabled, ...(type !== undefined ? { type } : {}) });
-    }
-
-    /**
-     * SET Control.AlertConfig for this channel. No-op when absent (EM06 / similar).
-     */
-    async setAlertConfig(options: {
-        type?: number;
-        value?: Record<string, unknown>;
-    }): Promise<void> {
-        if (!this.has(CONTROL_ALERT_CONFIG_NAMESPACE)) {
-            return;
-        }
-        await this.bind.request({
-            namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
-            method: 'SET',
-            payload: encodeAlertConfigSet({
-                channel: this.bind.channel,
-                ...options
-            })
-        });
-        this.applyAlertConfig({
-            channel: this.bind.channel,
-            ...(options.type !== undefined ? { type: options.type } : {}),
-            ...(options.value !== undefined ? { value: options.value } : {})
-        });
-    }
-
-    /**
-     * SET Config.StandbyKiller for this channel (MSS305). No-op when absent.
-     */
-    async setStandbyKiller(options: {
-        enabled?: boolean;
-        power?: number;
-        time?: number;
-        alert?: boolean;
-    }): Promise<void> {
-        if (!this.has(CONFIG_STANDBY_KILLER_NAMESPACE)) {
-            return;
-        }
-        await this.bind.request({
-            namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
-            method: 'SET',
-            payload: encodeStandbyKillerSet({
-                channel: this.bind.channel,
-                ...options
-            })
-        });
-        this.applyStandbyKiller({
-            channel: this.bind.channel,
-            ...(options.enabled !== undefined ? { enabled: options.enabled } : {}),
-            ...(options.power !== undefined ? { power: options.power } : {}),
-            ...(options.time !== undefined ? { time: options.time } : {}),
-            ...(options.alert !== undefined ? { alert: options.alert } : {})
-        });
-    }
-
-    /**
      * DELETE is all-or-nothing and does not PUSH, so the local list updates here.
      * No-op when ConsumptionX is not advertised.
      */
@@ -268,42 +169,6 @@ export class EnergyTrait {
                 .find((entry) => entry.channel === this.bind.channel);
             if (sample) {
                 this.applyHourlyConsumption(sample.hourly);
-            }
-            return;
-        }
-        if (message.header.namespace === CONFIG_OVERTEMP_NAMESPACE && this.has(CONFIG_OVERTEMP_NAMESPACE)) {
-            this.applyConfigOverTemp(decodeConfigOverTempPush(message.payload));
-            return;
-        }
-        if (message.header.namespace === CONTROL_OVERTEMP_NAMESPACE && this.has(CONTROL_OVERTEMP_NAMESPACE)) {
-            const entry = decodeControlOverTempPush(message.payload)
-                .find((row) => row.channel === this.bind.channel);
-            if (entry) {
-                this.applyControlOverTemp(entry);
-            }
-            return;
-        }
-        if (message.header.namespace === CONTROL_ALERT_CONFIG_NAMESPACE && this.has(CONTROL_ALERT_CONFIG_NAMESPACE)) {
-            const entry = decodeAlertConfigPush(message.payload)
-                .find((row) => row.channel === this.bind.channel);
-            if (entry) {
-                this.applyAlertConfig(entry);
-            }
-            return;
-        }
-        if (message.header.namespace === CONTROL_ALERT_REPORT_NAMESPACE && this.has(CONTROL_ALERT_REPORT_NAMESPACE)) {
-            const entry = decodeAlertReportPush(message.payload)
-                .find((row) => row.channel === this.bind.channel);
-            if (entry) {
-                this.applyAlertReport(entry);
-            }
-            return;
-        }
-        if (message.header.namespace === CONFIG_STANDBY_KILLER_NAMESPACE && this.has(CONFIG_STANDBY_KILLER_NAMESPACE)) {
-            const entry = decodeStandbyKillerPush(message.payload)
-                .find((row) => row.channel === this.bind.channel);
-            if (entry) {
-                this.applyStandbyKiller(entry);
             }
         }
     }
@@ -380,54 +245,6 @@ export class EnergyTrait {
         this.applyChange({ hourly });
     }
 
-    private applyConfigOverTemp(state: ConfigOverTempState): void {
-        const values: EnergyValues = { overTempEnabled: state.enabled };
-        if (state.type !== undefined) {
-            values.overTempType = state.type;
-        }
-        this.applyChange(values);
-    }
-
-    private applyControlOverTemp(entry: ControlOverTempState): void {
-        const values: EnergyValues = { overTempActive: entry.active };
-        if (entry.timestamp !== undefined) {
-            values.overTempTimestamp = entry.timestamp;
-        }
-        this.applyChange(values);
-    }
-
-    private applyAlertConfig(entry: AlertConfigEntry): void {
-        const values: EnergyValues = {};
-        if (entry.type !== undefined) {
-            values.alertConfigType = entry.type;
-        }
-        if (entry.value !== undefined) {
-            values.alertConfig = entry.value;
-        }
-        this.applyChange(values);
-    }
-
-    private applyAlertReport(entry: AlertReportEntry): void {
-        this.applyChange({ alertReport: entry.fields });
-    }
-
-    private applyStandbyKiller(entry: StandbyKillerEntry): void {
-        const values: EnergyValues = {};
-        if (entry.enabled !== undefined) {
-            values.standbyKillerEnabled = entry.enabled;
-        }
-        if (entry.power !== undefined) {
-            values.standbyKillerPower = entry.power;
-        }
-        if (entry.time !== undefined) {
-            values.standbyKillerTime = entry.time;
-        }
-        if (entry.alert !== undefined) {
-            values.standbyKillerAlert = entry.alert;
-        }
-        this.applyChange(values);
-    }
-
     private applyChange(patch: EnergyValues): void {
         applyPatch(this.last, patch, this.bind.emitChange);
     }
@@ -460,23 +277,6 @@ export const EnergyDescriptor: TraitDescriptor & {
 } = {
     name: 'energy',
     poll: {
-        [CONFIG_OVERTEMP_NAMESPACE]: { ...SMART_CONFIG, base: 340 },
-        [CONTROL_OVERTEMP_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: channelList('overTemp', 'energy')
-        },
-        /**
-         * Shared with climate board SET/PUSH; keep unfiltered
-         * `channelList('config')` so MTS300 GETs are not dropped.
-         */
-        [CONTROL_ALERT_CONFIG_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: channelList('config')
-        },
-        [CONFIG_STANDBY_KILLER_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: channelList('config', 'energy')
-        },
         [ELECTRICITY_NAMESPACE]: {
             ...SMART_FAST,
             payload: { dict: 'electricity', channel: 0 },

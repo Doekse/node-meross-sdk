@@ -10,8 +10,8 @@ import {
 } from '../../../src/protocol/codecs/dnd';
 
 describe('System.DNDMode codec', () => {
-    it('encodes GET as an empty payload', () => {
-        assert.deepEqual(encodeDndGet(), {});
+    it('encodes GET as { DNDMode: {} }', () => {
+        assert.deepEqual(encodeDndGet(), { DNDMode: {} });
     });
 
     it('encodes SET with mode 0/1', () => {

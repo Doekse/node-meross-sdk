@@ -13,20 +13,20 @@ import {
 } from '../../../src/protocol/codecs/overtemp';
 
 describe('Config.OverTemp codec', () => {
-    it('encodes GET as an empty payload', () => {
-        assert.deepEqual(encodeConfigOverTempGet(), {});
+    it('encodes GET as { overTemp: {} }', () => {
+        assert.deepEqual(encodeConfigOverTempGet(), { overTemp: {} });
     });
 
-    it('encodes SET with enable 1/2', () => {
+    it('encodes SET with enable 1/0', () => {
         assert.deepEqual(encodeConfigOverTempSet({ enabled: true, type: 1 }), {
             overTemp: { enable: 1, type: 1 }
         });
         assert.deepEqual(encodeConfigOverTempSet({ enabled: false }), {
-            overTemp: { enable: 2 }
+            overTemp: { enable: 0 }
         });
     });
 
-    it('decodes firmware GETACK enable/type', () => {
+    it('decodes firmware GETACK enable 0/1/2', () => {
         assert.deepEqual(
             decodeConfigOverTempGetAck({
                 overTemp: { enable: 1, type: 1 }
@@ -38,6 +38,12 @@ describe('Config.OverTemp codec', () => {
                 overTemp: { enable: 2, type: 2 }
             }),
             { enabled: false, type: 2 }
+        );
+        assert.deepEqual(
+            decodeConfigOverTempGetAck({
+                overTemp: { enable: 0, type: 1 }
+            }),
+            { enabled: false, type: 1 }
         );
     });
 

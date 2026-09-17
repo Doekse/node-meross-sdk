@@ -50,8 +50,7 @@ import {
 import { LIGHT_EFFECT_NAMESPACE } from '../../src/protocol/codecs/light';
 import { MP3_NAMESPACE } from '../../src/protocol/codecs/mp3';
 import {
-    CONFIG_OVERTEMP_NAMESPACE,
-    CONTROL_OVERTEMP_NAMESPACE
+    CONFIG_OVERTEMP_NAMESPACE
 } from '../../src/protocol/codecs/overtemp';
 import { PRESENCE_CONFIG_NAMESPACE } from '../../src/protocol/codecs/presence';
 import {
@@ -245,7 +244,7 @@ describe('buildPollJobs', () => {
             strategy: 'smart',
             periodMs: SENSOR_SLOW_PERIOD_MS,
             periodCloudMs: CLOUDMQTT_PERIOD_MS,
-            payload: {}
+            payload: { DNDMode: {} }
         });
     });
 
@@ -779,28 +778,14 @@ describe('buildPollJobs', () => {
     it('registers Config.OverTemp as smart config', () => {
         const jobs = buildPollJobs(
             ability(CONFIG_OVERTEMP_NAMESPACE),
-            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
+            endpoints([{ channel: CHANNEL, traits: ['overtemp'] }])
         );
         assert.deepEqual(job(jobs, CONFIG_OVERTEMP_NAMESPACE), {
             namespace: CONFIG_OVERTEMP_NAMESPACE,
             strategy: 'smart',
             periodMs: SENSOR_SLOW_PERIOD_MS,
             periodCloudMs: CLOUDMQTT_PERIOD_MS,
-            payload: {}
-        });
-    });
-
-    it('registers Control.OverTemp as smart config', () => {
-        const jobs = buildPollJobs(
-            ability(CONTROL_OVERTEMP_NAMESPACE),
-            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
-        );
-        assert.deepEqual(job(jobs, CONTROL_OVERTEMP_NAMESPACE), {
-            namespace: CONTROL_OVERTEMP_NAMESPACE,
-            strategy: 'smart',
-            periodMs: SENSOR_SLOW_PERIOD_MS,
-            periodCloudMs: CLOUDMQTT_PERIOD_MS,
-            payload: { overTemp: [{ channel: CHANNEL }] }
+            payload: { overTemp: {} }
         });
     });
 
@@ -821,7 +806,7 @@ describe('buildPollJobs', () => {
     it('registers AlertConfig as smart config', () => {
         const jobs = buildPollJobs(
             ability(CONTROL_ALERT_CONFIG_NAMESPACE),
-            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
+            endpoints([{ channel: CHANNEL, traits: ['alert'] }])
         );
         assert.deepEqual(job(jobs, CONTROL_ALERT_CONFIG_NAMESPACE), {
             namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
@@ -832,10 +817,27 @@ describe('buildPollJobs', () => {
         });
     });
 
+    it('omits AlertConfig channels that did not enroll alert', () => {
+        const jobs = buildPollJobs(
+            ability(CONTROL_ALERT_CONFIG_NAMESPACE),
+            endpoints([
+                { channel: CHANNEL, traits: ['energy'] },
+                { channel: 1, traits: ['alert'] }
+            ])
+        );
+        assert.deepEqual(job(jobs, CONTROL_ALERT_CONFIG_NAMESPACE), {
+            namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
+            strategy: 'smart',
+            periodMs: SENSOR_SLOW_PERIOD_MS,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
+            payload: { config: [{ channel: 1 }] }
+        });
+    });
+
     it('registers StandbyKiller as smart config', () => {
         const jobs = buildPollJobs(
             ability(CONFIG_STANDBY_KILLER_NAMESPACE),
-            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
+            endpoints([{ channel: CHANNEL, traits: ['standbykiller'] }])
         );
         assert.deepEqual(job(jobs, CONFIG_STANDBY_KILLER_NAMESPACE), {
             namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
@@ -843,6 +845,23 @@ describe('buildPollJobs', () => {
             periodMs: SENSOR_SLOW_PERIOD_MS,
             periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { config: [{ channel: CHANNEL }] }
+        });
+    });
+
+    it('omits StandbyKiller channels that did not enroll standbykiller', () => {
+        const jobs = buildPollJobs(
+            ability(CONFIG_STANDBY_KILLER_NAMESPACE),
+            endpoints([
+                { channel: CHANNEL, traits: ['energy'] },
+                { channel: 1, traits: ['standbykiller'] }
+            ])
+        );
+        assert.deepEqual(job(jobs, CONFIG_STANDBY_KILLER_NAMESPACE), {
+            namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
+            strategy: 'smart',
+            periodMs: SENSOR_SLOW_PERIOD_MS,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
+            payload: { config: [{ channel: 1 }] }
         });
     });
 

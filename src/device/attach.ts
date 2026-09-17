@@ -1,6 +1,7 @@
 import { Endpoint } from '../endpoint';
 import type { DeviceRequest } from '../request';
 import { AlarmDescriptor, AlarmTrait, type AlarmValues } from '../traits/alarm';
+import { AlertDescriptor, AlertTrait, type AlertValues } from '../traits/alert';
 import { ClimateDescriptor, ClimateTrait, type ClimateValues } from '../traits/climate';
 import { CoverDescriptor, CoverTrait, type CoverValues } from '../traits/cover';
 import { DiffuserDescriptor, DiffuserTrait, type DiffuserValues } from '../traits/diffuser';
@@ -9,10 +10,12 @@ import { EnergyDescriptor, EnergyTrait, type EnergyValues } from '../traits/ener
 import { FanDescriptor, FanTrait, type FanValues } from '../traits/fan';
 import { LightDescriptor, LightTrait, type LightValues } from '../traits/light';
 import { MediaDescriptor, MediaTrait, type MediaValues } from '../traits/media';
+import { OverTempDescriptor, OverTempTrait, type OverTempValues } from '../traits/overtemp';
 import { PresenceDescriptor, PresenceTrait, type PresenceValues } from '../traits/presence';
 import { SensorDescriptor, SensorTrait, type SensorValues } from '../traits/sensor';
 import { SprayDescriptor, SprayTrait, type SprayValues } from '../traits/spray';
 import { SprinklerDescriptor, SprinklerTrait, type SprinklerValues } from '../traits/sprinkler';
+import { StandbyKillerDescriptor, StandbyKillerTrait, type StandbyKillerValues } from '../traits/standbykiller';
 import { SwitchDescriptor, SwitchTrait, type SwitchValues } from '../traits/switch';
 import { SystemDescriptor, SystemTrait, type SystemValues } from '../traits/system';
 import { TimerDescriptor, TimerTrait, type TimerValues } from '../traits/timer';
@@ -81,8 +84,17 @@ export function attachEndpoint(
         alarm: (values: AlarmValues) => {
             endpoint.emit('change', { trait: 'alarm', values: { ...values } });
         },
+        alert: (values: AlertValues) => {
+            endpoint.emit('change', { trait: 'alert', values: { ...values } });
+        },
         dnd: (values: DndValues) => {
             endpoint.emit('change', { trait: 'dnd', values: { ...values } });
+        },
+        overtemp: (values: OverTempValues) => {
+            endpoint.emit('change', { trait: 'overtemp', values: { ...values } });
+        },
+        standbykiller: (values: StandbyKillerValues) => {
+            endpoint.emit('change', { trait: 'standbykiller', values: { ...values } });
         },
         system: (values: SystemValues) => {
             endpoint.emit('change', { trait: 'system', values: { ...values } });
@@ -107,7 +119,10 @@ export function attachEndpoint(
     let diffuserTrait: DiffuserTrait | undefined;
     let mediaTrait: MediaTrait | undefined;
     let alarmTrait: AlarmTrait | undefined;
+    let alertTrait: AlertTrait | undefined;
     let dndTrait: DndTrait | undefined;
+    let overTempTrait: OverTempTrait | undefined;
+    let standbyKillerTrait: StandbyKillerTrait | undefined;
     let systemTrait: SystemTrait | undefined;
     let timerTrait: TimerTrait | undefined;
     let triggerTrait: TriggerTrait | undefined;
@@ -241,6 +256,16 @@ export function attachEndpoint(
             emitChange: emit.alarm
         });
     }
+    if (graphEndpoint.traits.includes('alert')) {
+        alertTrait = AlertDescriptor.attach({
+            graphEndpoint,
+            physical,
+            request,
+            channel,
+            namespaces,
+            emitChange: emit.alert
+        });
+    }
     if (graphEndpoint.traits.includes('dnd')) {
         dndTrait = DndDescriptor.attach({
             graphEndpoint,
@@ -249,6 +274,26 @@ export function attachEndpoint(
             channel,
             namespaces,
             emitChange: emit.dnd
+        });
+    }
+    if (graphEndpoint.traits.includes('overtemp')) {
+        overTempTrait = OverTempDescriptor.attach({
+            graphEndpoint,
+            physical,
+            request,
+            channel,
+            namespaces,
+            emitChange: emit.overtemp
+        });
+    }
+    if (graphEndpoint.traits.includes('standbykiller')) {
+        standbyKillerTrait = StandbyKillerDescriptor.attach({
+            graphEndpoint,
+            physical,
+            request,
+            channel,
+            namespaces,
+            emitChange: emit.standbykiller
         });
     }
     if (graphEndpoint.traits.includes('system')) {
@@ -297,7 +342,10 @@ export function attachEndpoint(
         diffuser: diffuserTrait,
         media: mediaTrait,
         alarm: alarmTrait,
+        alert: alertTrait,
         dnd: dndTrait,
+        overtemp: overTempTrait,
+        standbykiller: standbyKillerTrait,
         system: systemTrait,
         timer: timerTrait,
         trigger: triggerTrait,

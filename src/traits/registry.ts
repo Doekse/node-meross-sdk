@@ -1,6 +1,7 @@
 import type { TraitName } from '../endpoint';
 import type { TraitDescriptor } from './descriptor';
 import { AlarmDescriptor } from './alarm';
+import { AlertDescriptor } from './alert';
 import { ClimateDescriptor } from './climate';
 import { CoverDescriptor } from './cover';
 import { DiffuserDescriptor } from './diffuser';
@@ -9,10 +10,12 @@ import { EnergyDescriptor } from './energy';
 import { FanDescriptor } from './fan';
 import { LightDescriptor } from './light';
 import { MediaDescriptor } from './media';
+import { OverTempDescriptor } from './overtemp';
 import { PresenceDescriptor } from './presence';
 import { SensorDescriptor } from './sensor';
 import { SprayDescriptor } from './spray';
 import { SprinklerDescriptor } from './sprinkler';
+import { StandbyKillerDescriptor } from './standbykiller';
 import { SwitchDescriptor } from './switch';
 import { SystemDescriptor } from './system';
 import { TimerDescriptor } from './timer';
@@ -37,7 +40,10 @@ export const TRAIT_DESCRIPTORS = {
     diffuser: DiffuserDescriptor,
     media: MediaDescriptor,
     alarm: AlarmDescriptor,
+    alert: AlertDescriptor,
     dnd: DndDescriptor,
+    overtemp: OverTempDescriptor,
+    standbykiller: StandbyKillerDescriptor,
     system: SystemDescriptor,
     timer: TimerDescriptor,
     trigger: TriggerDescriptor
