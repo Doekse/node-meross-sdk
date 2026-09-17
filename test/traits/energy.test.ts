@@ -6,14 +6,11 @@ import { describe, it } from 'node:test';
 import { Endpoint, type EndpointChange } from '../../src/endpoint';
 import { CommandError, ProtocolError, TransportError } from '../../src/errors';
 import {
-    CONFIG_OVERTEMP_NAMESPACE,
     CONSUMPTIONH_NAMESPACE,
     CONSUMPTIONX_NAMESPACE,
     CONSUMPTION_CONFIG_NAMESPACE,
-    CONTROL_OVERTEMP_NAMESPACE,
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_NAMESPACE,
-    encodeConfigOverTempSet,
     encodeConsumptionConfigGet,
     encodeConsumptionHGet,
     decodeMessage,
@@ -141,9 +138,6 @@ function defaultEnergyAck(
                 }
             }
         });
-    }
-    if (opts.namespace === CONFIG_OVERTEMP_NAMESPACE) {
-        return traitAck(sent, { key: KEY });
     }
     throw new Error(`unexpected namespace ${opts.namespace}`);
 }
@@ -694,124 +688,6 @@ describe('EnergyTrait calibration', () => {
 
         assert.deepEqual(changes, []);
     });
-});
-
-describe('EnergyTrait over-temp', () => {
-    const overTempNamespaces = new Set([
-        CONFIG_OVERTEMP_NAMESPACE,
-        CONTROL_OVERTEMP_NAMESPACE
-    ]);
-
-    it('SETs Config.OverTemp and emits change', async () => {
-        const { endpoint, trait, requests } = createEnergyHarness({
-            hasConsumptionX: false,
-            namespaces: overTempNamespaces
-        });
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        await trait.setOverTemp(false, 2);
-
-        assert.deepEqual(recordedCalls(requests), [{
-            namespace: CONFIG_OVERTEMP_NAMESPACE,
-            method: 'SET',
-            payload: encodeConfigOverTempSet({ enabled: false, type: 2 })
-        }]);
-        assert.deepEqual(changes, [{
-            trait: 'energy',
-            values: { overTempEnabled: false, overTempType: 2 }
-        }]);
-    });
-
-    it('no-ops setOverTemp when Config.OverTemp is absent', async () => {
-        const { trait, requests } = createEnergyHarness({ hasConsumptionX: false });
-
-        await trait.setOverTemp(true);
-
-        assert.equal(requests.length, 0);
-    });
-
-    it('does not emit change when Config.OverTemp PUSH repeats the same values', () => {
-        const { endpoint, trait } = createEnergyHarness({
-            hasConsumptionX: false,
-            namespaces: overTempNamespaces
-        });
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        const push = encodeMessage({
-            namespace: CONFIG_OVERTEMP_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: `/appliance/${UUID}/publish`,
-            uuid: UUID,
-            payload: { overTemp: { enable: 1, type: 1 } }
-        });
-        trait.handlePush(push);
-        trait.handlePush(push);
-
-        assert.deepEqual(changes, [{
-            trait: 'energy',
-            values: { overTempEnabled: true, overTempType: 1 }
-        }]);
-    });
-
-    it('ignores Control.OverTemp PUSH for other channels', () => {
-        const { endpoint, trait } = createEnergyHarness({
-            hasConsumptionX: false,
-            namespaces: overTempNamespaces
-        });
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        trait.handlePush(encodeMessage({
-            namespace: CONTROL_OVERTEMP_NAMESPACE,
-            method: 'PUSH',
-            key: KEY,
-            from: `/appliance/${UUID}/publish`,
-            uuid: UUID,
-            payload: {
-                overTemp: [{
-                    channel: 1,
-                    value: 1,
-                    timestamp: 99,
-                    type: 1
-                }]
-            }
-        }));
-
-        assert.deepEqual(changes, []);
-    });
-
-    it('applies Control.OverTemp SET for the bound device', () => {
-        const { endpoint, trait } = createEnergyHarness({
-            hasConsumptionX: false,
-            namespaces: overTempNamespaces
-        });
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        trait.handlePush(encodeMessage({
-            namespace: CONTROL_OVERTEMP_NAMESPACE,
-            method: 'SET',
-            key: KEY,
-            from: `/appliance/${UUID}/publish`,
-            uuid: UUID,
-            payload: {
-                overTemp: {
-                    value: 1,
-                    timestamp: 42,
-                    type: 1
-                }
-            }
-        }));
-
-        assert.deepEqual(changes, [{
-            trait: 'energy',
-            values: { overTempActive: true, overTempTimestamp: 42 }
-        }]);
-    });
-
 });
 
 describe('EnergyTrait consumption delete', () => {
