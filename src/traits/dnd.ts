@@ -1,4 +1,9 @@
 import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import {
+    enrollBoardExtra,
+    enrollHubExtra,
+    enrollStandalone
+} from '../device/enroll-helpers';
 import type { TraitName } from '../endpoint';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import {
@@ -71,29 +76,17 @@ function hasDnd(ability: AbilityMap): boolean {
  * Device-wide DND rides channel 0 when some other trait already claimed it.
  */
 export function enrollBoardDndExtra(input: EnrollBoardExtraInput): TraitName[] {
-    if (
-        hasDnd(input.ability)
-        && input.channel === 0
-        && !input.traits.includes('dnd')
-    ) {
-        return ['dnd'];
-    }
-    return [];
+    return enrollBoardExtra(input, hasDnd(input.ability), 'dnd');
 }
 
 /** Standalone DND when nothing else claimed channel 0. */
 export function enrollDndStandalone(ctx: EnrollBoardContext): void {
-    if (hasDnd(ctx.ability) && !ctx.taken.has(0)) {
-        ctx.add(0, 'socket', ['dnd']);
-    }
+    enrollStandalone(ctx, hasDnd(ctx.ability), 'socket', 'dnd');
 }
 
 /** Hub parent carries DND beside system when Ability advertises it. */
 export function enrollHubDndExtra(ability: AbilityMap): TraitName[] {
-    if (!hasDnd(ability)) {
-        return [];
-    }
-    return ['dnd'];
+    return enrollHubExtra(hasDnd(ability), 'dnd');
 }
 
 export const DndDescriptor: TraitDescriptor & {

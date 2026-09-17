@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Internal enroll helpers: digest-or-ability channel 0 and channel-0 extra/standalone live in `src/device/enroll-helpers.ts`; hub-child classification walks a local climate → sensor → sprinkler list. No host-visible API or behavior change.
 - Internal trait bind: `uuid` is no longer on `*TraitBind`. Session still closes `DeviceRequest` over `PhysicalDevice.uuid`. No host-visible API or behavior change.
 - Internal codec helper: one-entry list wrap lives in `src/protocol/codecs/payload.ts`. No host-visible API or behavior change.
 - Internal catalog records colocate per-trait poll ownership; no host-visible API or behavior change.

@@ -1,4 +1,9 @@
 import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import {
+    enrollBoardExtra,
+    enrollHubExtra,
+    enrollStandalone
+} from '../device/enroll-helpers';
 import type { TraitName } from '../endpoint';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import {
@@ -181,29 +186,17 @@ function hasAlarm(ability: AbilityMap): boolean {
  * Hub / board siren rides channel 0 when some other trait already claimed it.
  */
 export function enrollBoardAlarmExtra(input: EnrollBoardExtraInput): TraitName[] {
-    if (
-        hasAlarm(input.ability)
-        && input.channel === 0
-        && !input.traits.includes('alarm')
-    ) {
-        return ['alarm'];
-    }
-    return [];
+    return enrollBoardExtra(input, hasAlarm(input.ability), 'alarm');
 }
 
 /** Standalone alarm when nothing else claimed channel 0. */
 export function enrollAlarmStandalone(ctx: EnrollBoardContext): void {
-    if (hasAlarm(ctx.ability) && !ctx.taken.has(0)) {
-        ctx.add(0, 'socket', ['alarm']);
-    }
+    enrollStandalone(ctx, hasAlarm(ctx.ability), 'socket', 'alarm');
 }
 
 /** Hub parent carries alarm beside system when Ability advertises it. */
 export function enrollHubAlarmExtra(ability: AbilityMap): TraitName[] {
-    if (!hasAlarm(ability)) {
-        return [];
-    }
-    return ['alarm'];
+    return enrollHubExtra(hasAlarm(ability), 'alarm');
 }
 
 export const AlarmDescriptor: TraitDescriptor & {

@@ -1,6 +1,7 @@
 import type { CloudDevice, CloudSubDevice } from '../cloud';
 import type { TraitName } from '../endpoint';
 import type { ClassHint, InventoryRow } from '../inventory';
+import type { HubChildRule } from '../traits/descriptor';
 import type {
     SystemFirmwareState,
     SystemHardwareState,
@@ -256,6 +257,15 @@ export class DeviceGraph {
 }
 
 /**
+ * Local climate → sensor → sprinkler order. Must not be derived from
+ * TRAIT_DESCRIPTORS — enroll must not iterate that catalog.
+ */
+const HUB_CHILD_RULES: readonly {
+    readonly name: TraitName;
+    readonly hubChild: HubChildRule;
+}[] = [ClimateDescriptor, SensorDescriptor, SprinklerDescriptor];
+
+/**
  * Unknown digest types return undefined so enrollHub can fall back to onoff
  * or omit the row. Alias rewrite consults the three hubChild maps before
  * model-set lookup (climate → sensor → sprinkler).
@@ -269,31 +279,22 @@ function classifyHubChild(raw: string | undefined): {
         return undefined;
     }
     const lowered = raw.toLowerCase();
-    const model =
-        ClimateDescriptor.hubChild.aliases[lowered]
-        ?? SensorDescriptor.hubChild.aliases[lowered]
-        ?? SprinklerDescriptor.hubChild.aliases[lowered]
-        ?? lowered;
-    if (ClimateDescriptor.hubChild.models.has(model)) {
-        return {
-            model,
-            classHint: ClimateDescriptor.hubChild.classHint,
-            traits: ['climate']
-        };
+    let model = lowered;
+    for (const descriptor of HUB_CHILD_RULES) {
+        const aliased = descriptor.hubChild.aliases[lowered];
+        if (aliased !== undefined) {
+            model = aliased;
+            break;
+        }
     }
-    if (SensorDescriptor.hubChild.models.has(model)) {
-        return {
-            model,
-            classHint: SensorDescriptor.hubChild.classHint,
-            traits: ['sensor']
-        };
-    }
-    if (SprinklerDescriptor.hubChild.models.has(model)) {
-        return {
-            model,
-            classHint: SprinklerDescriptor.hubChild.classHint,
-            traits: ['sprinkler']
-        };
+    for (const descriptor of HUB_CHILD_RULES) {
+        if (descriptor.hubChild.models.has(model)) {
+            return {
+                model,
+                classHint: descriptor.hubChild.classHint,
+                traits: [descriptor.name]
+            };
+        }
     }
     return undefined;
 }

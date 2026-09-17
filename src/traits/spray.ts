@@ -1,4 +1,5 @@
 import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+import { enrollDigest } from '../device/enroll-helpers';
 import {
     SPRAY_NAMESPACE,
     decodeSprayPush,
@@ -78,15 +79,7 @@ export class SprayTrait {
  * channel 0 so leftover ToggleX does not enroll the humidifier as a socket.
  */
 export function enrollSpray(ctx: EnrollBoardContext): void {
-    if (ctx.all.digest.spray.length > 0) {
-        for (const channel of ctx.all.digest.spray) {
-            ctx.add(channel, 'humidifier', ['spray']);
-        }
-        return;
-    }
-    if (SPRAY_NAMESPACE in ctx.ability) {
-        ctx.add(0, 'humidifier', ['spray']);
-    }
+    enrollDigest(ctx, ctx.all.digest.spray, SPRAY_NAMESPACE, 'humidifier', 'spray');
 }
 
 export const SprayDescriptor: TraitDescriptor & {

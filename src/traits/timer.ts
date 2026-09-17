@@ -1,4 +1,5 @@
 import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import { enrollBoardTimerTriggerExtra } from '../device/enroll-helpers';
 import type { TraitName } from '../endpoint';
 import { MerossError } from '../errors';
 import {
@@ -254,19 +255,7 @@ function hasTimer(ability: EnrollBoardExtraInput['ability']): boolean {
  * extend objects. Skip when media already claimed the endpoint.
  */
 export function enrollBoardTimerExtra(input: EnrollBoardExtraInput): TraitName[] {
-    if (!hasTimer(input.ability)) {
-        return [];
-    }
-    if (input.classHint !== 'socket' && input.classHint !== 'light' && input.classHint !== 'fan') {
-        return [];
-    }
-    if (input.traits.includes('timer')) {
-        return [];
-    }
-    if (input.traits.includes('media') || input.extra.includes('media')) {
-        return [];
-    }
-    return ['timer'];
+    return enrollBoardTimerTriggerExtra(input, hasTimer(input.ability), 'timer');
 }
 
 export const TimerDescriptor: TraitDescriptor & {

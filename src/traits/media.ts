@@ -1,4 +1,5 @@
 import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import { enrollBoardExtra, enrollStandalone } from '../device/enroll-helpers';
 import type { TraitName } from '../endpoint';
 import {
     MP3_NAMESPACE,
@@ -137,21 +138,12 @@ function hasMedia(ability: EnrollBoardExtraInput['ability']): boolean {
  * Mp3 rides channel 0 when some other trait already claimed it.
  */
 export function enrollBoardMediaExtra(input: EnrollBoardExtraInput): TraitName[] {
-    if (
-        hasMedia(input.ability)
-        && input.channel === 0
-        && !input.traits.includes('media')
-    ) {
-        return ['media'];
-    }
-    return [];
+    return enrollBoardExtra(input, hasMedia(input.ability), 'media');
 }
 
 /** Standalone speaker when nothing else claimed channel 0. */
 export function enrollMediaStandalone(ctx: EnrollBoardContext): void {
-    if (hasMedia(ctx.ability) && !ctx.taken.has(0)) {
-        ctx.add(0, 'speaker', ['media']);
-    }
+    enrollStandalone(ctx, hasMedia(ctx.ability), 'speaker', 'media');
 }
 
 export const MediaDescriptor: TraitDescriptor & {

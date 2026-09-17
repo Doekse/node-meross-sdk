@@ -1,4 +1,5 @@
 import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+import { enrollDigest } from '../device/enroll-helpers';
 import {
     FAN_BTN_CONFIG_NAMESPACE,
     FAN_CONFIG_NAMESPACE,
@@ -269,15 +270,7 @@ function clamp01(value: number): number {
  * channel 0 so leftover ToggleX does not enroll the fan as a socket.
  */
 export function enrollFan(ctx: EnrollBoardContext): void {
-    if (ctx.all.digest.fan.length > 0) {
-        for (const channel of ctx.all.digest.fan) {
-            ctx.add(channel, 'fan', ['fan']);
-        }
-        return;
-    }
-    if (FAN_NAMESPACE in ctx.ability) {
-        ctx.add(0, 'fan', ['fan']);
-    }
+    enrollDigest(ctx, ctx.all.digest.fan, FAN_NAMESPACE, 'fan', 'fan');
 }
 
 export const FanDescriptor: TraitDescriptor & {

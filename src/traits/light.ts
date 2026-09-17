@@ -1,4 +1,5 @@
 import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+import { enrollDigest } from '../device/enroll-helpers';
 import {
     LIGHT_CAPACITY_EFFECT,
     LIGHT_CAPACITY_LUMINANCE,
@@ -313,15 +314,7 @@ function clampInt(value: number, min: number, max: number): number {
  * so leftover ToggleX does not enroll the bulb as a socket.
  */
 export function enrollLight(ctx: EnrollBoardContext): void {
-    if (ctx.all.digest.light.length > 0) {
-        for (const channel of ctx.all.digest.light) {
-            ctx.add(channel, 'light', ['light']);
-        }
-        return;
-    }
-    if (LIGHT_NAMESPACE in ctx.ability) {
-        ctx.add(0, 'light', ['light']);
-    }
+    enrollDigest(ctx, ctx.all.digest.light, LIGHT_NAMESPACE, 'light', 'light');
 }
 
 export const LightDescriptor: TraitDescriptor & {
