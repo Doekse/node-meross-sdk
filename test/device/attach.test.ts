@@ -7,6 +7,7 @@ import type { Endpoint, EndpointChange, TraitName } from '../../src/endpoint';
 import {
     CONTROL_TIMER_NAMESPACE,
     CONTROL_TRIGGER_NAMESPACE,
+    CONTROL_ALERT_CONFIG_NAMESPACE,
     DND_MODE_NAMESPACE,
     FAN_NAMESPACE,
     GARAGE_STATE_NAMESPACE,
@@ -222,6 +223,26 @@ describe('attachEndpoint dnd', () => {
 
         assert.deepEqual(changes, [{ trait: 'dnd', values: { on: true } }]);
         assert.deepEqual(narrowedOn, [true]);
+    });
+});
+
+describe('attachEndpoint alert', () => {
+    it('emits { trait: alert, values } on AlertConfig PUSH', () => {
+        const { endpoint } = createHarness({
+            traits: ['alert'],
+            ability: { [CONTROL_ALERT_CONFIG_NAMESPACE]: {} }
+        });
+        const changes: EndpointChange[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        endpoint.handlePush(pushMessage(CONTROL_ALERT_CONFIG_NAMESPACE, {
+            config: [{ channel: CHANNEL, type: 3, value: { em06: { a: 1 } } }]
+        }));
+
+        assert.deepEqual(changes, [{
+            trait: 'alert',
+            values: { type: 3, value: { em06: { a: 1 } } }
+        }]);
     });
 });
 

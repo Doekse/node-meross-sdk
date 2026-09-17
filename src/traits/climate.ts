@@ -4,8 +4,6 @@ import {
     CALIBRATION_NAMESPACE,
     COMPRESSOR_DELAY_NAMESPACE,
     CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
-    CONTROL_ALERT_CONFIG_NAMESPACE,
-    CONTROL_ALERT_REPORT_NAMESPACE,
     CTL_RANGE_NAMESPACE,
     DEAD_ZONE_NAMESPACE,
     FROST_NAMESPACE,
@@ -38,8 +36,6 @@ import {
     SCREEN_BRIGHTNESS_NAMESPACE,
     decodeAlarm,
     decodeAlarmConfig,
-    decodeAlertConfigPush,
-    decodeAlertReportPush,
     decodeCalibration,
     decodeCompressorDelay,
     decodeCtlRange,
@@ -72,7 +68,6 @@ import {
     decodeTimer,
     decodeWindowOpened,
     encodeAlarmConfigSet,
-    encodeAlertConfigSet,
     encodeCalibrationSet,
     encodeCompressorDelaySet,
     encodeCtlRangeSet,
@@ -207,9 +202,6 @@ export interface ClimateValues {
     fault?: number;
     firmwareVersion?: string;
     hardwareVersion?: string;
-    alertConfigType?: number;
-    alertConfig?: Record<string, unknown>;
-    alertReport?: Record<string, unknown>;
     /** Config.Sensor.Association `temp.association` (2 = internal on MTS300). */
     tempAssociation?: number;
 }
@@ -828,31 +820,6 @@ export class ClimateTrait {
     }
 
     /**
-     * SET Control.AlertConfig for this channel. No-op when absent (MTS300).
-     */
-    async setAlertConfig(options: {
-        type?: number;
-        value?: Record<string, unknown>;
-    }): Promise<typeof options> {
-        if (!this.has(CONTROL_ALERT_CONFIG_NAMESPACE) || this.bind.kind !== 'board') {
-            return options;
-        }
-        await this.bind.request({
-            namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
-            method: 'SET',
-            payload: encodeAlertConfigSet({
-                channel: this.bind.channel,
-                ...options
-            })
-        });
-        this.applyChange({
-            ...(options.type !== undefined ? { alertConfigType: options.type } : {}),
-            ...(options.value !== undefined ? { alertConfig: options.value } : {})
-        });
-        return options;
-    }
-
-    /**
      * SET Config.Sensor.Association temp binding. No-op when absent (MTS300).
      */
     async setTempAssociation(tempAssociation: number): Promise<{ tempAssociation: number }> {
@@ -1267,21 +1234,6 @@ export class ClimateTrait {
                 const { channel: _channel, ...system } = entry;
                 this.lastSystem = { ...this.lastSystem, ...system };
             }
-            return;
-        }
-        if (ns === CONTROL_ALERT_CONFIG_NAMESPACE) {
-            this.applyMatching(decodeAlertConfigPush(payload).map((entry) => ({
-                channel: entry.channel,
-                ...(entry.type !== undefined ? { alertConfigType: entry.type } : {}),
-                ...(entry.value !== undefined ? { alertConfig: entry.value } : {})
-            })));
-            return;
-        }
-        if (ns === CONTROL_ALERT_REPORT_NAMESPACE) {
-            this.applyMatching(decodeAlertReportPush(payload).map((entry) => ({
-                channel: entry.channel,
-                alertReport: entry.fields
-            })));
             return;
         }
         if (ns === CONFIG_SENSOR_ASSOCIATION_NAMESPACE) {

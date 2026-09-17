@@ -58,11 +58,11 @@ import { FAN_CONFIG_NAMESPACE, FAN_NAMESPACE, FILTER_MAINTENANCE_NAMESPACE } fro
 import { LIGHT_EFFECT_NAMESPACE, LIGHT_NAMESPACE } from '../protocol/codecs/light';
 import { MP3_NAMESPACE } from '../protocol/codecs/mp3';
 import {
-    CONFIG_OVERTEMP_NAMESPACE
-} from '../protocol/codecs/overtemp';
-import {
     CONTROL_ALERT_CONFIG_NAMESPACE
 } from '../protocol/codecs/alertconfig';
+import {
+    CONFIG_OVERTEMP_NAMESPACE
+} from '../protocol/codecs/overtemp';
 import { CONFIG_STANDBY_KILLER_NAMESPACE } from '../protocol/codecs/standbykiller';
 import { PRESENCE_CONFIG_NAMESPACE } from '../protocol/codecs/presence';
 import {
@@ -102,6 +102,7 @@ import { CONTROL_WATER_NAMESPACE, DEVICE_CFG_NAMESPACE } from '../protocol/codec
 import type { MerossPayload } from '../protocol/message';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import { AlarmDescriptor } from '../traits/alarm';
+import { AlertDescriptor } from '../traits/alert';
 import { ClimateDescriptor } from '../traits/climate';
 import { CoverDescriptor } from '../traits/cover';
 import { DiffuserDescriptor } from '../traits/diffuser';
@@ -203,7 +204,7 @@ export const POLL: Record<string, PollSpec> = {
     [SYSTEM_DEBUG_NAMESPACE]: SystemDescriptor.poll[SYSTEM_DEBUG_NAMESPACE],
     [CONFIG_OVERTEMP_NAMESPACE]: OverTempDescriptor.poll[CONFIG_OVERTEMP_NAMESPACE],
     [CONFIG_SENSOR_ASSOCIATION_NAMESPACE]: SensorDescriptor.poll[CONFIG_SENSOR_ASSOCIATION_NAMESPACE],
-    [CONTROL_ALERT_CONFIG_NAMESPACE]: EnergyDescriptor.poll[CONTROL_ALERT_CONFIG_NAMESPACE],
+    [CONTROL_ALERT_CONFIG_NAMESPACE]: AlertDescriptor.poll[CONTROL_ALERT_CONFIG_NAMESPACE],
     [CONFIG_STANDBY_KILLER_NAMESPACE]: EnergyDescriptor.poll[CONFIG_STANDBY_KILLER_NAMESPACE],
 
     // Digest / device state

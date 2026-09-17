@@ -6,15 +6,11 @@ import {
     CONSUMPTIONH_NAMESPACE,
     CONSUMPTIONX_NAMESPACE,
     CONSUMPTION_CONFIG_NAMESPACE,
-    CONTROL_ALERT_CONFIG_NAMESPACE,
-    CONTROL_ALERT_REPORT_NAMESPACE,
     CONTROL_OVERTEMP_NAMESPACE,
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_ALL_CHANNELS,
     ELECTRICITYX_NAMESPACE,
     consumptionXDays,
-    decodeAlertConfigPush,
-    decodeAlertReportPush,
     decodeConfigOverTempPush,
     decodeConsumptionConfigGetAck,
     decodeConsumptionHGetAck,
@@ -23,7 +19,6 @@ import {
     decodeElectricityGetAck,
     decodeElectricityXGetAck,
     decodeStandbyKillerPush,
-    encodeAlertConfigSet,
     encodeConfigOverTempSet,
     encodeConsumptionConfigGet,
     encodeConsumptionHGet,
@@ -32,8 +27,6 @@ import {
     encodeElectricityGet,
     encodeElectricityXGet,
     encodeStandbyKillerSet,
-    type AlertConfigEntry,
-    type AlertReportEntry,
     type ConfigOverTempState,
     type ConsumptionHHour,
     type ConsumptionXDay,
@@ -67,9 +60,6 @@ export interface EnergyValues {
     overTempType?: number;
     overTempActive?: boolean;
     overTempTimestamp?: number;
-    alertConfigType?: number;
-    alertConfig?: Record<string, unknown>;
-    alertReport?: Record<string, unknown>;
     standbyKillerEnabled?: boolean;
     standbyKillerPower?: number;
     standbyKillerTime?: number;
@@ -175,31 +165,6 @@ export class EnergyTrait {
     }
 
     /**
-     * SET Control.AlertConfig for this channel. No-op when absent (EM06 / similar).
-     */
-    async setAlertConfig(options: {
-        type?: number;
-        value?: Record<string, unknown>;
-    }): Promise<void> {
-        if (!this.has(CONTROL_ALERT_CONFIG_NAMESPACE)) {
-            return;
-        }
-        await this.bind.request({
-            namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
-            method: 'SET',
-            payload: encodeAlertConfigSet({
-                channel: this.bind.channel,
-                ...options
-            })
-        });
-        this.applyAlertConfig({
-            channel: this.bind.channel,
-            ...(options.type !== undefined ? { type: options.type } : {}),
-            ...(options.value !== undefined ? { value: options.value } : {})
-        });
-    }
-
-    /**
      * SET Config.StandbyKiller for this channel (MSS305). No-op when absent.
      */
     async setStandbyKiller(options: {
@@ -280,22 +245,6 @@ export class EnergyTrait {
                 .find((row) => row.channel === this.bind.channel);
             if (entry) {
                 this.applyControlOverTemp(entry);
-            }
-            return;
-        }
-        if (message.header.namespace === CONTROL_ALERT_CONFIG_NAMESPACE && this.has(CONTROL_ALERT_CONFIG_NAMESPACE)) {
-            const entry = decodeAlertConfigPush(message.payload)
-                .find((row) => row.channel === this.bind.channel);
-            if (entry) {
-                this.applyAlertConfig(entry);
-            }
-            return;
-        }
-        if (message.header.namespace === CONTROL_ALERT_REPORT_NAMESPACE && this.has(CONTROL_ALERT_REPORT_NAMESPACE)) {
-            const entry = decodeAlertReportPush(message.payload)
-                .find((row) => row.channel === this.bind.channel);
-            if (entry) {
-                this.applyAlertReport(entry);
             }
             return;
         }
@@ -396,21 +345,6 @@ export class EnergyTrait {
         this.applyChange(values);
     }
 
-    private applyAlertConfig(entry: AlertConfigEntry): void {
-        const values: EnergyValues = {};
-        if (entry.type !== undefined) {
-            values.alertConfigType = entry.type;
-        }
-        if (entry.value !== undefined) {
-            values.alertConfig = entry.value;
-        }
-        this.applyChange(values);
-    }
-
-    private applyAlertReport(entry: AlertReportEntry): void {
-        this.applyChange({ alertReport: entry.fields });
-    }
-
     private applyStandbyKiller(entry: StandbyKillerEntry): void {
         const values: EnergyValues = {};
         if (entry.enabled !== undefined) {
@@ -460,14 +394,6 @@ export const EnergyDescriptor: TraitDescriptor & {
 } = {
     name: 'energy',
     poll: {
-        /**
-         * Shared with climate board SET/PUSH; keep unfiltered
-         * `channelList('config')` so MTS300 GETs are not dropped.
-         */
-        [CONTROL_ALERT_CONFIG_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: channelList('config')
-        },
         [CONFIG_STANDBY_KILLER_NAMESPACE]: {
             ...SMART_CONFIG,
             payload: channelList('config', 'energy')

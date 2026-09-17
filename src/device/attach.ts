@@ -1,6 +1,7 @@
 import { Endpoint } from '../endpoint';
 import type { DeviceRequest } from '../request';
 import { AlarmDescriptor, AlarmTrait, type AlarmValues } from '../traits/alarm';
+import { AlertDescriptor, AlertTrait, type AlertValues } from '../traits/alert';
 import { ClimateDescriptor, ClimateTrait, type ClimateValues } from '../traits/climate';
 import { CoverDescriptor, CoverTrait, type CoverValues } from '../traits/cover';
 import { DiffuserDescriptor, DiffuserTrait, type DiffuserValues } from '../traits/diffuser';
@@ -81,6 +82,9 @@ export function attachEndpoint(
         alarm: (values: AlarmValues) => {
             endpoint.emit('change', { trait: 'alarm', values: { ...values } });
         },
+        alert: (values: AlertValues) => {
+            endpoint.emit('change', { trait: 'alert', values: { ...values } });
+        },
         dnd: (values: DndValues) => {
             endpoint.emit('change', { trait: 'dnd', values: { ...values } });
         },
@@ -107,6 +111,7 @@ export function attachEndpoint(
     let diffuserTrait: DiffuserTrait | undefined;
     let mediaTrait: MediaTrait | undefined;
     let alarmTrait: AlarmTrait | undefined;
+    let alertTrait: AlertTrait | undefined;
     let dndTrait: DndTrait | undefined;
     let systemTrait: SystemTrait | undefined;
     let timerTrait: TimerTrait | undefined;
@@ -241,6 +246,16 @@ export function attachEndpoint(
             emitChange: emit.alarm
         });
     }
+    if (graphEndpoint.traits.includes('alert')) {
+        alertTrait = AlertDescriptor.attach({
+            graphEndpoint,
+            physical,
+            request,
+            channel,
+            namespaces,
+            emitChange: emit.alert
+        });
+    }
     if (graphEndpoint.traits.includes('dnd')) {
         dndTrait = DndDescriptor.attach({
             graphEndpoint,
@@ -297,6 +312,7 @@ export function attachEndpoint(
         diffuser: diffuserTrait,
         media: mediaTrait,
         alarm: alarmTrait,
+        alert: alertTrait,
         dnd: dndTrait,
         system: systemTrait,
         timer: timerTrait,

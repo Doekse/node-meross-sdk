@@ -806,7 +806,7 @@ describe('buildPollJobs', () => {
     it('registers AlertConfig as smart config', () => {
         const jobs = buildPollJobs(
             ability(CONTROL_ALERT_CONFIG_NAMESPACE),
-            endpoints([{ channel: CHANNEL, traits: ['energy'] }])
+            endpoints([{ channel: CHANNEL, traits: ['alert'] }])
         );
         assert.deepEqual(job(jobs, CONTROL_ALERT_CONFIG_NAMESPACE), {
             namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
@@ -814,6 +814,23 @@ describe('buildPollJobs', () => {
             periodMs: SENSOR_SLOW_PERIOD_MS,
             periodCloudMs: CLOUDMQTT_PERIOD_MS,
             payload: { config: [{ channel: CHANNEL }] }
+        });
+    });
+
+    it('omits AlertConfig channels that did not enroll alert', () => {
+        const jobs = buildPollJobs(
+            ability(CONTROL_ALERT_CONFIG_NAMESPACE),
+            endpoints([
+                { channel: CHANNEL, traits: ['energy'] },
+                { channel: 1, traits: ['alert'] }
+            ])
+        );
+        assert.deepEqual(job(jobs, CONTROL_ALERT_CONFIG_NAMESPACE), {
+            namespace: CONTROL_ALERT_CONFIG_NAMESPACE,
+            strategy: 'smart',
+            periodMs: SENSOR_SLOW_PERIOD_MS,
+            periodCloudMs: CLOUDMQTT_PERIOD_MS,
+            payload: { config: [{ channel: 1 }] }
         });
     });
 

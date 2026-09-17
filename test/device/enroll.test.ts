@@ -252,6 +252,102 @@ describe('enrollPhysicalDevice', () => {
         );
     });
 
+    it('adds alert on a socket without electricity when AlertConfig is advertised', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.Control.AlertConfig': {}
+            }),
+            allPayload: payload('system-all-getack.json')
+        });
+
+        assert.deepEqual(device.endpoints[0]?.traits, ['switch', 'system', 'alert']);
+        assert.equal(device.endpoints[0]?.traits.includes('energy'), false);
+    });
+
+    it('adds alert on climate when AlertConfig is advertised', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Thermostat.ModeC': {},
+                    'Appliance.Control.AlertConfig': {}
+                }
+            },
+            allPayload: systemAllWithDigest({})
+        });
+
+        assert.equal(device.endpoints[0]?.classHint, 'climate');
+        assert.deepEqual(device.endpoints[0]?.traits, ['climate', 'system', 'alert']);
+        assert.equal(device.endpoints[0]?.traits.includes('energy'), false);
+    });
+
+    it('does not enroll alert from AlertReport alone', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.Control.AlertReport': {}
+            }),
+            allPayload: payload('system-all-getack.json')
+        });
+
+        assert.equal(device.endpoints[0]?.traits.includes('alert'), false);
+    });
+
+    it('adds alert on strip children when AlertConfig is advertised', () => {
+        const strip = loadFixture('togglex-getack-all.json');
+        const device = enrollPhysicalDevice({
+            abilityPayload: socketAbility({
+                'Appliance.Control.ElectricityX': {},
+                'Appliance.Control.AlertConfig': {}
+            }),
+            allPayload: systemAllWithDigest({ togglex: strip.payload.togglex })
+        });
+
+        const sockets = device.endpoints.filter((endpoint) => endpoint.classHint === 'socket');
+        assert.ok(sockets.length > 1);
+        for (const endpoint of sockets) {
+            assert.ok(endpoint.traits.includes('alert'), endpoint.id);
+        }
+    });
+
+    it('does not add alert to the hub parent', () => {
+        const graph = new DeviceGraph();
+        const { device } = graph.enroll({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Hub.SubdeviceList': {},
+                    'Appliance.Control.AlertConfig': {}
+                }
+            },
+            allPayload: {
+                all: {
+                    system: {
+                        hardware: { type: 'msh300', uuid: HUB_UUID },
+                        firmware: {},
+                        online: { status: 1 }
+                    },
+                    digest: {
+                        hub: {
+                            hubId: 1,
+                            mode: 0,
+                            subdevice: []
+                        }
+                    }
+                }
+            },
+            cloud: {
+                uuid: HUB_UUID,
+                devName: 'Hub',
+                deviceType: 'msh300',
+                onlineStatus: 1,
+                channels: []
+            },
+            subDevices: []
+        });
+
+        const hub = device.endpoints.find((endpoint) => endpoint.id === HUB_UUID);
+        assert.ok(hub);
+        assert.equal(hub?.traits.includes('alert'), false);
+    });
+
     it('keeps the strip master as switch + energy and links extra outlets via parentId', () => {
         const strip = loadFixture('togglex-getack-all.json');
         const device = enrollPhysicalDevice({

@@ -22,8 +22,6 @@ import {
     SENSOR_HISTORY_NAMESPACE,
     SENSOR_HISTORYX_NAMESPACE,
     CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
-    CONTROL_ALERT_CONFIG_NAMESPACE,
-    CONTROL_ALERT_REPORT_NAMESPACE,
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
@@ -767,92 +765,8 @@ describe('ClimateTrait board sensor readings', () => {
     });
 });
 
-describe('ClimateTrait alert config and sensor association', () => {
-    const namespaces = [
-        CONTROL_ALERT_CONFIG_NAMESPACE,
-        CONTROL_ALERT_REPORT_NAMESPACE,
-        CONFIG_SENSOR_ASSOCIATION_NAMESPACE
-    ];
-
-    it('SETs AlertConfig and emits change', async () => {
-        const { endpoint, trait, requests } = createBoardHarness('modeC', namespaces);
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        const value = { mts300: { hcMal: 1, auxLO: 1, auxLOT: 240 } };
-        await trait.setAlertConfig({ type: 5, value });
-
-        assert.equal(requests[0]?.header.namespace, CONTROL_ALERT_CONFIG_NAMESPACE);
-        assert.deepEqual(requests[0]?.payload, {
-            config: [{ channel: CHANNEL, type: 5, value }]
-        });
-        assert.deepEqual(changes, [{
-            trait: 'climate',
-            values: { alertConfigType: 5, alertConfig: value }
-        }]);
-    });
-
-    it('applies AlertConfig PUSH for the bound channel', () => {
-        const { endpoint, trait } = createBoardHarness('modeC', namespaces);
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        trait.handlePush(push(CONTROL_ALERT_CONFIG_NAMESPACE, {
-            config: [{
-                channel: CHANNEL,
-                type: 5,
-                value: { mts300: { hcMal: 1 } }
-            }]
-        }));
-
-        assert.deepEqual(changes, [{
-            trait: 'climate',
-            values: { alertConfigType: 5, alertConfig: { mts300: { hcMal: 1 } } }
-        }]);
-    });
-
-    it('does not emit change when AlertConfig PUSH repeats', () => {
-        const { endpoint, trait } = createBoardHarness('modeC', namespaces);
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-        const message = push(CONTROL_ALERT_CONFIG_NAMESPACE, {
-            config: [{
-                channel: CHANNEL,
-                type: 5,
-                value: { mts300: { hcMal: 1 } }
-            }]
-        });
-
-        trait.handlePush(message);
-        trait.handlePush(message);
-
-        assert.equal(changes.length, 1);
-    });
-
-    it('ignores empty AlertReport PUSH', () => {
-        const { endpoint, trait } = createBoardHarness('modeC', namespaces);
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        trait.handlePush(push(CONTROL_ALERT_REPORT_NAMESPACE, {}));
-
-        assert.deepEqual(changes, []);
-    });
-
-    it('applies AlertReport PUSH for the bound channel', () => {
-        const { endpoint, trait } = createBoardHarness('modeC', namespaces);
-        const changes: unknown[] = [];
-        endpoint.on('change', (change) => changes.push(change));
-
-        trait.handlePush(push(CONTROL_ALERT_REPORT_NAMESPACE, {
-            alert: [{ channel: CHANNEL, code: 9 }]
-        }));
-
-        assert.deepEqual(changes, [{
-            trait: 'climate',
-            values: { alertReport: { code: 9 } }
-        }]);
-    });
+describe('ClimateTrait sensor association', () => {
+    const namespaces = [CONFIG_SENSOR_ASSOCIATION_NAMESPACE];
 
     it('SETs temp association for the bound channel', async () => {
         const { trait, requests } = createBoardHarness('modeC', namespaces);
@@ -891,5 +805,4 @@ describe('ClimateTrait alert config and sensor association', () => {
 
         assert.equal(changes.length, 1);
     });
-
 });

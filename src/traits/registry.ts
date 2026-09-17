@@ -1,6 +1,7 @@
 import type { TraitName } from '../endpoint';
 import type { TraitDescriptor } from './descriptor';
 import { AlarmDescriptor } from './alarm';
+import { AlertDescriptor } from './alert';
 import { ClimateDescriptor } from './climate';
 import { CoverDescriptor } from './cover';
 import { DiffuserDescriptor } from './diffuser';
@@ -38,6 +39,7 @@ export const TRAIT_DESCRIPTORS = {
     diffuser: DiffuserDescriptor,
     media: MediaDescriptor,
     alarm: AlarmDescriptor,
+    alert: AlertDescriptor,
     dnd: DndDescriptor,
     overtemp: OverTempDescriptor,
     system: SystemDescriptor,

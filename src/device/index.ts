@@ -17,6 +17,7 @@ import {
     enrollBoardAlarmExtra,
     enrollHubAlarmExtra
 } from '../traits/alarm';
+import { enrollBoardAlertExtra } from '../traits/alert';
 import { ClimateDescriptor, enrollClimate } from '../traits/climate';
 import { enrollCover } from '../traits/cover';
 import { enrollDiffuser } from '../traits/diffuser';
@@ -345,6 +346,7 @@ function enrollBoard(
         extra.push(...enrollBoardEnergyExtra(input));
         extra.push(...enrollBoardMediaExtra(input));
         extra.push(...enrollBoardDndExtra(input));
+        extra.push(...enrollBoardAlertExtra(input));
         extra.push(...enrollBoardAlarmExtra(input));
         extra.push(...enrollBoardTimerExtra(input));
         extra.push(...enrollBoardTriggerExtra(input));

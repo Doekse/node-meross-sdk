@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 
 import type { MerossMessage } from './protocol';
 import type { AlarmTrait, AlarmValues } from './traits/alarm';
+import type { AlertTrait, AlertValues } from './traits/alert';
 import type { ClimateTrait, ClimateValues } from './traits/climate';
 import type { CoverTrait, CoverValues } from './traits/cover';
 import type { DiffuserTrait, DiffuserValues } from './traits/diffuser';
@@ -22,7 +23,8 @@ import type { TriggerTrait, TriggerValues } from './traits/trigger';
 
 export type TraitName =
     | 'switch' | 'energy' | 'light' | 'climate' | 'cover'
-    | 'sensor' | 'presence' | 'sprinkler' | 'spray' | 'fan' | 'diffuser' | 'media' | 'alarm' | 'dnd' | 'overtemp'
+    | 'sensor' | 'presence' | 'sprinkler' | 'spray' | 'fan' | 'diffuser' | 'media'
+    | 'alarm' | 'alert' | 'dnd' | 'overtemp'
     | 'system' | 'timer' | 'trigger';
 
 /**
@@ -43,6 +45,7 @@ export interface TraitValues {
     diffuser: DiffuserValues;
     media: MediaValues;
     alarm: AlarmValues;
+    alert: AlertValues;
     dnd: DndValues;
     overtemp: OverTempValues;
     system: SystemValues;
@@ -77,6 +80,7 @@ export interface EndpointOptions {
     diffuser?: DiffuserTrait;
     media?: MediaTrait;
     alarm?: AlarmTrait;
+    alert?: AlertTrait;
     dnd?: DndTrait;
     overtemp?: OverTempTrait;
     system?: SystemTrait;
@@ -120,6 +124,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     readonly diffuser?: DiffuserTrait;
     readonly media?: MediaTrait;
     readonly alarm?: AlarmTrait;
+    readonly alert?: AlertTrait;
     readonly dnd?: DndTrait;
     readonly overtemp?: OverTempTrait;
     readonly system?: SystemTrait;
@@ -146,6 +151,7 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         this.diffuser = options.diffuser;
         this.media = options.media;
         this.alarm = options.alarm;
+        this.alert = options.alert;
         this.dnd = options.dnd;
         this.overtemp = options.overtemp;
         this.system = options.system;

@@ -24,6 +24,8 @@ export { MediaTrait } from './media';
 export type { MediaValues } from './media';
 export { AlarmTrait } from './alarm';
 export type { AlarmValues } from './alarm';
+export { AlertTrait } from './alert';
+export type { AlertValues } from './alert';
 export { DndTrait } from './dnd';
 export type { DndValues } from './dnd';
 export { OverTempTrait } from './overtemp';
