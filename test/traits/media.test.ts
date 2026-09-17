@@ -33,7 +33,6 @@ function createHarness(): {
         })
     });
     const bind: MediaTraitBind = {
-        uuid: UUID,
         channel: CHANNEL,
         request,
         emitChange: (values) => {

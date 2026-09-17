@@ -45,7 +45,6 @@ export type TimerSetInput = Partial<TimerEntry> & {
  * supplies this; trait tests inject a fake request/emit pair.
  */
 export interface TimerTraitBind {
-    uuid: string;
     channel: number;
     /** Chosen at enrollment from Ability: TimerX preferred over Control.Timer. */
     generation: TimerGeneration;
@@ -288,7 +287,6 @@ export const TimerDescriptor: TraitDescriptor & {
             ? 'x'
             : 'legacy';
         return new TimerTrait({
-            uuid: args.physical.uuid,
             channel: args.channel,
             generation,
             namespaces: args.namespaces,

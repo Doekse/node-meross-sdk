@@ -45,7 +45,6 @@ function createHarness(options: {
         })
     });
     const bind: AlarmTraitBind = {
-        uuid: UUID,
         channel: CHANNEL,
         namespaces: options.namespaces ?? new Set([CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE]),
         request,

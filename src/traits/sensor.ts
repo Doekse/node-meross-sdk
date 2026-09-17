@@ -116,7 +116,6 @@ export interface SensorValues {
  * trait tests inject a fake request/emit pair.
  */
 export interface SensorTraitBind {
-    uuid: string;
     subDeviceId: string;
     family: SensorFamily;
     /** Ability keys; extra methods no-op when the namespace is absent. */
@@ -632,7 +631,6 @@ export const SensorDescriptor: TraitDescriptor & {
             return undefined;
         }
         return new SensorTrait({
-            uuid: args.physical.uuid,
             subDeviceId: args.graphEndpoint.subDeviceId,
             family,
             namespaces: args.namespaces,

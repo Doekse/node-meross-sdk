@@ -225,7 +225,6 @@ export type ThermostatGeneration = 'mode' | 'modeB' | 'modeC';
  */
 export interface ClimateTraitBoardBind {
     kind: 'board';
-    uuid: string;
     channel: number;
     generation: ThermostatGeneration;
     /** Ability keys; extra methods no-op when the namespace is absent. */
@@ -240,7 +239,6 @@ export interface ClimateTraitBoardBind {
  */
 export interface ClimateTraitHubBind {
     kind: 'hub';
-    uuid: string;
     subDeviceId: string;
     /** Ability keys; extra methods no-op when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
@@ -1502,7 +1500,6 @@ export const ClimateDescriptor: TraitDescriptor & {
         if (args.graphEndpoint.subDeviceId) {
             return new ClimateTrait({
                 kind: 'hub',
-                uuid: args.physical.uuid,
                 subDeviceId: args.graphEndpoint.subDeviceId,
                 namespaces: args.namespaces,
                 request: args.request,
@@ -1520,7 +1517,6 @@ export const ClimateDescriptor: TraitDescriptor & {
         }
         return new ClimateTrait({
             kind: 'board',
-            uuid: args.physical.uuid,
             channel: args.channel,
             generation,
             namespaces: args.namespaces,

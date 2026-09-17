@@ -40,7 +40,6 @@ export interface DiffuserValues {
  * trait tests inject a fake request/emit pair.
  */
 export interface DiffuserTraitBind {
-    uuid: string;
     channel: number;
     /** Ability keys; extra methods no-op when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
@@ -256,7 +255,6 @@ export const DiffuserDescriptor: TraitDescriptor & {
     } satisfies Record<string, PollSpec>,
     attach(args: TraitAttachArgs<DiffuserValues>): DiffuserTrait {
         return new DiffuserTrait({
-            uuid: args.physical.uuid,
             channel: args.channel,
             namespaces: args.namespaces,
             request: args.request,

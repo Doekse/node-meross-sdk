@@ -63,7 +63,6 @@ export type SprinklerScheduleEntry = WaterPlanEntry;
  * trait tests inject a fake request/emit pair.
  */
 export interface SprinklerTraitBind {
-    uuid: string;
     subDeviceId: string;
     /** Ability keys; DeviceCfg, Battery, WaterPlan, and WaterEvent no-op when absent. */
     namespaces?: ReadonlySet<string>;
@@ -303,7 +302,6 @@ export const SprinklerDescriptor: TraitDescriptor & {
             return undefined;
         }
         return new SprinklerTrait({
-            uuid: args.physical.uuid,
             subDeviceId: args.graphEndpoint.subDeviceId,
             namespaces: args.namespaces,
             request: args.request,

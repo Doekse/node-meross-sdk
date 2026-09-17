@@ -87,7 +87,6 @@ function createHarness(options: {
         }
     });
     const bind: TimerTraitBind = {
-        uuid: UUID,
         channel: CHANNEL,
         generation,
         namespaces,
@@ -175,7 +174,6 @@ describe('TimerTrait', () => {
             }
         });
         const trait0 = new TimerTrait({
-            uuid: UUID,
             channel: 0,
             generation: 'x',
             namespaces,
@@ -183,7 +181,6 @@ describe('TimerTrait', () => {
             emitChange: () => {}
         });
         const trait1 = new TimerTrait({
-            uuid: UUID,
             channel: 1,
             generation: 'x',
             namespaces,

@@ -29,7 +29,6 @@ function createHarness(options: {
     const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['system'] });
     const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
     const bind: SystemTraitBind = {
-        uuid: UUID,
         initialFirmware: { version: '7.3.13' },
         initialHardware: { type: 'mss110', uuid: UUID },
         initialTime: options.initialTime,

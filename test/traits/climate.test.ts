@@ -48,7 +48,6 @@ function createBoardHarness(
     const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
     const bind: ClimateTraitBind = {
         kind: 'board',
-        uuid: UUID,
         channel: CHANNEL,
         generation,
         namespaces: new Set(namespaces),
@@ -67,7 +66,6 @@ function createHubHarness(namespaces: readonly string[] = []): {
     const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
     const bind: ClimateTraitBind = {
         kind: 'hub',
-        uuid: UUID,
         subDeviceId: SUB_DEVICE_ID,
         namespaces: new Set(namespaces),
         request,
@@ -679,7 +677,6 @@ describe('ClimateTrait board sensor readings', () => {
         });
         const bind: ClimateTraitBind = {
             kind: 'board',
-            uuid: UUID,
             channel: CHANNEL,
             generation: 'mode',
             namespaces: new Set(namespaces),

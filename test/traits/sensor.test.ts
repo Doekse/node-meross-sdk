@@ -63,7 +63,6 @@ function createHarness(
         ack: (_options, sent) => traitAck(sent, { key: KEY, method: 'GETACK', payload: getAckPayload })
     });
     const bind: SensorTraitBind = {
-        uuid: UUID,
         subDeviceId: SUB_DEVICE_ID,
         family,
         namespaces,

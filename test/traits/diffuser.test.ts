@@ -57,7 +57,6 @@ function createHarness(
         })
     });
     const bind: DiffuserTraitBind = {
-        uuid: UUID,
         channel: CHANNEL,
         namespaces,
         request,

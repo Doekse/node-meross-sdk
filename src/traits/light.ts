@@ -50,7 +50,6 @@ export interface LightValues {
  * Session supplies the request transport and ToggleX preference.
  */
 export interface LightTraitBind {
-    uuid: string;
     channel: number;
     /** ToggleX when advertised; classic Toggle only when ToggleX is absent. */
     hasToggleX: boolean;
@@ -343,7 +342,6 @@ export const LightDescriptor: TraitDescriptor & {
         // ToggleX wins when both Toggle and ToggleX are advertised.
         const hasToggleX = TOGGLEX_NAMESPACE in args.physical.ability;
         return new LightTrait({
-            uuid: args.physical.uuid,
             channel: args.channel,
             hasToggleX,
             hasToggle: !hasToggleX && TOGGLE_NAMESPACE in args.physical.ability,

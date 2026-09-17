@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Internal trait bind: `uuid` is no longer on `*TraitBind`. Session still closes `DeviceRequest` over `PhysicalDevice.uuid`. No host-visible API or behavior change.
 - Internal codec helper: one-entry list wrap lives in `src/protocol/codecs/payload.ts`. No host-visible API or behavior change.
 - Internal catalog records colocate per-trait poll ownership; no host-visible API or behavior change.
 - Internal composition: endpoint trait binding moves to `attachEndpoint`, traits take a device-scoped `DeviceRequest` port, digest namespaces live next to System.All decode, and poll jobs accept `PollTarget`. No host-visible API or behavior change.

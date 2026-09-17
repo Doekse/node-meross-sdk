@@ -31,7 +31,6 @@ function createHarness(): {
         })
     });
     const bind: DndTraitBind = {
-        uuid: UUID,
         request,
         emitChange: (values) => {
             changes.push({ ...values });

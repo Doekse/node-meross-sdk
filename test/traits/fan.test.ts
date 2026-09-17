@@ -90,7 +90,6 @@ function createHarness(options: {
         }
     });
     const bind: FanTraitBind = {
-        uuid: UUID,
         channel: CHANNEL,
         namespaces,
         hasToggleX: options.hasToggleX ?? true,

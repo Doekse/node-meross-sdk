@@ -58,7 +58,6 @@ function createHarness(
         }
     });
     const bind: SprinklerTraitBind = {
-        uuid: UUID,
         subDeviceId: SUB_DEVICE_ID,
         namespaces,
         request,

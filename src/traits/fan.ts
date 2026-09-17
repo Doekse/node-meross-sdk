@@ -47,7 +47,6 @@ export type { FanButtonConfig, FanButtonConfigSetOptions };
  * trait tests inject a fake request/emit pair.
  */
 export interface FanTraitBind {
-    uuid: string;
     channel: number;
     /** Ability keys; extras no-op when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
@@ -306,7 +305,6 @@ export const FanDescriptor: TraitDescriptor & {
         // ToggleX wins when both Toggle and ToggleX are advertised.
         const hasToggleX = TOGGLEX_NAMESPACE in args.physical.ability;
         return new FanTrait({
-            uuid: args.physical.uuid,
             channel: args.channel,
             namespaces: args.namespaces,
             hasToggleX,

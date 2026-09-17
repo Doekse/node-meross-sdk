@@ -60,7 +60,6 @@ export interface SystemValues {
  * trait tests inject a fake request/emit pair.
  */
 export interface SystemTraitBind {
-    uuid: string;
     /** System.All firmware so hosts can read version before the first poll. */
     initialFirmware?: SystemFirmwareState;
     /** System.All hardware identity before the first poll. */
@@ -269,7 +268,6 @@ export const SystemDescriptor: TraitDescriptor & {
     } satisfies Record<string, PollSpec>,
     attach(args: TraitAttachArgs<SystemValues>): SystemTrait {
         return new SystemTrait({
-            uuid: args.physical.uuid,
             initialFirmware: args.physical.system.firmware,
             initialHardware: args.physical.system.hardware,
             initialTime: args.physical.system.time,

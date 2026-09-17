@@ -45,7 +45,6 @@ export type TriggerSetInput = Partial<TriggerEntry> & {
  * supplies this; trait tests inject a fake request/emit pair.
  */
 export interface TriggerTraitBind {
-    uuid: string;
     channel: number;
     /** Chosen at enrollment from Ability: TriggerX preferred over Control.Trigger. */
     generation: TriggerGeneration;
@@ -286,7 +285,6 @@ export const TriggerDescriptor: TraitDescriptor & {
             ? 'x'
             : 'legacy';
         return new TriggerTrait({
-            uuid: args.physical.uuid,
             channel: args.channel,
             generation,
             namespaces: args.namespaces,

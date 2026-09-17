@@ -81,7 +81,6 @@ export interface EnergyValues {
  * trait tests inject a fake request/emit pair.
  */
 export interface EnergyTraitBind {
-    uuid: string;
     channel: number;
     hasElectricity: boolean;
     hasElectricityX: boolean;
@@ -509,7 +508,6 @@ export const EnergyDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<EnergyValues>): EnergyTrait {
         const hasElectricity = ELECTRICITY_NAMESPACE in args.physical.ability;
         return new EnergyTrait({
-            uuid: args.physical.uuid,
             channel: args.channel,
             hasElectricity,
             hasElectricityX: !hasElectricity && ELECTRICITYX_NAMESPACE in args.physical.ability,

@@ -58,7 +58,6 @@ function createHarness(namespaces: readonly string[] = [PRESENCE_CONFIG_NAMESPAC
         }
     });
     const bind: PresenceTraitBind = {
-        uuid: UUID,
         channel: CHANNEL,
         namespaces: new Set(namespaces),
         request,

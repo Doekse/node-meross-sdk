@@ -50,7 +50,6 @@ function createCoverHarness(
         }
     });
     const trait = new CoverTrait({
-        uuid: UUID,
         channel: CHANNEL,
         kind,
         namespaces,
@@ -235,7 +234,6 @@ describe('CoverTrait initial state', () => {
         endpoint.on('change', (change) => changes.push(change));
 
         const trait = new CoverTrait({
-            uuid: UUID,
             channel: CHANNEL,
             kind: 'garage',
             initialOpen: true,

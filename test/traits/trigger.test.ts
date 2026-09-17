@@ -82,7 +82,6 @@ function createHarness(options: {
         }
     });
     const bind: TriggerTraitBind = {
-        uuid: UUID,
         channel: CHANNEL,
         generation,
         namespaces,
@@ -170,7 +169,6 @@ describe('TriggerTrait', () => {
             }
         });
         const trait0 = new TriggerTrait({
-            uuid: UUID,
             channel: 0,
             generation: 'x',
             namespaces,
@@ -178,7 +176,6 @@ describe('TriggerTrait', () => {
             emitChange: () => {}
         });
         const trait1 = new TriggerTrait({
-            uuid: UUID,
             channel: 1,
             generation: 'x',
             namespaces,

@@ -39,7 +39,6 @@ export const TOGGLE_NAMESPACE = 'Appliance.Control.Toggle';
  */
 export interface SwitchTraitBoardBind {
     kind: 'board';
-    uuid: string;
     channel: number;
     namespace: typeof TOGGLEX_NAMESPACE | typeof TOGGLE_NAMESPACE;
     request: DeviceRequest;
@@ -53,7 +52,6 @@ export interface SwitchTraitBoardBind {
  */
 export interface SwitchTraitHubBind {
     kind: 'hub';
-    uuid: string;
     subDeviceId: string;
     /** Ability keys; Exception / Version no-op when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
@@ -262,7 +260,6 @@ export const SwitchDescriptor: TraitDescriptor & {
         if (args.graphEndpoint.subDeviceId) {
             return new SwitchTrait({
                 kind: 'hub',
-                uuid: args.physical.uuid,
                 subDeviceId: args.graphEndpoint.subDeviceId,
                 namespaces: args.namespaces,
                 request: args.request,
@@ -275,7 +272,6 @@ export const SwitchDescriptor: TraitDescriptor & {
             && !(TOGGLEX_NAMESPACE in args.physical.ability);
         return new SwitchTrait({
             kind: 'board',
-            uuid: args.physical.uuid,
             channel: args.channel,
             namespace: hasClassicToggle ? TOGGLE_NAMESPACE : TOGGLEX_NAMESPACE,
             request: args.request,

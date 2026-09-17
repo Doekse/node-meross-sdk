@@ -31,7 +31,6 @@ export interface AlarmValues {
  * parent uses channel 0.
  */
 export interface AlarmTraitBind {
-    uuid: string;
     channel: number;
     /** Ability keys; setters and PUSH apply only for advertised namespaces. */
     namespaces?: ReadonlySet<string>;
@@ -224,7 +223,6 @@ export const AlarmDescriptor: TraitDescriptor & {
     } satisfies Record<string, PollSpec>,
     attach(args: TraitAttachArgs<AlarmValues>): AlarmTrait {
         return new AlarmTrait({
-            uuid: args.physical.uuid,
             channel: args.channel,
             namespaces: args.namespaces,
             request: args.request,

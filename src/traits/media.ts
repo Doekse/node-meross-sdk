@@ -25,7 +25,6 @@ export interface MediaValues {
  * trait tests inject a fake request/emit pair.
  */
 export interface MediaTraitBind {
-    uuid: string;
     channel: number;
     request: DeviceRequest;
     emitChange: (values: MediaValues) => void;
@@ -169,7 +168,6 @@ export const MediaDescriptor: TraitDescriptor & {
     } satisfies Record<string, PollSpec>,
     attach(args: TraitAttachArgs<MediaValues>): MediaTrait {
         return new MediaTrait({
-            uuid: args.physical.uuid,
             channel: args.channel,
             request: args.request,
             emitChange: args.emitChange

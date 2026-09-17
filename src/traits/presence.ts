@@ -48,7 +48,6 @@ export interface PresenceValues {
  * this; trait tests inject a fake request/emit pair.
  */
 export interface PresenceTraitBind {
-    uuid: string;
     channel: number;
     /** Ability keys; extra methods no-op when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
@@ -216,7 +215,6 @@ export const PresenceDescriptor: TraitDescriptor & {
     } satisfies Record<string, PollSpec>,
     attach(args: TraitAttachArgs<PresenceValues>): PresenceTrait {
         return new PresenceTrait({
-            uuid: args.physical.uuid,
             channel: args.channel,
             namespaces: args.namespaces,
             request: args.request,

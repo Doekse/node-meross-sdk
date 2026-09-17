@@ -21,7 +21,6 @@ export interface DndValues {
  * trait tests inject a fake request/emit pair.
  */
 export interface DndTraitBind {
-    uuid: string;
     request: DeviceRequest;
     emitChange: (values: DndValues) => void;
 }
@@ -107,7 +106,6 @@ export const DndDescriptor: TraitDescriptor & {
     } satisfies Record<string, PollSpec>,
     attach(args: TraitAttachArgs<DndValues>): DndTrait {
         return new DndTrait({
-            uuid: args.physical.uuid,
             request: args.request,
             emitChange: args.emitChange
         });

@@ -143,7 +143,6 @@ function createLightHarness(options: {
     });
 
     const trait = new LightTrait({
-        uuid: UUID,
         channel: CHANNEL,
         hasToggleX: options.hasToggleX ?? false,
         hasToggle: options.hasToggle ?? false,

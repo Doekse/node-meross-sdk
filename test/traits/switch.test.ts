@@ -41,7 +41,6 @@ function createSwitchHarness(channel = CHANNEL): {
     const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
     const trait = new SwitchTrait({
         kind: 'board',
-        uuid: UUID,
         channel,
         namespace: TOGGLEX_NAMESPACE,
         request,
@@ -59,7 +58,6 @@ function createHubSwitchHarness(): {
     const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
     const trait = new SwitchTrait({
         kind: 'hub',
-        uuid: UUID,
         subDeviceId: SUB_DEVICE_ID,
         namespaces: new Set([HUB_EXCEPTION_NAMESPACE, HUB_SUBDEVICE_VERSION_NAMESPACE]),
         request,
@@ -124,7 +122,6 @@ describe('SwitchTrait.setOn', () => {
         });
         const trait = new SwitchTrait({
             kind: 'board',
-            uuid: UUID,
             channel: 0,
             namespace: TOGGLEX_NAMESPACE,
             request,
@@ -192,7 +189,6 @@ describe('SwitchTrait initial state', () => {
         const { request } = createRequestRecorder({ uuid: UUID, key: KEY });
         const withDigest = new SwitchTrait({
             kind: 'board',
-            uuid: UUID,
             channel: CHANNEL,
             namespace: TOGGLEX_NAMESPACE,
             initialOn: true,

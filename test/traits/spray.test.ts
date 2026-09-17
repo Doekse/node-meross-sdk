@@ -32,7 +32,6 @@ function createHarness(): {
         })
     });
     const bind: SprayTraitBind = {
-        uuid: UUID,
         channel: CHANNEL,
         request,
         emitChange: (values) => {

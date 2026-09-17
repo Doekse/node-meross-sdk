@@ -51,7 +51,6 @@ export interface CoverValues {
  * trait tests inject a fake request/emit pair.
  */
 export interface CoverTraitBind {
-    uuid: string;
     channel: number;
     /** Garage vs shutter namespaces stay in codecs; the host API is the same. */
     kind: 'garage' | 'shutter';
@@ -427,7 +426,6 @@ export const CoverDescriptor: TraitDescriptor & {
             ? 'shutter'
             : 'garage';
         return new CoverTrait({
-            uuid: args.physical.uuid,
             channel: args.channel,
             kind,
             namespaces: args.namespaces,

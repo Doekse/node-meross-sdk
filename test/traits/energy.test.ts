@@ -177,7 +177,6 @@ function createEnergyHarness(options: {
         ack: options.ack ?? defaultEnergyAck
     });
     const trait = new EnergyTrait({
-        uuid: UUID,
         channel: CHANNEL,
         hasElectricity: options.hasElectricity ?? true,
         hasElectricityX: options.hasElectricityX ?? false,

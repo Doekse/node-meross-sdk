@@ -25,7 +25,6 @@ export interface SprayValues {
  * trait tests inject a fake request/emit pair.
  */
 export interface SprayTraitBind {
-    uuid: string;
     channel: number;
     request: DeviceRequest;
     emitChange: (values: SprayValues) => void;
@@ -103,7 +102,6 @@ export const SprayDescriptor: TraitDescriptor & {
     } satisfies Record<string, PollSpec>,
     attach(args: TraitAttachArgs<SprayValues>): SprayTrait {
         return new SprayTrait({
-            uuid: args.physical.uuid,
             channel: args.channel,
             request: args.request,
             emitChange: args.emitChange

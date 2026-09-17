@@ -977,7 +977,6 @@ describe('DevicePoller', () => {
             id: UUID,
             traits: ['energy'],
             energy: new EnergyTrait({
-                uuid: UUID,
                 channel: 0,
                 hasElectricity: true,
                 hasElectricityX: false,
