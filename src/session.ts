@@ -21,7 +21,9 @@ import {
     buildPollJobs
 } from './poll';
 import {
+    ONLINE_NAMESPACE,
     ProtocolDispatcher,
+    decodeOnlineStatus,
     uuidFromHeader,
     deriveEncryptionKey,
     macAddressFromUuid,
@@ -344,11 +346,23 @@ export class Session extends EventEmitter<SessionEvents> {
     /**
      * Same lookup as {@link handlePush} so LAN GETACK still counts as liveness.
      * MQTT inbound (no POST uuid) marks the broker live, including GETACK;
-     * LAN always passes the POST uuid so HTTP replies do not.
+     * LAN always passes the POST uuid so HTTP replies do not. MQTT
+     * System.Online is broker session state — drop it before recordPush /
+     * handleMessage unless it is PUSH with status 1.
      */
     private handleInbound(message: MerossMessage, originUuid?: string): void {
         const runtime = this.deviceRuntime(message, originUuid);
         if (!runtime) {
+            return;
+        }
+        if (
+            originUuid === undefined
+            && message.header.namespace === ONLINE_NAMESPACE
+            && (
+                message.header.method !== 'PUSH'
+                || decodeOnlineStatus(message.payload) !== 1
+            )
+        ) {
             return;
         }
         if (originUuid === undefined) {
