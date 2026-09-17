@@ -7,9 +7,9 @@ export interface DndState {
     on: boolean;
 }
 
-/** GET is empty. */
+/** GET `{ DNDMode: {} }` (meross_lan dict GET shape). */
 export function encodeDndGet(): MerossPayload {
-    return {};
+    return { DNDMode: {} };
 }
 
 /** SET is `{ DNDMode: { mode: 0|1 } }`. */

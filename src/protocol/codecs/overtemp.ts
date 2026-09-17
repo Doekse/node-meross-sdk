@@ -22,18 +22,21 @@ export interface ControlOverTempState {
     type?: number;
 }
 
-/** Config GET uses an empty payload. */
+/** Config GET `{ overTemp: {} }` (meross_lan dict GET shape). */
 export function encodeConfigOverTempGet(): MerossPayload {
-    return {};
+    return { overTemp: {} };
 }
 
-/** Config SET `{ overTemp: { enable, type? } }` with enable 1/2. */
+/**
+ * Config SET `{ overTemp: { enable, type? } }` with enable 1 on / 0 off
+ * (meross_lan OverTempEnableSwitch).
+ */
 export function encodeConfigOverTempSet(options: {
     enabled: boolean;
     type?: number;
 }): MerossPayload {
     const overTemp: Record<string, unknown> = {
-        enable: options.enabled ? 1 : 2
+        enable: options.enabled ? 1 : 0
     };
     if (options.type !== undefined) {
         overTemp.type = options.type;
@@ -68,8 +71,9 @@ function decodeConfigOverTemp(payload: MerossPayload): ConfigOverTempState {
         throw new ProtocolError('Config.OverTemp payload must contain an overTemp object');
     }
     const { enable, type } = raw as Record<string, unknown>;
-    if (typeof enable !== 'number' || (enable !== 1 && enable !== 2)) {
-        throw new ProtocolError('Config.OverTemp enable must be 1 or 2');
+    // Firmware GETACK may report disabled as 0 or 2; only 1 means enabled.
+    if (typeof enable !== 'number' || (enable !== 0 && enable !== 1 && enable !== 2)) {
+        throw new ProtocolError('Config.OverTemp enable must be 0, 1, or 2');
     }
     const state: ConfigOverTempState = { enabled: enable === 1 };
     if (typeof type === 'number') {
