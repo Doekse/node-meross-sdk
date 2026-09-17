@@ -245,7 +245,7 @@ describe('buildPollJobs', () => {
             strategy: 'smart',
             periodMs: SENSOR_SLOW_PERIOD_MS,
             periodCloudMs: CLOUDMQTT_PERIOD_MS,
-            payload: {}
+            payload: { DNDMode: {} }
         });
     });
 

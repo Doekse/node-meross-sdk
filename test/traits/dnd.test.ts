@@ -2,19 +2,28 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
+import { TransportError } from '../../src/errors';
 import {
     DND_MODE_NAMESPACE,
+    encodeDndGet,
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
 import { DndTrait } from '../../src/traits/dnd';
 import type { DndTraitBind, DndValues } from '../../src/traits/dnd';
-import { createRequestRecorder, traitAck } from '../helpers/request';
+import {
+    createRequestRecorder,
+    recordedCalls,
+    traitAck,
+    type RequestRecorderOptions
+} from '../helpers/request';
 
 const KEY = 'stub-key';
 const UUID = '2206138957096651080248e1e99705a4';
 
-function createHarness(): {
+function createHarness(options: {
+    ack?: RequestRecorderOptions['ack'];
+} = {}): {
     trait: DndTrait;
     requests: MerossMessage[];
     changes: DndValues[];
@@ -24,11 +33,11 @@ function createHarness(): {
     const { requests, request } = createRequestRecorder({
         uuid: UUID,
         key: KEY,
-        ack: (_options, sent) => traitAck(sent, {
+        ack: options.ack ?? ((_opts, sent) => traitAck(sent, {
             key: KEY,
             method: 'GETACK',
             payload: { DNDMode: { mode: 1 } }
-        })
+        }))
     });
     const bind: DndTraitBind = {
         request,
@@ -52,6 +61,40 @@ function pushMessage(payload: Record<string, unknown>): MerossMessage {
 }
 
 describe('DndTrait', () => {
+    it('poll GETs { DNDMode: {} }, applies, and returns a snapshot', async () => {
+        const { trait, requests, changes } = createHarness();
+
+        const snapshot = await trait.poll();
+
+        assert.deepEqual(recordedCalls(requests), [{
+            namespace: DND_MODE_NAMESPACE,
+            method: 'GET',
+            payload: encodeDndGet()
+        }]);
+        assert.equal(trait.isOn(), true);
+        assert.deepEqual(snapshot, { on: true });
+        assert.deepEqual(changes, [{ on: true }]);
+    });
+
+    it('rejects poll when the GET throws TransportError', async () => {
+        const { trait, requests } = createHarness({
+            ack: () => {
+                throw new TransportError('LAN unreachable', 'LAN_UNREACHABLE');
+            }
+        });
+
+        await assert.rejects(
+            () => trait.poll(),
+            (err: unknown) => err instanceof TransportError
+        );
+        assert.deepEqual(recordedCalls(requests), [{
+            namespace: DND_MODE_NAMESPACE,
+            method: 'GET',
+            payload: encodeDndGet()
+        }]);
+        assert.equal(trait.isOn(), undefined);
+    });
+
     it('setOn sends a SET with mode 0/1', async () => {
         const { trait, requests } = createHarness();
         await trait.setOn(false);
@@ -75,5 +118,4 @@ describe('DndTrait', () => {
 
         assert.deepEqual(changes, [{ on: true }]);
     });
-
 });

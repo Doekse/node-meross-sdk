@@ -8,7 +8,9 @@ import type { TraitName } from '../endpoint';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import {
     DND_MODE_NAMESPACE,
+    decodeDndGetAck,
     decodeDndPush,
+    encodeDndGet,
     encodeDndSet,
     type MerossMessage
 } from '../protocol';
@@ -44,6 +46,20 @@ export class DndTrait {
     /** True when DND is active (LED off). Undefined until poller GETACK or PUSH fills it. */
     isOn(): boolean | undefined {
         return this.last.on;
+    }
+
+    /**
+     * On-demand GET of System.DNDMode. Rejects with `CommandError` /
+     * `TransportError` / `ProtocolError` like `setOn`.
+     */
+    async poll(): Promise<DndValues> {
+        const reply = await this.bind.request({
+            namespace: DND_MODE_NAMESPACE,
+            method: 'GET',
+            payload: encodeDndGet()
+        });
+        this.applyChange({ on: decodeDndGetAck(reply.payload).on });
+        return { ...this.last };
     }
 
     async setOn(on: boolean): Promise<{ on: boolean }> {
@@ -95,7 +111,11 @@ export const DndDescriptor: TraitDescriptor & {
 } = {
     name: 'dnd',
     poll: {
-        [DND_MODE_NAMESPACE]: { ...SMART_CONFIG, base: 320 }
+        [DND_MODE_NAMESPACE]: {
+            ...SMART_CONFIG,
+            payload: { dict: 'DNDMode' },
+            base: 320
+        }
     } satisfies Record<string, PollSpec>,
     attach(args: TraitAttachArgs<DndValues>): DndTrait {
         return new DndTrait({
