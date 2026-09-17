@@ -30,6 +30,11 @@ import { enrollBoardEnergyExtra } from '../traits/energy';
 import { enrollFan } from '../traits/fan';
 import { enrollLight } from '../traits/light';
 import { enrollBoardMediaExtra, enrollMediaStandalone } from '../traits/media';
+import {
+    enrollBoardOverTempExtra,
+    enrollHubOverTempExtra,
+    enrollOverTempStandalone
+} from '../traits/overtemp';
 import { enrollPresence } from '../traits/presence';
 import { SensorDescriptor } from '../traits/sensor';
 import { enrollSpray } from '../traits/spray';
@@ -347,6 +352,7 @@ function enrollBoard(
         extra.push(...enrollBoardEnergyExtra(input));
         extra.push(...enrollBoardMediaExtra(input));
         extra.push(...enrollBoardDndExtra(input));
+        extra.push(...enrollBoardOverTempExtra(input));
         extra.push(...enrollBoardAlertExtra(input));
         extra.push(...enrollBoardStandbyKillerExtra(input));
         extra.push(...enrollBoardAlarmExtra(input));
@@ -393,6 +399,7 @@ function enrollBoard(
     enrollSwitchLeftover(ctx);
 
     enrollDndStandalone(ctx);
+    enrollOverTempStandalone(ctx);
     enrollAlarmStandalone(ctx);
 
     return endpoints;
@@ -414,7 +421,8 @@ function enrollHub(
     const hubTraits: TraitName[] = [
         'system',
         ...enrollHubAlarmExtra(ability),
-        ...enrollHubDndExtra(ability)
+        ...enrollHubDndExtra(ability),
+        ...enrollHubOverTempExtra(ability)
     ];
     const endpoints: GraphEndpoint[] = [{
         id: uuid,

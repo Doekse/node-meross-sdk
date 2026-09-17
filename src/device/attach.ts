@@ -10,6 +10,7 @@ import { EnergyDescriptor, EnergyTrait, type EnergyValues } from '../traits/ener
 import { FanDescriptor, FanTrait, type FanValues } from '../traits/fan';
 import { LightDescriptor, LightTrait, type LightValues } from '../traits/light';
 import { MediaDescriptor, MediaTrait, type MediaValues } from '../traits/media';
+import { OverTempDescriptor, OverTempTrait, type OverTempValues } from '../traits/overtemp';
 import { PresenceDescriptor, PresenceTrait, type PresenceValues } from '../traits/presence';
 import { SensorDescriptor, SensorTrait, type SensorValues } from '../traits/sensor';
 import { SprayDescriptor, SprayTrait, type SprayValues } from '../traits/spray';
@@ -89,6 +90,9 @@ export function attachEndpoint(
         dnd: (values: DndValues) => {
             endpoint.emit('change', { trait: 'dnd', values: { ...values } });
         },
+        overtemp: (values: OverTempValues) => {
+            endpoint.emit('change', { trait: 'overtemp', values: { ...values } });
+        },
         standbykiller: (values: StandbyKillerValues) => {
             endpoint.emit('change', { trait: 'standbykiller', values: { ...values } });
         },
@@ -117,6 +121,7 @@ export function attachEndpoint(
     let alarmTrait: AlarmTrait | undefined;
     let alertTrait: AlertTrait | undefined;
     let dndTrait: DndTrait | undefined;
+    let overTempTrait: OverTempTrait | undefined;
     let standbyKillerTrait: StandbyKillerTrait | undefined;
     let systemTrait: SystemTrait | undefined;
     let timerTrait: TimerTrait | undefined;
@@ -271,6 +276,16 @@ export function attachEndpoint(
             emitChange: emit.dnd
         });
     }
+    if (graphEndpoint.traits.includes('overtemp')) {
+        overTempTrait = OverTempDescriptor.attach({
+            graphEndpoint,
+            physical,
+            request,
+            channel,
+            namespaces,
+            emitChange: emit.overtemp
+        });
+    }
     if (graphEndpoint.traits.includes('standbykiller')) {
         standbyKillerTrait = StandbyKillerDescriptor.attach({
             graphEndpoint,
@@ -329,6 +344,7 @@ export function attachEndpoint(
         alarm: alarmTrait,
         alert: alertTrait,
         dnd: dndTrait,
+        overtemp: overTempTrait,
         standbykiller: standbyKillerTrait,
         system: systemTrait,
         timer: timerTrait,
