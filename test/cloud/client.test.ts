@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 import { CloudClient, encodeCloudParams, signCloudRequest } from '../../src/cloud/client';
 import { AuthError, CloudError } from '../../src/errors';
+import type { LogRecord } from '../../src/log';
 import type { TokenData } from '../../src/session';
 import { jsonResponse, ok } from '../helpers/http';
 
@@ -348,5 +349,61 @@ describe('CloudClient.restore and device list', () => {
             pending,
             (err: unknown) => err instanceof CloudError && err.code === 'NETWORK_TIMEOUT'
         );
+    });
+});
+
+describe('CloudClient logger', () => {
+    it('logs redacted plaintext params and response without Authorization', async () => {
+        const records: LogRecord[] = [];
+        await CloudClient.login(
+            { email: EMAIL, password: PASSWORD, mfaCode: '123456' },
+            {
+                now: () => NOW,
+                nonce: () => NONCE,
+                logger: (record) => {
+                    records.push(record);
+                },
+                fetch: async () => ok(LOGIN_DATA)
+            }
+        );
+
+        assert.equal(records.length, 2);
+        assert.equal(records[0]!.direction, 'tx');
+        assert.equal(records[0]!.channel, 'cloud');
+        assert.equal(records[0]!.target, SIGN_IN);
+        assert.equal(records[0]!.message, 'POST /v1/Auth/signIn');
+        const tx = JSON.parse(records[0]!.data!) as {
+            email: string;
+            password: string;
+            mfaCode: string;
+        };
+        assert.equal(tx.email, EMAIL);
+        assert.equal(tx.password, '[REDACTED]');
+        assert.equal(tx.mfaCode, '[REDACTED]');
+        assert.equal(JSON.stringify(records).includes('Authorization'), false);
+        assert.equal(JSON.stringify(records).includes(PASSWORD), false);
+        assert.equal(JSON.stringify(records).includes('123456'), false);
+
+        assert.equal(records[1]!.direction, 'rx');
+        const rx = JSON.parse(records[1]!.data!) as {
+            apiStatus: number;
+            data: { token: string; key: string };
+        };
+        assert.equal(rx.apiStatus, 0);
+        assert.equal(rx.data.token, '[REDACTED]');
+        assert.equal(rx.data.key, '[REDACTED]');
+    });
+
+    it('does not fail the request when the logger throws', async () => {
+        const client = await CloudClient.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                logger: () => {
+                    throw new Error('host logger blew up');
+                },
+                fetch: async () => ok(LOGIN_DATA)
+            }
+        );
+        assert.equal(client.getToken().token, 'stub-token');
     });
 });

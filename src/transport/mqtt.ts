@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import mqtt from 'mqtt';
 
 import { TransportError } from '../errors';
+import { emitLog, type SessionLogger } from '../log';
 import { ProtocolDispatcher, decodeMessage, encodeMessage } from '../protocol';
 import type { MerossMessage, MerossPayload } from '../protocol';
 import { PublishRateLimiter, type PublishPriority } from './rate-limit';
@@ -64,6 +65,7 @@ export interface MqttTransportOptions {
     dispatcher?: ProtocolDispatcher;
     connect?: MqttConnectFn;
     rateLimiter?: PublishRateLimiter;
+    logger?: SessionLogger;
     /**
      * Session re-emits this as `connection` so hosts can react to broker
      * drop without a public transport.
@@ -109,6 +111,7 @@ export class MqttTransport {
     private readonly mqttDomain: string;
     private readonly connectFn: MqttConnectFn;
     private readonly rateLimiter: PublishRateLimiter;
+    private readonly logger?: SessionLogger;
     private readonly onConnectionChange?: (connected: boolean) => void;
     private readonly onRateLimit?: (uuid: string, dropped: number) => void;
     private client: MqttBrokerClient | undefined;
@@ -124,6 +127,7 @@ export class MqttTransport {
         this.mqttDomain = options.mqttDomain;
         this.connectFn = options.connect ?? defaultConnect;
         this.rateLimiter = options.rateLimiter ?? new PublishRateLimiter();
+        this.logger = options.logger;
         this.onConnectionChange = options.onConnectionChange;
         this.onRateLimit = options.onRateLimit;
         this.appId = options.appId
@@ -193,11 +197,21 @@ export class MqttTransport {
             uuid: options.uuid
         });
         const messageId = message.header.messageId;
+        const topic = `/appliance/${options.uuid}/subscribe`;
+        const payload = JSON.stringify(message);
+        emitLog(this.logger, {
+            level: 'debug',
+            channel: 'mqtt',
+            message: `MQTT publish ${options.method} ${options.namespace}`,
+            direction: 'tx',
+            target: topic,
+            data: payload
+        });
         const reply = this.dispatcher.pending.register(messageId);
         this.inflight.add(messageId);
         client.publish(
-            `/appliance/${options.uuid}/subscribe`,
-            JSON.stringify(message),
+            topic,
+            payload,
             (error) => {
                 if (error) {
                     this.dispatcher.pending.reject(
@@ -236,15 +250,14 @@ export class MqttTransport {
         this.client = client;
 
         client.on('connect', () => this.onConnect(client));
-        client.on('message', (_topic, payload) => {
-            try {
-                this.dispatcher.handle(decodeMessage(payload, this.key));
-            } catch {
-                // Unsigned or malformed payloads must not kill the socket.
-            }
-        });
-        client.on('error', () => {
-            // mqtt.js treats an unhandled `error` event as a thrown exception.
+        client.on('message', (topic, payload) => this.onMessage(topic, payload));
+        // mqtt.js treats an unhandled `error` event as a thrown exception.
+        client.on('error', (error) => {
+            emitLog(this.logger, {
+                level: 'error',
+                channel: 'mqtt',
+                message: error.message
+            });
         });
         client.on('close', () => {
             const wasConnected = this.connected;
@@ -291,6 +304,34 @@ export class MqttTransport {
                 await new Promise<void>((resolve) => client.end(true, resolve));
             }
             throw error;
+        }
+    }
+
+    /**
+     * Traffic is logged before decode so a malformed frame is still visible.
+     * The catch exists because a thrown handler would take down the mqtt.js
+     * socket; unsigned payloads are expected on a shared broker topic.
+     */
+    private onMessage(topic: string, payload: Buffer): void {
+        const raw = payload.toString();
+        emitLog(this.logger, {
+            level: 'debug',
+            channel: 'mqtt',
+            message: 'MQTT message',
+            direction: 'rx',
+            target: topic,
+            data: raw
+        });
+        try {
+            this.dispatcher.handle(decodeMessage(payload, this.key));
+        } catch {
+            emitLog(this.logger, {
+                level: 'error',
+                channel: 'mqtt',
+                message: 'Malformed MQTT payload',
+                target: topic,
+                data: raw
+            });
         }
     }
 

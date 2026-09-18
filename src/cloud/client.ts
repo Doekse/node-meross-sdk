@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 import { AuthError, CloudError } from '../errors';
+import { emitLog, redactSecrets, type SessionLogger } from '../log';
 import type { LoginOptions, TokenData } from '../session';
 
 /** Well-known app secret; not an account credential. */
@@ -10,11 +11,20 @@ const LOGIN_PATH = '/v1/Auth/signIn';
 const DEV_LIST_PATH = '/v1/Device/devList';
 const SUBDEV_LIST_PATH = '/v1/Hub/getSubDevices';
 
+/**
+ * Host-facing cloud hooks. Logger is not here — Session injects its logger
+ * so hosts configure a single sink.
+ */
 export interface CloudClientOptions {
     timeoutMs?: number;
     fetch?: typeof globalThis.fetch;
     now?: () => number;
     nonce?: () => string;
+}
+
+/** Session and unit tests pass a sink without widening the public cloud options. */
+interface CloudClientInitOptions extends CloudClientOptions {
+    logger?: SessionLogger;
 }
 
 /** Cloud `/Device/devList` row. Graph maps this onto endpoints later. */
@@ -66,22 +76,24 @@ export class CloudClient {
     private readonly fetchImpl: typeof globalThis.fetch;
     private readonly now: () => number;
     private readonly nonce: () => string;
+    private readonly logger?: SessionLogger;
     private creds: TokenData | null = null;
     private httpDomain = 'iotx.meross.com';
     private mqttDomain = '';
 
-    constructor(options: CloudClientOptions = {}) {
+    constructor(options: CloudClientInitOptions = {}) {
         this.timeoutMs = options.timeoutMs ?? 10_000;
         this.fetchImpl = options.fetch ?? globalThis.fetch;
         this.now = options.now ?? Date.now;
         this.nonce = options.nonce ?? (() => randomBytes(8).toString('hex'));
+        this.logger = options.logger;
     }
 
     /**
      * Exchanges email/password (and optional MFA) for a client that can
      * list devices.
      */
-    static async login(options: LoginOptions, clientOptions?: CloudClientOptions): Promise<CloudClient> {
+    static async login(options: LoginOptions, clientOptions?: CloudClientInitOptions): Promise<CloudClient> {
         const client = new CloudClient(clientOptions);
         await client.login(options);
         return client;
@@ -90,7 +102,7 @@ export class CloudClient {
     /**
      * Rebuilds an HTTP client from a stored token without a password.
      */
-    static restore(token: TokenData, clientOptions?: CloudClientOptions): CloudClient {
+    static restore(token: TokenData, clientOptions?: CloudClientInitOptions): CloudClient {
         const client = new CloudClient(clientOptions);
         client.restore(token);
         return client;
@@ -170,6 +182,8 @@ export class CloudClient {
         const timestamp = this.now();
         const nonce = this.nonce();
         const encoded = encodeCloudParams(params);
+        const url = `https://${this.httpDomain}${path}`;
+        const message = `POST ${path}`;
         const headers: Record<string, string> = {
             Vendor: 'meross',
             AppVersion: '3.22.4',
@@ -182,11 +196,20 @@ export class CloudClient {
             headers.Authorization = `Basic ${this.creds.token}`;
         }
 
+        emitLog(this.logger, {
+            level: 'debug',
+            channel: 'cloud',
+            message,
+            direction: 'tx',
+            target: url,
+            data: JSON.stringify(redactSecrets(params))
+        });
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
         let response: Response;
         try {
-            response = await this.fetchImpl(`https://${this.httpDomain}${path}`, {
+            response = await this.fetchImpl(url, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -201,8 +224,8 @@ export class CloudClient {
             if (error instanceof Error && error.name === 'AbortError') {
                 throw new CloudError('Cloud request timed out', 'NETWORK_TIMEOUT');
             }
-            const message = error instanceof Error ? error.message : String(error);
-            throw new CloudError(`Cloud request failed: ${message}`, 'NETWORK_ERROR');
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new CloudError(`Cloud request failed: ${errorMessage}`, 'NETWORK_ERROR');
         } finally {
             clearTimeout(timeoutId);
         }
@@ -216,12 +239,27 @@ export class CloudClient {
             });
         }
 
-        let body: { apiStatus?: number; info?: string; data?: unknown };
+        const text = await response.text();
+        // JSON.parse never returns undefined; that sentinel means the body was not JSON.
+        let parsed: unknown | undefined;
         try {
-            body = JSON.parse(await response.text()) as typeof body;
+            parsed = JSON.parse(text);
         } catch {
+            parsed = undefined;
+        }
+        emitLog(this.logger, {
+            level: 'debug',
+            channel: 'cloud',
+            message,
+            direction: 'rx',
+            target: url,
+            data: parsed === undefined ? text : JSON.stringify(redactSecrets(parsed))
+        });
+        if (parsed === undefined) {
             throw new CloudError('Cloud response is not valid JSON');
         }
+
+        const body = parsed as { apiStatus?: number; info?: string; data?: unknown };
 
         if (body.apiStatus === 0) {
             return body.data ?? null;

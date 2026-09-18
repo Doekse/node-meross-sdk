@@ -52,13 +52,14 @@ describe('emitLog', () => {
 });
 
 describe('redactSecrets', () => {
-    it('redacts password, token, and key at the top level', () => {
+    it('redacts password, token, key, and mfaCode at the top level', () => {
         assert.deepEqual(
             redactSecrets({
                 email: 'you@example.com',
                 password: 'secret',
                 token: 'tok',
                 key: 'k',
+                mfaCode: '123456',
                 userid: '1'
             }),
             {
@@ -66,6 +67,7 @@ describe('redactSecrets', () => {
                 password: REDACTED,
                 token: REDACTED,
                 key: REDACTED,
+                mfaCode: REDACTED,
                 userid: '1'
             }
         );

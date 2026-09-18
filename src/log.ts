@@ -12,7 +12,8 @@ export type LogChannel = 'mqtt' | 'lan' | 'cloud';
 export type LogDirection = 'tx' | 'rx';
 
 /**
- * One log line plus optional plaintext JSON.
+ * Host-formatted line. Optional traffic fields exist because LAN HTTP and
+ * cloud sign-in are not visible through a wrappable fetch/mqtt hook.
  */
 export interface LogRecord {
     level: LogLevel;
@@ -31,7 +32,7 @@ export interface LogRecord {
 /** Host callback; {@link emitLog} is a no-op when this is omitted. */
 export type SessionLogger = (record: LogRecord) => void;
 
-const SECRET_KEYS = new Set(['password', 'token', 'key']);
+const SECRET_KEYS = new Set(['password', 'token', 'key', 'mfaCode']);
 const REDACTED = '[REDACTED]';
 
 /**
@@ -49,18 +50,18 @@ export function emitLog(logger: SessionLogger | undefined, record: LogRecord): v
 }
 
 /**
- * Replaces cloud credential fields so debug dumps stay useful without leaking
- * secrets. Returns a new structure; the input is never mutated.
+ * Replaces cloud credential fields so debug dumps stay useful without
+ * leaking secrets. Returns a new structure; the input is never mutated.
  */
 export function redactSecrets(value: unknown): unknown {
     if (value === null || typeof value !== 'object') {
         return value;
     }
     if (Array.isArray(value)) {
-        return value.map((entry) => redactSecrets(entry));
+        return value.map(redactSecrets);
     }
     const copy: Record<string, unknown> = {};
-    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    for (const [key, nested] of Object.entries(value)) {
         copy[key] = SECRET_KEYS.has(key) ? REDACTED : redactSecrets(nested);
     }
     return copy;

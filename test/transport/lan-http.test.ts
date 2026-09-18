@@ -3,6 +3,7 @@ import { createServer, type AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
 
 import { CommandError, ProtocolError, TransportError } from '../../src/errors';
+import type { LogRecord } from '../../src/log';
 import {
     DEFAULT_COMMAND_TIMEOUT_MS,
     ProtocolDispatcher,
@@ -460,5 +461,57 @@ describe('LanHttpTransport', () => {
         } finally {
             server.close();
         }
+    });
+
+    it('logs plaintext LAN traffic even when the wire body is encrypted', async () => {
+        const records: LogRecord[] = [];
+        const { transport, calls } = createTransport(async (_url, init) => {
+            const plain = decryptPayload(String(init.body), ENCRYPTION_KEY);
+            const sent = decodeMessage(plain, KEY);
+            return jsonResponse(encryptPayload(JSON.stringify(ackFor(sent, 'GETACK')), ENCRYPTION_KEY));
+        }, {
+            logger: (record) => {
+                records.push(record);
+            }
+        });
+
+        await transport.request({
+            uuid: UUID,
+            ip: IP,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET',
+            encryptionKey: ENCRYPTION_KEY
+        });
+
+        assert.equal(String(calls[0]!.init.body).startsWith('{'), false);
+        const tx = records.find((record) => record.direction === 'tx');
+        const rx = records.find((record) => record.direction === 'rx');
+        assert.ok(tx);
+        assert.equal(tx.channel, 'lan');
+        assert.equal(tx.target, `http://${IP}/config`);
+        assert.equal(tx.data!.startsWith('{'), true);
+        assert.ok(rx);
+        assert.equal(rx.message, 'LAN HTTP 200');
+        assert.equal(rx.data!.startsWith('{'), true);
+        assert.equal(JSON.stringify(records).includes('Authorization'), false);
+    });
+
+    it('does not fail a request when the logger throws', async () => {
+        const { transport } = createTransport(async (_url, init) => {
+            const sent = decodeMessage(String(init.body), KEY);
+            return jsonResponse(ackFor(sent, 'GETACK'));
+        }, {
+            logger: () => {
+                throw new Error('host logger blew up');
+            }
+        });
+
+        const reply = await transport.request({
+            uuid: UUID,
+            ip: IP,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        assert.equal(reply.header.method, 'GETACK');
     });
 });
