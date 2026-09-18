@@ -15,6 +15,7 @@ import {
 import { attachEndpoint } from './device/attach';
 import { DeviceRuntime } from './device/runtime';
 import { Inventory } from './inventory';
+import type { SessionLogger } from './log';
 import {
     DEFAULT_POLL_INTERVAL_MS,
     POLL_START_STAGGER_MS,
@@ -57,11 +58,13 @@ export interface TokenData {
 /**
  * Test hooks and host overrides. Transports stay internal; only cloud `fetch`,
  * MQTT connect, and LAN `fetch` are injectable so CI can run without a broker.
+ * `logger` is the single host sink; it is not a field on {@link CloudClientOptions}.
  */
 export interface SessionOptions {
     cloud?: CloudClientOptions;
     mqttConnect?: MqttConnectFn;
     lanFetch?: typeof globalThis.fetch;
+    logger?: SessionLogger;
 }
 
 interface SessionEvents {
@@ -98,6 +101,7 @@ export class Session extends EventEmitter<SessionEvents> {
     private token: TokenData;
     private readonly mqttConnect?: MqttConnectFn;
     private readonly lanFetch?: typeof globalThis.fetch;
+    private readonly logger?: SessionLogger;
     private graph = new DeviceGraph();
     private readonly endpoints = new Map<string, Endpoint>();
     private readonly devices = new Map<string, DeviceRuntime>();
@@ -117,6 +121,7 @@ export class Session extends EventEmitter<SessionEvents> {
         this.cloud = cloud;
         this.mqttConnect = options.mqttConnect;
         this.lanFetch = options.lanFetch;
+        this.logger = options.logger;
         this.inventory = new Inventory();
     }
 
@@ -127,7 +132,10 @@ export class Session extends EventEmitter<SessionEvents> {
         options: LoginOptions,
         sessionOptions: SessionOptions = {}
     ): Promise<Session> {
-        const cloud = await CloudClient.login(options, sessionOptions.cloud);
+        const cloud = await CloudClient.login(options, {
+            ...sessionOptions.cloud,
+            logger: sessionOptions.logger
+        });
         return new Session(cloud.getToken(), cloud, sessionOptions);
     }
 
@@ -135,7 +143,10 @@ export class Session extends EventEmitter<SessionEvents> {
      * Rebuilds a session from a stored token without a password.
      */
     static restore(token: TokenData, sessionOptions: SessionOptions = {}): Session {
-        const cloud = CloudClient.restore(token, sessionOptions.cloud);
+        const cloud = CloudClient.restore(token, {
+            ...sessionOptions.cloud,
+            logger: sessionOptions.logger
+        });
         return new Session(cloud.getToken(), cloud, sessionOptions);
     }
 
@@ -266,6 +277,7 @@ export class Session extends EventEmitter<SessionEvents> {
             mqttDomain: this.token.mqttDomain,
             dispatcher,
             connect: this.mqttConnect,
+            logger: this.logger,
             onConnectionChange: (connected) => {
                 if (!connected) {
                     for (const runtime of this.devices.values()) {
@@ -280,7 +292,8 @@ export class Session extends EventEmitter<SessionEvents> {
             key: this.token.key,
             from: mqtt.clientResponseTopic,
             dispatcher,
-            fetch: this.lanFetch
+            fetch: this.lanFetch,
+            logger: this.logger
         });
         return new TransportRouter({ mqtt, lan });
     }

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Optional `SessionOptions.logger` for MQTT / LAN / cloud traffic (`LogRecord` types on the public barrel). Hosts own DEBUG gating; the SDK never reads env. Cloud records redact `password` / `token` / `key`. Session events stay on the EventEmitter.
+
 ## [0.2.0-alpha] - 2026-09-17
 
 ### Added

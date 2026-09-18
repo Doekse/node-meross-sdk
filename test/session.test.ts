@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 
 import { ABILITY_NAMESPACE, SYSTEM_ALL_NAMESPACE } from '../src/device';
 import { AuthError, CloudError, MerossError, TransportError } from '../src/errors';
+import type { LogRecord, SessionLogger } from '../src/log';
 import {
     ONLINE_NAMESPACE,
     TOGGLEX_NAMESPACE,
@@ -283,6 +284,7 @@ async function loginConnected(options: {
     devices?: unknown[];
     login?: () => unknown;
     lanFetch?: typeof fetch;
+    logger?: SessionLogger;
     ack?: EnrollmentAckOptions;
     /** Successful `/v1/Hub/getSubDevices` body, including `[]`. Omit so the path returns HTTP 500. */
     subDevices?: unknown[];
@@ -303,7 +305,8 @@ async function loginConnected(options: {
         {
             cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
             mqttConnect: createMqttConnect(clientRef, options.ack ?? {}),
-            lanFetch: options.lanFetch
+            lanFetch: options.lanFetch,
+            logger: options.logger
         }
     );
     options.beforeConnect?.(session);
@@ -344,6 +347,24 @@ describe('Session.login and restore', () => {
 
         assert.equal(session.getToken().token, 'saved');
         assert.deepEqual(session.inventory.endpoints(), []);
+    });
+
+    it('logger sees cloud sign-in and MQTT after connect', async () => {
+        const records: LogRecord[] = [];
+        const { session } = await loginConnected({
+            logger: (record) => {
+                records.push(record);
+            }
+        });
+
+        assert.ok(records.some((record) =>
+            record.channel === 'cloud'
+            && record.direction === 'tx'
+            && record.target?.includes('/v1/Auth/signIn')
+        ));
+        assert.ok(records.some((record) => record.channel === 'mqtt' && record.direction === 'tx'));
+        assert.ok(records.some((record) => record.channel === 'mqtt' && record.direction === 'rx'));
+        await session.disconnect();
     });
 });
 
