@@ -26,6 +26,7 @@ It was built to power a [Homey](https://homey.app) integration, and to give othe
 - [Quick start](#quick-start)
 - [Concepts](#concepts)
 - [Usage](#usage)
+- [Logging](#logging)
 - [Traits](#traits)
 - [Errors](#errors)
 - [Development](#development)
@@ -230,6 +231,35 @@ for (const row of session.inventory.endpoints()) {
 ```
 
 Unknown ids throw `MerossError` with code `ENDPOINT_NOT_FOUND`. Commands on a session that is not connected throw `NOT_CONNECTED`.
+
+## Logging
+
+Pass `logger` on `SessionOptions` to receive MQTT, LAN, and cloud traffic. The SDK never reads `DEBUG` or any env flag — omit the sink to stay silent. Session `connection`, `ratelimit`, and `warning` stay events; they are not mirrored through the logger.
+
+`logLevel` is the floor when `logger` is set (default `debug`):
+
+| `logLevel` | Emits |
+| --- | --- |
+| `error` | Swallowed faults only (e.g. malformed MQTT, with raw `data`) |
+| `debug` (default) | Errors plus one-line traffic summaries — **no** `data` |
+| `trace` | Errors plus one traffic record per frame **with** `data` |
+
+```javascript
+const { Session } = require('node-meross-sdk');
+
+const session = await Session.login(
+  { email: 'you@example.com', password: 'secret' },
+  {
+    logLevel: 'trace', // omit or 'debug' for summaries without bodies
+    logger: (record) => {
+      console.log(record.message);
+      if (record.data) console.log(record.data);
+    }
+  }
+);
+```
+
+Cloud records redact `password`, `token`, `key`, and `mfaCode`. Treat dumps as sensitive anyway: topics, device payloads, and account email still appear in plaintext.
 
 ## Traits
 

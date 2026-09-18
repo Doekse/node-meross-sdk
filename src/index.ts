@@ -8,6 +8,9 @@ export {
 } from './errors';
 export { Session } from './session';
 export type { LoginOptions, TokenData, SessionOptions } from './session';
+export type {
+    LogRecord, LogLevel, LogChannel, LogDirection, SessionLogger
+} from './log';
 export { Inventory } from './inventory';
 export type { ClassHint, InventoryRow } from './inventory';
 export { Endpoint } from './endpoint';

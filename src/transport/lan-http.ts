@@ -1,6 +1,7 @@
 import http from 'node:http';
 
 import { ProtocolError, TransportError } from '../errors';
+import { emitTraffic, type LogLevel, type SessionLogger } from '../log';
 import {
     DEFAULT_COMMAND_TIMEOUT_MS,
     ProtocolDispatcher,
@@ -32,6 +33,8 @@ export interface LanHttpTransportOptions {
     from: string;
     dispatcher?: ProtocolDispatcher;
     fetch?: typeof globalThis.fetch;
+    logger?: SessionLogger;
+    logLevel?: LogLevel;
 }
 
 /**
@@ -51,6 +54,8 @@ export class LanHttpTransport {
     private readonly key: string;
     private readonly from: string;
     private readonly fetchFn: typeof globalThis.fetch;
+    private readonly logger?: SessionLogger;
+    private readonly logLevel?: LogLevel;
     /** Tail of each uuid's POST chain, not a backlog: one entry per device. */
     private readonly queues = new Map<string, Promise<void>>();
 
@@ -58,6 +63,8 @@ export class LanHttpTransport {
         this.key = options.key;
         this.from = options.from;
         this.fetchFn = options.fetch ?? defaultFetch;
+        this.logger = options.logger;
+        this.logLevel = options.logLevel;
         this.dispatcher = options.dispatcher ?? new ProtocolDispatcher();
     }
 
@@ -99,14 +106,22 @@ export class LanHttpTransport {
             controller.abort();
         }, DEFAULT_LAN_TIMEOUT_MS);
         const reply = this.dispatcher.pending.register(messageId, DEFAULT_LAN_TIMEOUT_MS);
+        const target = `http://${options.ip}/config`;
 
-        let body = JSON.stringify(message);
-        if (options.encryptionKey) {
-            body = encryptPayload(body, options.encryptionKey);
-        }
+        const plaintext = JSON.stringify(message);
+        emitTraffic(this.logger, this.logLevel, {
+            channel: 'lan',
+            message: `LAN POST ${options.method} ${options.namespace}`,
+            direction: 'tx',
+            target,
+            data: () => plaintext
+        });
+        const body = options.encryptionKey
+            ? encryptPayload(plaintext, options.encryptionKey)
+            : plaintext;
 
         try {
-            await this.attempt(options, body, controller.signal);
+            await this.attempt(options, body, controller.signal, target);
         } catch (error) {
             if (!(error instanceof Error && error.name === 'AbortError')) {
                 this.dispatcher.pending.reject(
@@ -133,9 +148,10 @@ export class LanHttpTransport {
     private async attempt(
         options: LanHttpRequestOptions,
         body: string,
-        signal: AbortSignal
+        signal: AbortSignal,
+        target: string
     ): Promise<void> {
-        const response = await this.fetchFn(`http://${options.ip}/config`, {
+        const response = await this.fetchFn(target, {
             method: 'POST',
             headers: {
                 'Content-Type': options.encryptionKey
@@ -153,12 +169,20 @@ export class LanHttpTransport {
             );
         }
 
-        let text = await response.text();
-        if (options.encryptionKey) {
-            text = decryptPayload(text, options.encryptionKey);
-        }
+        const wire = await response.text();
+        const plaintext = options.encryptionKey
+            ? decryptPayload(wire, options.encryptionKey)
+            : wire;
 
-        const decoded = decodeMessage(text, this.key);
+        emitTraffic(this.logger, this.logLevel, {
+            channel: 'lan',
+            message: `LAN HTTP ${response.status}`,
+            direction: 'rx',
+            target,
+            data: () => plaintext
+        });
+
+        const decoded = decodeMessage(plaintext, this.key);
         // Envelope often cannot identify the device; this POST's uuid can.
         if (this.dispatcher.handle(decoded, options.uuid) !== 'reply') {
             throw new ProtocolError('LAN HTTP response did not match a pending request');

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { CommandError, TransportError } from '../../src/errors';
+import type { LogRecord } from '../../src/log';
 import {
     ProtocolDispatcher,
     TOGGLEX_NAMESPACE,
@@ -487,6 +488,123 @@ describe('MqttTransport', () => {
         client.deliver(ackFor(decodeMessage(client.published[0]!.payload, KEY), 'GETACK'));
         await pending;
 
+        await transport.disconnect();
+    });
+
+    it('logs MQTT publish and message traffic on the real topics', async () => {
+        const records: LogRecord[] = [];
+        const { transport, getClient } = createTransport({
+            logLevel: 'trace',
+            logger: (record) => {
+                records.push(record);
+            }
+        });
+        await transport.connect();
+        const pending = transport.request({
+            uuid: UUID,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        const client = getClient();
+        const sent = decodeMessage(client.published[0]!.payload, KEY);
+        client.deliver(ackFor(sent, 'GETACK'));
+        await pending;
+
+        const tx = records.find((record) => record.direction === 'tx');
+        const rx = records.find((record) => record.direction === 'rx');
+        assert.ok(tx);
+        assert.equal(tx.level, 'trace');
+        assert.equal(tx.channel, 'mqtt');
+        assert.equal(tx.target, `/appliance/${UUID}/subscribe`);
+        assert.equal(tx.data, client.published[0]!.payload);
+        assert.ok(rx);
+        assert.equal(rx.level, 'trace');
+        assert.equal(rx.target, USER_TOPICS[0]);
+        assert.equal(JSON.stringify(records).includes('Authorization'), false);
+
+        await transport.disconnect();
+    });
+
+    it('logs an error for a malformed payload without dropping the socket', async () => {
+        const records: LogRecord[] = [];
+        const { transport, getClient } = createTransport({
+            logger: (record) => {
+                records.push(record);
+            }
+        });
+        await transport.connect();
+        getClient().deliver('{not json');
+
+        assert.ok(records.some((record) =>
+            record.level === 'error'
+            && record.channel === 'mqtt'
+            && record.message === 'Malformed MQTT payload'
+            && record.data === '{not json'
+        ));
+        await transport.disconnect();
+    });
+
+    it('at logLevel error still logs malformed MQTT data without traffic', async () => {
+        const records: LogRecord[] = [];
+        const { transport, getClient } = createTransport({
+            logLevel: 'error',
+            logger: (record) => {
+                records.push(record);
+            }
+        });
+        await transport.connect();
+        getClient().deliver('{not json');
+
+        assert.equal(records.some((record) => record.direction === 'tx' || record.direction === 'rx'), false);
+        assert.ok(records.some((record) =>
+            record.level === 'error'
+            && record.message === 'Malformed MQTT payload'
+            && record.data === '{not json'
+        ));
+        await transport.disconnect();
+    });
+
+    it('logs mqtt.js errors without throwing', async () => {
+        const records: LogRecord[] = [];
+        const client = new FakeMqttClient();
+        const { transport } = createTransport({
+            client,
+            logger: (record) => {
+                records.push(record);
+            },
+            connect: () => {
+                queueMicrotask(() => {
+                    client.emit('error', new Error('broker down'));
+                    client.emit('connect');
+                });
+                return client;
+            }
+        });
+        await transport.connect();
+
+        assert.ok(records.some((record) =>
+            record.level === 'error'
+            && record.channel === 'mqtt'
+            && record.message === 'broker down'
+        ));
+        await transport.disconnect();
+    });
+
+    it('does not fail a request when the logger throws', async () => {
+        const { transport, getClient } = createTransport({
+            logger: () => {
+                throw new Error('host logger blew up');
+            }
+        });
+        await transport.connect();
+        const pending = transport.request({
+            uuid: UUID,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        const client = getClient();
+        client.deliver(ackFor(decodeMessage(client.published[0]!.payload, KEY), 'GETACK'));
+        assert.equal((await pending).header.method, 'GETACK');
         await transport.disconnect();
     });
 });
