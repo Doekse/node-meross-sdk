@@ -5,6 +5,7 @@ import {
     FAN_CONFIG_NAMESPACE,
     FAN_NAMESPACE,
     FILTER_MAINTENANCE_NAMESPACE,
+    TOGGLE_NAMESPACE,
     TOGGLEX_NAMESPACE,
     decodeFanBtnConfigPush,
     decodeFanConfigGetAck,
@@ -29,8 +30,6 @@ import {
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
-
-const TOGGLE_NAMESPACE = 'Appliance.Control.Toggle';
 
 export interface FanValues {
     on?: boolean;

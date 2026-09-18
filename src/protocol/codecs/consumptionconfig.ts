@@ -2,7 +2,7 @@ import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 import { parseElectricityConfig, type ElectricityConfig } from './electricity';
 
-export const CONSUMPTION_CONFIG_NAMESPACE = 'Appliance.Control.ConsumptionConfig';
+export { CONSUMPTION_CONFIG_NAMESPACE } from '../namespaces';
 
 /** Firmware GET uses an empty payload. */
 export function encodeConsumptionConfigGet(): MerossPayload {

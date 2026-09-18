@@ -1,18 +1,18 @@
 import { ProtocolError } from '../../errors';
+import type { MerossPayload } from '../message';
 import {
+    DIFFUSER_LIGHT_NAMESPACE,
+    DIFFUSER_SPRAY_NAMESPACE,
+    FAN_NAMESPACE,
+    GARAGE_STATE_NAMESPACE,
+    LIGHT_NAMESPACE,
+    SPRAY_NAMESPACE,
     SUMMER_MODE_NAMESPACE,
     THERMOSTAT_MODE_NAMESPACE,
     THERMOSTAT_MODEB_NAMESPACE,
+    TOGGLEX_NAMESPACE,
     WINDOW_OPENED_NAMESPACE
-} from './climate';
-import { GARAGE_STATE_NAMESPACE } from './cover';
-import {
-    DIFFUSER_LIGHT_NAMESPACE,
-    DIFFUSER_SPRAY_NAMESPACE
-} from './diffuser';
-import { FAN_NAMESPACE } from './fan';
-import { LIGHT_NAMESPACE } from './light';
-import { SPRAY_NAMESPACE } from './spray';
+} from '../namespaces';
 import {
     decodeSystemFirmwareGetAck,
     decodeSystemHardwareGetAck,
@@ -21,10 +21,8 @@ import {
     type SystemHardwareState,
     type SystemTimeState
 } from './system';
-import { TOGGLEX_NAMESPACE } from './togglex';
-import type { MerossPayload } from '../message';
 
-export const SYSTEM_ALL_NAMESPACE = 'Appliance.System.All';
+export { SYSTEM_ALL_NAMESPACE } from '../namespaces';
 
 /** One `digest.togglex` row. `on` is omitted when firmware leaves `onoff` out. */
 export interface DigestToggle {

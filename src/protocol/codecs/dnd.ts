@@ -1,7 +1,7 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
-export const DND_MODE_NAMESPACE = 'Appliance.System.DNDMode';
+export { DND_MODE_NAMESPACE } from '../namespaces';
 
 export interface DndState {
     /** Status LED on. Firmware DNDMode is the inverse (`mode` 1 = LED off). */

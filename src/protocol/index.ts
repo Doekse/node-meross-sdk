@@ -74,6 +74,7 @@ export type {
     ToggleXGetOptions,
     ToggleXSetOptions
 } from './codecs/togglex';
+export { HUB_SUBDEVICE_LIST_NAMESPACE, TOGGLE_NAMESPACE } from './namespaces';
 export {
     LIGHT_NAMESPACE,
     LIGHT_EFFECT_NAMESPACE,

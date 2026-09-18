@@ -4,10 +4,37 @@ import {
     ALARM_NAMESPACE,
     CALIBRATION_NAMESPACE,
     COMPRESSOR_DELAY_NAMESPACE,
+    CONFIG_OVERTEMP_NAMESPACE,
+    CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
+    CONFIG_STANDBY_KILLER_NAMESPACE,
+    CONTROL_ALARM_NAMESPACE,
+    CONTROL_ALERT_CONFIG_NAMESPACE,
+    CONTROL_BEEP_NAMESPACE,
+    CONTROL_TIMER_NAMESPACE,
+    CONTROL_TRIGGER_NAMESPACE,
+    CONTROL_WATER_NAMESPACE,
+    CONSUMPTIONH_NAMESPACE,
+    CONSUMPTIONX_NAMESPACE,
     CTL_RANGE_NAMESPACE,
     DEAD_ZONE_NAMESPACE,
+    DEVICE_CFG_NAMESPACE,
+    DIFFUSER_LIGHT_NAMESPACE,
+    DIFFUSER_SENSOR_NAMESPACE,
+    DIFFUSER_SPRAY_NAMESPACE,
+    DIGEST_TIMERX_NAMESPACE,
+    DIGEST_TRIGGERX_NAMESPACE,
+    DND_MODE_NAMESPACE,
+    ELECTRICITY_NAMESPACE,
+    ELECTRICITYX_NAMESPACE,
+    FAN_CONFIG_NAMESPACE,
+    FAN_NAMESPACE,
+    FILTER_MAINTENANCE_NAMESPACE,
     FROST_NAMESPACE,
+    GARAGE_CONFIG_NAMESPACE,
+    GARAGE_MULTIPLE_CONFIG_NAMESPACE,
+    GARAGE_STATE_NAMESPACE,
     HOLD_ACTION_NAMESPACE,
+    HUB_BATTERY_NAMESPACE,
     HUB_MTS100_ADJUST_NAMESPACE,
     HUB_MTS100_ALL_NAMESPACE,
     HUB_MTS100_CONFIG_NAMESPACE,
@@ -17,57 +44,6 @@ import {
     HUB_MTS100_SUPERCTL_NAMESPACE,
     HUB_MTS100_TEMPERATURE_NAMESPACE,
     HUB_MTS100_TIMESYNC_NAMESPACE,
-    HUB_TOGGLEX_NAMESPACE,
-    OVERHEAT_NAMESPACE,
-    PHYSICAL_LOCK_NAMESPACE,
-    SCHEDULE_NAMESPACE,
-    SCHEDULEB_NAMESPACE,
-    SCREEN_BRIGHTNESS_NAMESPACE,
-    SENSOR_NAMESPACE,
-    SUMMER_MODE_NAMESPACE,
-    TEMP_UNIT_NAMESPACE,
-    THERMOSTAT_MODE_NAMESPACE,
-    THERMOSTAT_MODEB_NAMESPACE,
-    THERMOSTAT_MODEC_NAMESPACE,
-    TIMER_NAMESPACE,
-    WINDOW_OPENED_NAMESPACE
-} from '../protocol/codecs/climate';
-import { CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE } from '../protocol/codecs/alarm';
-import { CONSUMPTIONH_NAMESPACE } from '../protocol/codecs/consumptionh';
-import { CONSUMPTIONX_NAMESPACE, consumptionXDays } from '../protocol/codecs/consumptionx';
-import {
-    GARAGE_CONFIG_NAMESPACE,
-    GARAGE_MULTIPLE_CONFIG_NAMESPACE,
-    GARAGE_STATE_NAMESPACE,
-    SHUTTER_ADJUST_NAMESPACE,
-    SHUTTER_CONFIG_NAMESPACE,
-    SHUTTER_POSITION_NAMESPACE,
-    SHUTTER_STATE_NAMESPACE
-} from '../protocol/codecs/cover';
-import {
-    DIFFUSER_LIGHT_NAMESPACE,
-    DIFFUSER_SENSOR_NAMESPACE,
-    DIFFUSER_SPRAY_NAMESPACE
-} from '../protocol/codecs/diffuser';
-import { DND_MODE_NAMESPACE } from '../protocol/codecs/dnd';
-import {
-    ELECTRICITY_NAMESPACE,
-    ELECTRICITYX_NAMESPACE
-} from '../protocol/codecs/electricity';
-import { FAN_CONFIG_NAMESPACE, FAN_NAMESPACE, FILTER_MAINTENANCE_NAMESPACE } from '../protocol/codecs/fan';
-import { LIGHT_EFFECT_NAMESPACE, LIGHT_NAMESPACE } from '../protocol/codecs/light';
-import { MP3_NAMESPACE } from '../protocol/codecs/mp3';
-import {
-    CONTROL_ALERT_CONFIG_NAMESPACE
-} from '../protocol/codecs/alertconfig';
-import {
-    CONFIG_OVERTEMP_NAMESPACE
-} from '../protocol/codecs/overtemp';
-import { CONFIG_STANDBY_KILLER_NAMESPACE } from '../protocol/codecs/standbykiller';
-import { PRESENCE_CONFIG_NAMESPACE } from '../protocol/codecs/presence';
-import {
-    CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
-    HUB_BATTERY_NAMESPACE,
     HUB_SENSOR_ADJUST_NAMESPACE,
     HUB_SENSOR_ALERT_NAMESPACE,
     HUB_SENSOR_ALL_NAMESPACE,
@@ -77,28 +53,42 @@ import {
     HUB_SENSOR_TEMPHUM_NAMESPACE,
     HUB_SENSOR_WATERLEAK_NAMESPACE,
     HUB_SUBDEVICE_VERSION_NAMESPACE,
+    HUB_TOGGLEX_NAMESPACE,
+    LIGHT_EFFECT_NAMESPACE,
+    LIGHT_NAMESPACE,
+    MP3_NAMESPACE,
+    OVERHEAT_NAMESPACE,
+    PHYSICAL_LOCK_NAMESPACE,
+    PRESENCE_CONFIG_NAMESPACE,
+    SCHEDULE_NAMESPACE,
+    SCHEDULEB_NAMESPACE,
+    SCREEN_BRIGHTNESS_NAMESPACE,
     SENSOR_LATEST_NAMESPACE,
     SENSOR_LATESTX_NAMESPACE,
-    SMOKE_CONFIG_NAMESPACE
-} from '../protocol/codecs/sensor';
-import { SPRAY_NAMESPACE } from '../protocol/codecs/spray';
-import {
+    SENSOR_NAMESPACE,
+    SHUTTER_ADJUST_NAMESPACE,
+    SHUTTER_CONFIG_NAMESPACE,
+    SHUTTER_POSITION_NAMESPACE,
+    SHUTTER_STATE_NAMESPACE,
+    SMOKE_CONFIG_NAMESPACE,
+    SPRAY_NAMESPACE,
+    SUMMER_MODE_NAMESPACE,
+    SYSTEM_ALL_NAMESPACE,
     SYSTEM_DEBUG_NAMESPACE,
     SYSTEM_FIRMWARE_NAMESPACE,
     SYSTEM_HARDWARE_NAMESPACE,
     SYSTEM_POSITION_NAMESPACE,
-    SYSTEM_TIME_NAMESPACE
-} from '../protocol/codecs/system';
-import {
-    CONTROL_TIMER_NAMESPACE,
-    DIGEST_TIMERX_NAMESPACE
-} from '../protocol/codecs/timerx';
-import { TOGGLEX_NAMESPACE } from '../protocol/codecs/togglex';
-import {
-    CONTROL_TRIGGER_NAMESPACE,
-    DIGEST_TRIGGERX_NAMESPACE
-} from '../protocol/codecs/triggerx';
-import { CONTROL_WATER_NAMESPACE, DEVICE_CFG_NAMESPACE } from '../protocol/codecs/water';
+    SYSTEM_TIME_NAMESPACE,
+    TEMP_UNIT_NAMESPACE,
+    THERMOSTAT_MODE_NAMESPACE,
+    THERMOSTAT_MODEB_NAMESPACE,
+    THERMOSTAT_MODEC_NAMESPACE,
+    TIMER_NAMESPACE,
+    TOGGLE_NAMESPACE,
+    TOGGLEX_NAMESPACE,
+    WINDOW_OPENED_NAMESPACE
+} from '../protocol/namespaces';
+import { consumptionXDays } from '../protocol/codecs/consumptionx';
 import type { MerossPayload } from '../protocol/message';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import { AlarmDescriptor } from '../traits/alarm';
@@ -117,12 +107,11 @@ import { SensorDescriptor } from '../traits/sensor';
 import { SprayDescriptor } from '../traits/spray';
 import { SprinklerDescriptor } from '../traits/sprinkler';
 import { StandbyKillerDescriptor } from '../traits/standbykiller';
-import { SwitchDescriptor, TOGGLE_NAMESPACE } from '../traits/switch';
+import { SwitchDescriptor } from '../traits/switch';
 import { SystemDescriptor } from '../traits/system';
 import { TimerDescriptor } from '../traits/timer';
 import { TriggerDescriptor } from '../traits/trigger';
 import type { PollJob } from './poller';
-import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
 import {
     POLL_RESPONSE_HEADER_SIZE,
     type PayloadSpec,

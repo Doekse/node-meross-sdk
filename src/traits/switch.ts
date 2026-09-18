@@ -4,6 +4,7 @@ import {
     HUB_EXCEPTION_NAMESPACE,
     HUB_SUBDEVICE_VERSION_NAMESPACE,
     HUB_TOGGLEX_NAMESPACE,
+    TOGGLE_NAMESPACE,
     TOGGLEX_NAMESPACE,
     decodeHubExceptionPush,
     decodeHubSubDeviceVersionPush,
@@ -24,15 +25,14 @@ import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 
+export { TOGGLE_NAMESPACE };
+
 export interface SwitchValues {
     on?: boolean;
     fault?: number;
     firmwareVersion?: string;
     hardwareVersion?: string;
 }
-
-/** Classic Toggle (not ToggleX). Shared so poll/jobs can key the same string. */
-export const TOGGLE_NAMESPACE = 'Appliance.Control.Toggle';
 
 /**
  * Board bind: one Toggle/ToggleX channel on the physical device.

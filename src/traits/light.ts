@@ -7,12 +7,13 @@ import {
     LIGHT_CAPACITY_TEMPERATURE,
     LIGHT_EFFECT_NAMESPACE,
     LIGHT_NAMESPACE,
+    TOGGLE_NAMESPACE,
+    TOGGLEX_NAMESPACE,
     decodeLightEffectPush,
     decodeLightGetAck,
     decodeLightPush,
     encodeLightEffectSet,
     encodeLightSet,
-    TOGGLEX_NAMESPACE,
     decodeToggleXPush,
     encodeToggleXSet,
     type LightChannelWireState,
@@ -27,8 +28,6 @@ import {
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
-
-const TOGGLE_NAMESPACE = 'Appliance.Control.Toggle';
 
 export interface LightRgb {
     r: number;

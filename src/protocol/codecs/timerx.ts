@@ -1,10 +1,11 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
-export const TIMERX_NAMESPACE = 'Appliance.Control.TimerX';
-export const DIGEST_TIMERX_NAMESPACE = 'Appliance.Digest.TimerX';
-/** Pre-X firmware; no Digest. Listing is a GET of the full `timer` list. */
-export const CONTROL_TIMER_NAMESPACE = 'Appliance.Control.Timer';
+export {
+    CONTROL_TIMER_NAMESPACE,
+    DIGEST_TIMERX_NAMESPACE,
+    TIMERX_NAMESPACE
+} from '../namespaces';
 
 /**
  * Host-facing TimerX row. `time` is minutes from midnight; `week` is the

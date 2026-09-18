@@ -2,24 +2,25 @@ import { ProtocolError } from '../../errors';
 import { decodeArray, encodeArray } from './payload';
 import type { MerossPayload } from '../message';
 
-export const HUB_SENSOR_TEMPHUM_NAMESPACE = 'Appliance.Hub.Sensor.TempHum';
-export const HUB_SENSOR_DOORWINDOW_NAMESPACE = 'Appliance.Hub.Sensor.DoorWindow';
-export const HUB_SENSOR_WATERLEAK_NAMESPACE = 'Appliance.Hub.Sensor.WaterLeak';
-export const HUB_SENSOR_MOTION_NAMESPACE = 'Appliance.Hub.Sensor.Motion';
-export const HUB_SENSOR_SMOKE_NAMESPACE = 'Appliance.Hub.Sensor.Smoke';
-export const HUB_SENSOR_ADJUST_NAMESPACE = 'Appliance.Hub.Sensor.Adjust';
-export const HUB_SENSOR_ALERT_NAMESPACE = 'Appliance.Hub.Sensor.Alert';
-export const HUB_SENSOR_ALL_NAMESPACE = 'Appliance.Hub.Sensor.All';
-export const HUB_BATTERY_NAMESPACE = 'Appliance.Hub.Battery';
-export const HUB_EXCEPTION_NAMESPACE = 'Appliance.Hub.Exception';
-export const HUB_SUBDEVICE_VERSION_NAMESPACE = 'Appliance.Hub.SubDevice.Version';
-export const SENSOR_LATESTX_NAMESPACE = 'Appliance.Control.Sensor.LatestX';
-export const SENSOR_LATEST_NAMESPACE = 'Appliance.Control.Sensor.Latest';
-export const SENSOR_HISTORY_NAMESPACE = 'Appliance.Control.Sensor.History';
-export const SENSOR_HISTORYX_NAMESPACE = 'Appliance.Control.Sensor.HistoryX';
-export const SMOKE_CONFIG_NAMESPACE = 'Appliance.Control.Smoke.Config';
-/** External/internal temp sensor binding (GET/SET/PUSH-query list). MTS300. */
-export const CONFIG_SENSOR_ASSOCIATION_NAMESPACE = 'Appliance.Config.Sensor.Association';
+export {
+    CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
+    HUB_BATTERY_NAMESPACE,
+    HUB_EXCEPTION_NAMESPACE,
+    HUB_SENSOR_ADJUST_NAMESPACE,
+    HUB_SENSOR_ALERT_NAMESPACE,
+    HUB_SENSOR_ALL_NAMESPACE,
+    HUB_SENSOR_DOORWINDOW_NAMESPACE,
+    HUB_SENSOR_MOTION_NAMESPACE,
+    HUB_SENSOR_SMOKE_NAMESPACE,
+    HUB_SENSOR_TEMPHUM_NAMESPACE,
+    HUB_SENSOR_WATERLEAK_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE,
+    SENSOR_HISTORY_NAMESPACE,
+    SENSOR_HISTORYX_NAMESPACE,
+    SENSOR_LATEST_NAMESPACE,
+    SENSOR_LATESTX_NAMESPACE,
+    SMOKE_CONFIG_NAMESPACE
+} from '../namespaces';
 
 export interface SensorTempHumState {
     id: string;

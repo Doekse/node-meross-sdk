@@ -1,13 +1,15 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
-export const GARAGE_STATE_NAMESPACE = 'Appliance.GarageDoor.State';
-export const GARAGE_CONFIG_NAMESPACE = 'Appliance.GarageDoor.Config';
-export const GARAGE_MULTIPLE_CONFIG_NAMESPACE = 'Appliance.GarageDoor.MultipleConfig';
-export const SHUTTER_POSITION_NAMESPACE = 'Appliance.RollerShutter.Position';
-export const SHUTTER_STATE_NAMESPACE = 'Appliance.RollerShutter.State';
-export const SHUTTER_CONFIG_NAMESPACE = 'Appliance.RollerShutter.Config';
-export const SHUTTER_ADJUST_NAMESPACE = 'Appliance.RollerShutter.Adjust';
+export {
+    GARAGE_CONFIG_NAMESPACE,
+    GARAGE_MULTIPLE_CONFIG_NAMESPACE,
+    GARAGE_STATE_NAMESPACE,
+    SHUTTER_ADJUST_NAMESPACE,
+    SHUTTER_CONFIG_NAMESPACE,
+    SHUTTER_POSITION_NAMESPACE,
+    SHUTTER_STATE_NAMESPACE
+} from '../namespaces';
 
 export interface GarageChannelState {
     channel: number;

@@ -1,13 +1,7 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
-/** Alert thresholds (GET/SET/PUSH-query list). MTS300 and EM06. */
-export const CONTROL_ALERT_CONFIG_NAMESPACE = 'Appliance.Control.AlertConfig';
-/**
- * Live alert report (GET/SET list). Experimental in meross_lan — field names
- * are not stable, so entries keep residual wire keys.
- */
-export const CONTROL_ALERT_REPORT_NAMESPACE = 'Appliance.Control.AlertReport';
+export { CONTROL_ALERT_CONFIG_NAMESPACE, CONTROL_ALERT_REPORT_NAMESPACE } from '../namespaces';
 
 export interface AlertConfigEntry {
     channel: number;

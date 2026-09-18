@@ -1,8 +1,7 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
-/** MSS305 standby cut-off (GET/SET/PUSH-query list). */
-export const CONFIG_STANDBY_KILLER_NAMESPACE = 'Appliance.Config.StandbyKiller';
+export { CONFIG_STANDBY_KILLER_NAMESPACE } from '../namespaces';
 
 export interface StandbyKillerEntry {
     channel: number;

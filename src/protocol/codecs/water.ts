@@ -2,12 +2,12 @@ import { ProtocolError } from '../../errors';
 import { decodeArray, encodeArray } from './payload';
 import type { MerossPayload } from '../message';
 
-export const CONTROL_WATER_NAMESPACE = 'Appliance.Control.Water';
-/** Completed watering cycle. PUSH-only; payload key is `control`. */
-export const CONTROL_WATER_EVENT_NAMESPACE = 'Appliance.Control.WaterEvent';
-export const DEVICE_CFG_NAMESPACE = 'Appliance.Config.DeviceCfg';
-/** MST100 watering schedules. Payload key is `config`. */
-export const WATER_PLAN_NAMESPACE = 'Appliance.Config.WaterPlan';
+export {
+    CONTROL_WATER_EVENT_NAMESPACE,
+    CONTROL_WATER_NAMESPACE,
+    DEVICE_CFG_NAMESPACE,
+    WATER_PLAN_NAMESPACE
+} from '../namespaces';
 
 export interface WaterControlState {
     subId: string;

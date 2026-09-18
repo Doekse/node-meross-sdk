@@ -1,7 +1,8 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
+import { MULTIPLE_NAMESPACE } from '../namespaces';
 
-export const MULTIPLE_NAMESPACE = 'Appliance.Control.Multiple';
+export { MULTIPLE_NAMESPACE };
 
 export interface MultipleSubCommand {
     header: {

@@ -2,12 +2,7 @@ import { ProtocolError } from '../../errors';
 import { encodeArray } from './payload';
 import type { MerossPayload } from '../message';
 
-export const CONTROL_ALARM_NAMESPACE = 'Appliance.Control.Alarm';
-/**
- * Chime / buzzer. Shares the `alarm` payload key with Control.Alarm but the
- * entry shape is `{ channel, onoff }` — keep decoders separate.
- */
-export const CONTROL_BEEP_NAMESPACE = 'Appliance.Control.Beep';
+export { CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE } from '../namespaces';
 
 /** Wire `value`: 1 = execute (siren on), 2 = normal (off). */
 const EXECUTE = 1;
