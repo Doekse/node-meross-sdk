@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Optional `SessionOptions.logger` and `SessionOptions.logLevel` (`'error' | 'debug' | 'trace'`) for MQTT / LAN / cloud traffic (`LogRecord` / `LogLevel` on the public barrel). Default floor is `debug` (one-line summaries, no bodies); set `logLevel: 'trace'` for `data`. The SDK never reads env. Cloud records redact `password` / `token` / `key` / `mfaCode`. Session events stay on the EventEmitter.
 
+### Changed
+
+- MQTT loads mqtt.js only on a real broker connect, and opens the socket with Node TLS instead of `mqtt.connect()`, so unused `ws` / `socks` stay unloaded. Injected `SessionOptions.mqttConnect` is unchanged. No host-visible API or behavior change.
+
 ## [0.2.0-alpha] - 2026-09-17
 
 ### Added
