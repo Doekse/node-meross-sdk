@@ -9,9 +9,9 @@ import {
     decodeAlertConfigPush,
     decodeAlertReportPush,
     encodeAlertConfigGet,
-    encodeAlertConfigSet,
-    type MerossMessage
-} from '../protocol';
+    encodeAlertConfigSet
+} from '../protocol/codecs/alertconfig';
+import type { MerossMessage } from '../protocol/message';
 import { channelList, SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';

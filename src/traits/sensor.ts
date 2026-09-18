@@ -1,7 +1,11 @@
+import type { TraitAttachArgs } from '../device/enroll-context';
+import {
+    decodeHubExceptionPush,
+    decodeHubSubDeviceVersionPush
+} from '../protocol/codecs/hub';
 import {
     CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
     HUB_BATTERY_NAMESPACE,
-    HUB_EXCEPTION_NAMESPACE,
     HUB_SENSOR_ADJUST_NAMESPACE,
     HUB_SENSOR_ALERT_NAMESPACE,
     HUB_SENSOR_ALL_NAMESPACE,
@@ -10,13 +14,10 @@ import {
     HUB_SENSOR_SMOKE_NAMESPACE,
     HUB_SENSOR_TEMPHUM_NAMESPACE,
     HUB_SENSOR_WATERLEAK_NAMESPACE,
-    HUB_SUBDEVICE_VERSION_NAMESPACE,
     SENSOR_LATESTX_NAMESPACE,
     SMOKE_CONFIG_NAMESPACE,
     decodeSmokeConfigPush,
     decodeBatteryPush,
-    decodeHubExceptionPush,
-    decodeHubSubDeviceVersionPush,
     decodeLatestXPush,
     decodeSensorAdjustPush,
     decodeSensorAlertPush,
@@ -32,13 +33,16 @@ import {
     encodeSensorAssociationSet,
     encodeSensorSmokeSet,
     encodeSmokeConfigSet,
-    type MerossMessage,
     type SensorAlertBand,
     type SensorAlertState,
     type SensorAllState,
     type SensorSmokeState
-} from '../protocol';
-import type { TraitAttachArgs } from '../device/enroll-context';
+} from '../protocol/codecs/sensor';
+import type { MerossMessage } from '../protocol/message';
+import {
+    HUB_EXCEPTION_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE
+} from '../protocol/namespaces';
 import {
     DEFAULT,
     SMART_ALL,

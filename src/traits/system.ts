@@ -2,7 +2,6 @@ import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-co
 import type { TraitName } from '../endpoint';
 import { decodeSystemAllGetAck } from '../protocol/codecs/system-all';
 import {
-    SYSTEM_ALL_NAMESPACE,
     SYSTEM_CLOCK_NAMESPACE,
     SYSTEM_DEBUG_NAMESPACE,
     SYSTEM_FIRMWARE_NAMESPACE,
@@ -17,13 +16,14 @@ import {
     decodeSystemTimeGetAck,
     encodeSystemPositionSet,
     encodeSystemTimeSet,
-    type MerossMessage,
     type SystemDebugState,
     type SystemFirmwareState,
     type SystemHardwareState,
     type SystemPositionState,
     type SystemTimeState
-} from '../protocol';
+} from '../protocol/codecs/system';
+import type { MerossMessage } from '../protocol/message';
+import { SYSTEM_ALL_NAMESPACE } from '../protocol/namespaces';
 import {
     ONCE,
     SMART_CONFIG,

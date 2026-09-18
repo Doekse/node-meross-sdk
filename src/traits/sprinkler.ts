@@ -1,16 +1,19 @@
+import type { TraitAttachArgs } from '../device/enroll-context';
 import { CommandError } from '../errors';
+import {
+    decodeHubExceptionPush,
+    decodeHubSubDeviceVersionPush
+} from '../protocol/codecs/hub';
+import {
+    HUB_BATTERY_NAMESPACE,
+    decodeBatteryPush
+} from '../protocol/codecs/sensor';
 import {
     CONTROL_WATER_EVENT_NAMESPACE,
     CONTROL_WATER_NAMESPACE,
     DEVICE_CFG_NAMESPACE,
-    HUB_BATTERY_NAMESPACE,
-    HUB_EXCEPTION_NAMESPACE,
-    HUB_SUBDEVICE_VERSION_NAMESPACE,
     WATER_PLAN_NAMESPACE,
-    decodeBatteryPush,
     decodeDeviceCfgPush,
-    decodeHubExceptionPush,
-    decodeHubSubDeviceVersionPush,
     decodeWaterEventPush,
     decodeWaterPlanGetAck,
     decodeWaterPush,
@@ -18,12 +21,15 @@ import {
     encodeWaterPlanGet,
     encodeWaterPlanSet,
     encodeWaterSet,
-    type MerossMessage,
     type WaterControlState,
     type WaterEventState,
     type WaterPlanEntry
-} from '../protocol';
-import type { TraitAttachArgs } from '../device/enroll-context';
+} from '../protocol/codecs/water';
+import type { MerossMessage } from '../protocol/message';
+import {
+    HUB_EXCEPTION_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE
+} from '../protocol/namespaces';
 import {
     DEFAULT,
     SMART_CONFIG,

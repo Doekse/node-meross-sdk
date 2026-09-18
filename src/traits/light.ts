@@ -7,19 +7,20 @@ import {
     LIGHT_CAPACITY_TEMPERATURE,
     LIGHT_EFFECT_NAMESPACE,
     LIGHT_NAMESPACE,
-    TOGGLE_NAMESPACE,
-    TOGGLEX_NAMESPACE,
     decodeLightEffectPush,
     decodeLightGetAck,
     decodeLightPush,
     encodeLightEffectSet,
     encodeLightSet,
-    decodeToggleXPush,
-    encodeToggleXSet,
     type LightChannelWireState,
-    type LightEffectEntry,
-    type MerossMessage
-} from '../protocol';
+    type LightEffectEntry
+} from '../protocol/codecs/light';
+import {
+    decodeToggleXPush,
+    encodeToggleXSet
+} from '../protocol/codecs/togglex';
+import type { MerossMessage } from '../protocol/message';
+import { TOGGLE_NAMESPACE, TOGGLEX_NAMESPACE } from '../protocol/namespaces';
 import {
     DEFAULT,
     SMART_CONFIG,

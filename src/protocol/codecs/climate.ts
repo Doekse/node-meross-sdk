@@ -1,6 +1,7 @@
 import { ProtocolError } from '../../errors';
-import { decodeArray, encodeArray } from './payload';
 import type { MerossPayload } from '../message';
+import type { HubSubdeviceGetOptions } from './hub';
+import { decodeArray, encodeArray } from './payload';
 
 export {
     ALARM_CONFIG_NAMESPACE,
@@ -20,7 +21,6 @@ export {
     HUB_MTS100_SUPERCTL_NAMESPACE,
     HUB_MTS100_TEMPERATURE_NAMESPACE,
     HUB_MTS100_TIMESYNC_NAMESPACE,
-    HUB_TOGGLEX_NAMESPACE,
     OVERHEAT_NAMESPACE,
     PHYSICAL_LOCK_NAMESPACE,
     SCHEDULE_NAMESPACE,
@@ -36,6 +36,15 @@ export {
     TIMER_NAMESPACE,
     WINDOW_OPENED_NAMESPACE
 } from '../namespaces';
+
+export {
+    HUB_TOGGLEX_NAMESPACE,
+    decodeHubToggleXGetAck,
+    decodeHubToggleXPush,
+    encodeHubToggleXGet,
+    encodeHubToggleXSet
+} from './hub';
+export type { HubSubdeviceGetOptions, HubToggleXSetOptions } from './hub';
 
 export type ClimateMode = 'off' | 'heat' | 'cool' | 'auto' | 'eco' | 'manual' | 'custom';
 export type ClimateWorkMode = 'manual' | 'schedule' | 'timer';
@@ -83,15 +92,6 @@ export interface ThermostatModeBSetOptions {
     working?: 'heat' | 'cool';
     workMode?: ClimateWorkMode;
     targetTemperature?: number;
-}
-
-export interface HubSubdeviceGetOptions {
-    id: string;
-}
-
-export interface HubToggleXSetOptions {
-    id: string;
-    on: boolean;
 }
 
 export interface HubMts100ModeSetOptions {
@@ -342,39 +342,6 @@ function decodeThermostatModeC(payload: MerossPayload): ThermostatState[] {
             ...(fanSpeed !== undefined ? { fanSpeed } : {}),
             ...(typeof fanObj.hTime === 'number' ? { fanHoldMinutes: fanObj.hTime } : {})
         };
-    });
-}
-
-export function encodeHubToggleXSet(options: HubToggleXSetOptions): MerossPayload {
-    return { togglex: [{ id: options.id, onoff: options.on ? 1 : 0 }] };
-}
-
-export function encodeHubToggleXGet(options: HubSubdeviceGetOptions): MerossPayload {
-    return { togglex: [{ id: options.id }] };
-}
-
-export function decodeHubToggleXGetAck(payload: MerossPayload): Array<{ id: string; on: boolean }> {
-    return decodeHubToggleX(payload);
-}
-
-export function decodeHubToggleXPush(payload: MerossPayload): Array<{ id: string; on: boolean }> {
-    return decodeHubToggleX(payload);
-}
-
-function decodeHubToggleX(payload: MerossPayload): Array<{ id: string; on: boolean }> {
-    const raw = payload.togglex;
-    if (!Array.isArray(raw)) {
-        throw new ProtocolError('Hub.ToggleX payload must contain a togglex array');
-    }
-    return raw.map((item) => {
-        if (typeof item !== 'object' || item === null) {
-            throw new ProtocolError('Hub.ToggleX entry must be an object');
-        }
-        const { id, onoff } = item as Record<string, unknown>;
-        if (typeof id !== 'string' || typeof onoff !== 'number') {
-            throw new ProtocolError('Hub.ToggleX entry requires id and onoff');
-        }
-        return { id, on: onoff === 1 };
     });
 }
 

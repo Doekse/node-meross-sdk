@@ -1,12 +1,12 @@
 import { CommandError, ProtocolError } from '../errors';
 import {
     MULTIPLE_NAMESPACE,
-    SYSTEM_ALL_NAMESPACE,
     canPackInMultiple,
     decodeMultipleAck,
     encodeMultipleSet
-} from '../protocol';
-import type { MerossMessage, MerossPayload } from '../protocol';
+} from '../protocol/codecs/multiple';
+import type { MerossMessage, MerossPayload } from '../protocol/message';
+import { SYSTEM_ALL_NAMESPACE } from '../protocol/namespaces';
 import type { LanHttpTransport } from './lan-http';
 import type { MqttTransport } from './mqtt';
 import type { PublishPriority } from './rate-limit';

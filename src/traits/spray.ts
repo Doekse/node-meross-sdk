@@ -4,9 +4,9 @@ import {
     SPRAY_NAMESPACE,
     decodeSprayPush,
     encodeSpraySet,
-    type MerossMessage,
     type SprayMode
-} from '../protocol';
+} from '../protocol/codecs/spray';
+import type { MerossMessage } from '../protocol/message';
 import {
     DEFAULT,
     type PollSpec

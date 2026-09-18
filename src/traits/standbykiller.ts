@@ -7,9 +7,9 @@ import {
     decodeStandbyKillerGetAck,
     decodeStandbyKillerPush,
     encodeStandbyKillerGet,
-    encodeStandbyKillerSet,
-    type MerossMessage
-} from '../protocol';
+    encodeStandbyKillerSet
+} from '../protocol/codecs/standbykiller';
+import type { MerossMessage } from '../protocol/message';
 import { channelList, SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';

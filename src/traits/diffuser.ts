@@ -10,9 +10,9 @@ import {
     encodeDiffuserSpraySet,
     type DiffuserLightMode,
     type DiffuserLightState,
-    type DiffuserSprayMode,
-    type MerossMessage
-} from '../protocol';
+    type DiffuserSprayMode
+} from '../protocol/codecs/diffuser';
+import type { MerossMessage } from '../protocol/message';
 import {
     DEFAULT,
     SMART_SLOW,

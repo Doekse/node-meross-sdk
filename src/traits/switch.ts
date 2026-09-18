@@ -1,19 +1,23 @@
 import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
 import type { GraphEndpoint } from '../device/index';
 import {
+    decodeHubExceptionPush,
+    decodeHubSubDeviceVersionPush,
+    decodeHubToggleXPush,
+    encodeHubToggleXSet
+} from '../protocol/codecs/hub';
+import {
+    decodeToggleXPush,
+    encodeToggleXSet
+} from '../protocol/codecs/togglex';
+import type { MerossMessage } from '../protocol/message';
+import {
     HUB_EXCEPTION_NAMESPACE,
     HUB_SUBDEVICE_VERSION_NAMESPACE,
     HUB_TOGGLEX_NAMESPACE,
     TOGGLE_NAMESPACE,
-    TOGGLEX_NAMESPACE,
-    decodeHubExceptionPush,
-    decodeHubSubDeviceVersionPush,
-    decodeHubToggleXPush,
-    decodeToggleXPush,
-    encodeHubToggleXSet,
-    encodeToggleXSet,
-    type MerossMessage
-} from '../protocol';
+    TOGGLEX_NAMESPACE
+} from '../protocol/namespaces';
 import {
     ALL_CHANNELS,
     DEFAULT,

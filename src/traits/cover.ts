@@ -7,7 +7,6 @@ import {
     SHUTTER_CONFIG_NAMESPACE,
     SHUTTER_POSITION_NAMESPACE,
     SHUTTER_STATE_NAMESPACE,
-    TOGGLEX_ALL_CHANNELS,
     decodeGarageConfigGetAck,
     decodeGarageGetAck,
     decodeGarageMultipleConfigGetAck,
@@ -21,15 +20,14 @@ import {
     encodeShutterAdjustSet,
     encodeShutterConfigSet,
     encodeShutterPositionSet,
-    type MerossMessage
-} from '../protocol';
-import type {
-    GarageDoorConfig,
-    GarageMultipleConfigEntry,
-    ShutterAdjustValue,
-    ShutterConfig,
-    ShutterConfigSetOptions
-} from '../protocol';
+    type GarageDoorConfig,
+    type GarageMultipleConfigEntry,
+    type ShutterAdjustValue,
+    type ShutterConfig,
+    type ShutterConfigSetOptions
+} from '../protocol/codecs/cover';
+import type { MerossMessage } from '../protocol/message';
+import { TOGGLEX_ALL_CHANNELS } from '../protocol/namespaces';
 import {
     channelList,
     DEFAULT,

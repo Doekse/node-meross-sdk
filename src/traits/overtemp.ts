@@ -14,9 +14,9 @@ import {
     decodeConfigOverTempPush,
     decodeControlOverTempPush,
     encodeConfigOverTempGet,
-    encodeConfigOverTempSet,
-    type MerossMessage
-} from '../protocol';
+    encodeConfigOverTempSet
+} from '../protocol/codecs/overtemp';
+import type { MerossMessage } from '../protocol/message';
 import { SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
