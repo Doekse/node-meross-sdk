@@ -81,6 +81,7 @@ describe('MqttTransport', () => {
         assert.equal(options.username, USER_ID);
         assert.equal(options.password, '3421441f1521102d91f627b001f9c9fd');
         assert.equal(options.rejectUnauthorized, true);
+        assert.equal(options.keepalive, 30);
         assert.equal(options.reconnectPeriod, MQTT_RECONNECT_PERIOD_MS);
         assert.equal(options.resubscribe, false);
         assert.deepEqual(getClient().subscriptions, USER_TOPICS);

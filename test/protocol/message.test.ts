@@ -210,6 +210,30 @@ describe('protocol message envelope', () => {
         assert.deepEqual(decoded, encoded);
     });
 
+    it('rejects an invalid JSON Buffer', () => {
+        assert.throws(
+            () => decodeMessage(Buffer.from('not-json', 'utf8')),
+            (err: unknown) => err instanceof ProtocolError
+        );
+    });
+
+    it('decodes non-ASCII UTF-8 in Buffer payloads without latin1 corruption', () => {
+        // Multi-byte utf8 (é = C3 A9) differs under latin1; a round-trip must
+        // preserve the string so encoding mistakes cannot pass silently.
+        const label = 'café';
+        const encoded = encodeMessage({
+            namespace: 'Appliance.Control.ToggleX',
+            method: 'SETACK',
+            key: 'k',
+            from: '/appliance/abc/publish',
+            payload: { label }
+        });
+        const buffer = Buffer.from(JSON.stringify(encoded), 'utf8');
+        assert.notEqual(buffer.toString('latin1'), buffer.toString('utf8'));
+        const decoded = decodeMessage(buffer, 'k');
+        assert.equal(decoded.payload.label, label);
+    });
+
     it('rejects a wrong key when decode is asked to verify', () => {
         const encoded = encodeMessage({
             namespace: 'Appliance.Control.ToggleX',

@@ -83,12 +83,15 @@ export function encodeMessage(options: EncodeMessageOptions): MerossMessage {
 /**
  * Accepts MQTT/HTTP bytes, a JSON string, or an already-parsed object.
  * Pass `key` to reject a mismatched `sign`.
+ *
+ * Buffers use utf8 (MQTT payloads); strings pass through as-is (LAN HTTP).
  */
 export function decodeMessage(input: string | Buffer | unknown, key?: string): MerossMessage {
     let raw: unknown = input;
     if (typeof input === 'string' || Buffer.isBuffer(input)) {
         try {
-            raw = JSON.parse(String(input));
+            const text = Buffer.isBuffer(input) ? input.toString('utf8') : input;
+            raw = JSON.parse(text);
         } catch {
             throw new ProtocolError('message is not valid JSON');
         }

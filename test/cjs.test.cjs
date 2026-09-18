@@ -41,6 +41,8 @@ describe('CJS public surface', () => {
         assert.equal(sdk.deriveEncryptionKey, undefined);
         assert.equal(sdk.CloudClient, undefined);
         assert.equal(sdk.MqttTransport, undefined);
+        assert.equal(sdk.connectMqtt, undefined);
+        assert.equal(sdk.defaultConnect, undefined);
         assert.equal(sdk.DeviceGraph, undefined);
         assert.equal(sdk.enrollPhysicalDevice, undefined);
         assert.equal(sdk.decodeAbilityGetAck, undefined);
