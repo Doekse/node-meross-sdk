@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- MQTT loads mqtt.js only on a real broker connect, and opens the socket with Node TLS instead of `mqtt.connect()`, so unused `ws` / `socks` stay unloaded. Injected `SessionOptions.mqttConnect` is unchanged. No host-visible API or behavior change.
+- MQTT loads mqtt.js only inside `MqttTransport` on a real broker connect, and opens the socket with Node TLS instead of `mqtt.connect()`, so unused `ws` / `socks` stay unloaded. Injected `SessionOptions.mqttConnect` is unchanged. No host-visible API or behavior change.
 
 ## [0.2.0-alpha] - 2026-09-17
 

@@ -111,7 +111,7 @@ export class MqttTransport {
     private readonly userId: string;
     private readonly key: string;
     private readonly mqttDomain: string;
-    private readonly connectFn: MqttConnectFn;
+    private readonly connectFn?: MqttConnectFn;
     private readonly rateLimiter: PublishRateLimiter;
     private readonly logger?: SessionLogger;
     private readonly logLevel?: LogLevel;
@@ -128,7 +128,7 @@ export class MqttTransport {
         this.userId = options.userId;
         this.key = options.key;
         this.mqttDomain = options.mqttDomain;
-        this.connectFn = options.connect ?? connectMqtt;
+        this.connectFn = options.connect;
         this.rateLimiter = options.rateLimiter ?? new PublishRateLimiter();
         this.logger = options.logger;
         this.logLevel = options.logLevel;
@@ -238,7 +238,7 @@ export class MqttTransport {
      */
     private async open(): Promise<void> {
         const [host, portStr] = this.mqttDomain.split(':');
-        const client = this.connectFn({
+        const options: MqttConnectOptions = {
             protocol: 'mqtts',
             host,
             port: portStr ? Number(portStr) : MQTT_PORT,
@@ -249,12 +249,23 @@ export class MqttTransport {
             keepalive: 30,
             reconnectPeriod: MQTT_RECONNECT_PERIOD_MS,
             resubscribe: false
-        });
+        };
+        // mqtt.js `connect()` loads unused `ws`/`socks` even for mqtts. Injected
+        // `connect` skips this require so unit tests never pay for that graph.
+        let client: MqttBrokerClient;
+        if (this.connectFn) {
+            client = this.connectFn(options);
+        } else {
+            const mqtt = createRequire(__filename)('mqtt') as typeof import('mqtt');
+            client = new mqtt.MqttClient(
+                () => connectTls(options),
+                options
+            ) as unknown as MqttBrokerClient;
+        }
         this.client = client;
 
-        client.on('connect', () => this.onConnect(client));
-        client.on('message', (topic, payload) => this.onMessage(topic, payload));
-        // mqtt.js treats an unhandled `error` event as a thrown exception.
+        // mqtt.js treats an unhandled `error` as a throw; TLS can fail before
+        // `connect`/`message` listeners are attached.
         client.on('error', (error) => {
             emitLog(this.logger, {
                 level: 'error',
@@ -262,6 +273,8 @@ export class MqttTransport {
                 message: error.message
             });
         });
+        client.on('connect', () => this.onConnect(client));
+        client.on('message', (topic, payload) => this.onMessage(topic, payload));
         client.on('close', () => {
             const wasConnected = this.connected;
             this.applyConnected(false);
@@ -418,19 +431,4 @@ function connectTls(options: MqttConnectOptions): TLSSocket {
         tlsOptions.servername = options.host;
     }
     return connect(tlsOptions);
-}
-
-/**
- * Loaded only here so unit tests and injected `SessionOptions.mqttConnect`
- * never pay for the mqtt.js module graph. Builds `MqttClient` over
- * {@link connectTls} instead of `mqtt.connect()` so `ws`/`socks`
- * stay unloaded.
- */
-export function connectMqtt(options: MqttConnectOptions): MqttBrokerClient {
-    const mqtt = createRequire(__filename)('mqtt') as typeof import('mqtt');
-    const client = new mqtt.MqttClient(() => connectTls(options), options);
-    // mqtt.js treats an unhandled `error` as a thrown exception; TLS may fail
-    // before MqttTransport attaches its own listener.
-    client.on('error', () => {});
-    return client as unknown as MqttBrokerClient;
 }
