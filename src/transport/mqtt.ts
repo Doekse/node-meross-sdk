@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-
-import mqtt from 'mqtt';
+import { createRequire } from 'node:module';
+import { isIP } from 'node:net';
+import { connect, type ConnectionOptions, type TLSSocket } from 'node:tls';
 
 import { TransportError } from '../errors';
 import { emitLog, emitTraffic, type LogLevel, type SessionLogger } from '../log';
@@ -127,7 +128,7 @@ export class MqttTransport {
         this.userId = options.userId;
         this.key = options.key;
         this.mqttDomain = options.mqttDomain;
-        this.connectFn = options.connect ?? defaultConnect;
+        this.connectFn = options.connect ?? connectMqtt;
         this.rateLimiter = options.rateLimiter ?? new PublishRateLimiter();
         this.logger = options.logger;
         this.logLevel = options.logLevel;
@@ -403,6 +404,33 @@ export class MqttTransport {
     }
 }
 
-function defaultConnect(options: MqttConnectOptions): MqttBrokerClient {
-    return mqtt.connect(options) as unknown as MqttBrokerClient;
+/**
+ * Avoids mqtt.js `connect()`, which loads unused `ws` and `socks` even for mqtts.
+ */
+function connectTls(options: MqttConnectOptions): TLSSocket {
+    const tlsOptions: ConnectionOptions = {
+        host: options.host,
+        port: options.port,
+        rejectUnauthorized: options.rejectUnauthorized
+    };
+    // SNI is for hostnames; tls rejects servername when host is an IP.
+    if (isIP(options.host) === 0) {
+        tlsOptions.servername = options.host;
+    }
+    return connect(tlsOptions);
+}
+
+/**
+ * Loaded only here so unit tests and injected `SessionOptions.mqttConnect`
+ * never pay for the mqtt.js module graph. Builds `MqttClient` over
+ * {@link connectTls} instead of `mqtt.connect()` so `ws`/`socks`
+ * stay unloaded.
+ */
+export function connectMqtt(options: MqttConnectOptions): MqttBrokerClient {
+    const mqtt = createRequire(__filename)('mqtt') as typeof import('mqtt');
+    const client = new mqtt.MqttClient(() => connectTls(options), options);
+    // mqtt.js treats an unhandled `error` as a thrown exception; TLS may fail
+    // before MqttTransport attaches its own listener.
+    client.on('error', () => {});
+    return client as unknown as MqttBrokerClient;
 }
