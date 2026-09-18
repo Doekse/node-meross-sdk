@@ -1,25 +1,26 @@
 import { Endpoint } from '../endpoint';
 import type { DeviceRequest } from '../request';
-import { AlarmDescriptor, AlarmTrait, type AlarmValues } from '../traits/alarm';
-import { AlertDescriptor, AlertTrait, type AlertValues } from '../traits/alert';
-import { ClimateDescriptor, ClimateTrait, type ClimateValues } from '../traits/climate';
-import { CoverDescriptor, CoverTrait, type CoverValues } from '../traits/cover';
-import { DiffuserDescriptor, DiffuserTrait, type DiffuserValues } from '../traits/diffuser';
-import { DndDescriptor, DndTrait, type DndValues } from '../traits/dnd';
-import { EnergyDescriptor, EnergyTrait, type EnergyValues } from '../traits/energy';
-import { FanDescriptor, FanTrait, type FanValues } from '../traits/fan';
-import { LightDescriptor, LightTrait, type LightValues } from '../traits/light';
-import { MediaDescriptor, MediaTrait, type MediaValues } from '../traits/media';
-import { OverTempDescriptor, OverTempTrait, type OverTempValues } from '../traits/overtemp';
-import { PresenceDescriptor, PresenceTrait, type PresenceValues } from '../traits/presence';
-import { SensorDescriptor, SensorTrait, type SensorValues } from '../traits/sensor';
-import { SprayDescriptor, SprayTrait, type SprayValues } from '../traits/spray';
-import { SprinklerDescriptor, SprinklerTrait, type SprinklerValues } from '../traits/sprinkler';
-import { StandbyKillerDescriptor, StandbyKillerTrait, type StandbyKillerValues } from '../traits/standbykiller';
-import { SwitchDescriptor, SwitchTrait, type SwitchValues } from '../traits/switch';
-import { SystemDescriptor, SystemTrait, type SystemValues } from '../traits/system';
-import { TimerDescriptor, TimerTrait, type TimerValues } from '../traits/timer';
-import { TriggerDescriptor, TriggerTrait, type TriggerValues } from '../traits/trigger';
+import { loadTrait } from '../traits/load';
+import type { AlarmTrait, AlarmValues } from '../traits/alarm';
+import type { AlertTrait, AlertValues } from '../traits/alert';
+import type { ClimateTrait, ClimateValues } from '../traits/climate';
+import type { CoverTrait, CoverValues } from '../traits/cover';
+import type { DiffuserTrait, DiffuserValues } from '../traits/diffuser';
+import type { DndTrait, DndValues } from '../traits/dnd';
+import type { EnergyTrait, EnergyValues } from '../traits/energy';
+import type { FanTrait, FanValues } from '../traits/fan';
+import type { LightTrait, LightValues } from '../traits/light';
+import type { MediaTrait, MediaValues } from '../traits/media';
+import type { OverTempTrait, OverTempValues } from '../traits/overtemp';
+import type { PresenceTrait, PresenceValues } from '../traits/presence';
+import type { SensorTrait, SensorValues } from '../traits/sensor';
+import type { SprayTrait, SprayValues } from '../traits/spray';
+import type { SprinklerTrait, SprinklerValues } from '../traits/sprinkler';
+import type { StandbyKillerTrait, StandbyKillerValues } from '../traits/standbykiller';
+import type { SwitchTrait, SwitchValues } from '../traits/switch';
+import type { SystemTrait, SystemValues } from '../traits/system';
+import type { TimerTrait, TimerValues } from '../traits/timer';
+import type { TriggerTrait, TriggerValues } from '../traits/trigger';
 import type { GraphEndpoint, PhysicalDevice } from './index';
 
 /**
@@ -29,7 +30,7 @@ import type { GraphEndpoint, PhysicalDevice } from './index';
  * extras (Toggle vs ToggleX, climate Mode/ModeB/ModeC, timer/trigger
  * generation) read `physical.ability`. Channel stealing for light/fan/garage
  * is enroll, not attach — do not "fix" attach to meross_lan's digest-key
- * Toggle test.
+ * Toggle test. Trait modules load only when `graphEndpoint.traits` lists them.
  */
 export function attachEndpoint(
     graphEndpoint: GraphEndpoint,
@@ -126,203 +127,130 @@ export function attachEndpoint(
     let systemTrait: SystemTrait | undefined;
     let timerTrait: TimerTrait | undefined;
     let triggerTrait: TriggerTrait | undefined;
+    const shared = {
+        graphEndpoint,
+        physical,
+        request,
+        channel,
+        namespaces
+    };
     if (graphEndpoint.traits.includes('switch')) {
-        switchTrait = SwitchDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        switchTrait = loadTrait('switch').SwitchDescriptor.attach({
+            ...shared,
             emitChange: emit.switch
         });
     }
     if (graphEndpoint.traits.includes('energy')) {
-        energyTrait = EnergyDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        energyTrait = loadTrait('energy').EnergyDescriptor.attach({
+            ...shared,
             emitChange: emit.energy
         });
     }
     if (graphEndpoint.traits.includes('light')) {
-        lightTrait = LightDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        lightTrait = loadTrait('light').LightDescriptor.attach({
+            ...shared,
             emitChange: emit.light
         });
     }
     if (graphEndpoint.traits.includes('cover')) {
-        coverTrait = CoverDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        coverTrait = loadTrait('cover').CoverDescriptor.attach({
+            ...shared,
             emitChange: emit.cover
         });
     }
     if (graphEndpoint.traits.includes('climate')) {
-        climateTrait = ClimateDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        climateTrait = loadTrait('climate').ClimateDescriptor.attach({
+            ...shared,
             emitChange: emit.climate
         });
     }
     if (graphEndpoint.traits.includes('sensor')) {
-        sensorTrait = SensorDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        sensorTrait = loadTrait('sensor').SensorDescriptor.attach({
+            ...shared,
             emitChange: emit.sensor
         });
     }
     if (graphEndpoint.traits.includes('presence')) {
-        presenceTrait = PresenceDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        presenceTrait = loadTrait('presence').PresenceDescriptor.attach({
+            ...shared,
             emitChange: emit.presence
         });
     }
     if (graphEndpoint.traits.includes('sprinkler')) {
-        sprinklerTrait = SprinklerDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        sprinklerTrait = loadTrait('sprinkler').SprinklerDescriptor.attach({
+            ...shared,
             emitChange: emit.sprinkler
         });
     }
     if (graphEndpoint.traits.includes('spray')) {
-        sprayTrait = SprayDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        sprayTrait = loadTrait('spray').SprayDescriptor.attach({
+            ...shared,
             emitChange: emit.spray
         });
     }
     if (graphEndpoint.traits.includes('fan')) {
-        fanTrait = FanDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        fanTrait = loadTrait('fan').FanDescriptor.attach({
+            ...shared,
             emitChange: emit.fan
         });
     }
     if (graphEndpoint.traits.includes('diffuser')) {
-        diffuserTrait = DiffuserDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        diffuserTrait = loadTrait('diffuser').DiffuserDescriptor.attach({
+            ...shared,
             emitChange: emit.diffuser
         });
     }
     if (graphEndpoint.traits.includes('media')) {
-        mediaTrait = MediaDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        mediaTrait = loadTrait('media').MediaDescriptor.attach({
+            ...shared,
             emitChange: emit.media
         });
     }
     if (graphEndpoint.traits.includes('alarm')) {
-        alarmTrait = AlarmDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        alarmTrait = loadTrait('alarm').AlarmDescriptor.attach({
+            ...shared,
             emitChange: emit.alarm
         });
     }
     if (graphEndpoint.traits.includes('alert')) {
-        alertTrait = AlertDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        alertTrait = loadTrait('alert').AlertDescriptor.attach({
+            ...shared,
             emitChange: emit.alert
         });
     }
     if (graphEndpoint.traits.includes('dnd')) {
-        dndTrait = DndDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        dndTrait = loadTrait('dnd').DndDescriptor.attach({
+            ...shared,
             emitChange: emit.dnd
         });
     }
     if (graphEndpoint.traits.includes('overtemp')) {
-        overTempTrait = OverTempDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        overTempTrait = loadTrait('overtemp').OverTempDescriptor.attach({
+            ...shared,
             emitChange: emit.overtemp
         });
     }
     if (graphEndpoint.traits.includes('standbykiller')) {
-        standbyKillerTrait = StandbyKillerDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        standbyKillerTrait = loadTrait('standbykiller').StandbyKillerDescriptor.attach({
+            ...shared,
             emitChange: emit.standbykiller
         });
     }
     if (graphEndpoint.traits.includes('system')) {
-        systemTrait = SystemDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        systemTrait = loadTrait('system').SystemDescriptor.attach({
+            ...shared,
             emitChange: emit.system
         });
     }
     if (graphEndpoint.traits.includes('timer')) {
-        timerTrait = TimerDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        timerTrait = loadTrait('timer').TimerDescriptor.attach({
+            ...shared,
             emitChange: emit.timer
         });
     }
     if (graphEndpoint.traits.includes('trigger')) {
-        triggerTrait = TriggerDescriptor.attach({
-            graphEndpoint,
-            physical,
-            request,
-            channel,
-            namespaces,
+        triggerTrait = loadTrait('trigger').TriggerDescriptor.attach({
+            ...shared,
             emitChange: emit.trigger
         });
     }

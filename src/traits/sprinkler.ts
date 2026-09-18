@@ -1,4 +1,5 @@
 import type { TraitAttachArgs } from '../device/enroll-context';
+import { SPRINKLER_HUB_CHILD } from '../device/hub-child';
 import { CommandError } from '../errors';
 import {
     decodeHubExceptionPush,
@@ -37,8 +38,8 @@ import {
     type PollSpec
 } from '../poll/spec';
 import type { DeviceRequest } from '../request';
-import { applyPatch } from './patch';
 import type { HubChildRule, TraitDescriptor } from './descriptor';
+import { applyPatch } from './patch';
 
 /** Completed watering cycle from Control.WaterEvent. */
 export interface SprinklerCycleSummary {
@@ -288,11 +289,7 @@ export const SprinklerDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<SprinklerValues>): SprinklerTrait | undefined;
 } = {
     name: 'sprinkler',
-    hubChild: {
-        models: new Set(['mst100']),
-        aliases: { mst: 'mst100' },
-        classHint: 'sprinkler'
-    },
+    hubChild: SPRINKLER_HUB_CHILD,
     poll: {
         [CONTROL_WATER_NAMESPACE]: {
             ...DEFAULT,

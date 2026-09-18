@@ -1,4 +1,5 @@
 import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+import { CLIMATE_HUB_CHILD } from '../device/hub-child';
 import {
     ALARM_CONFIG_NAMESPACE,
     ALARM_NAMESPACE,
@@ -139,8 +140,8 @@ import {
     type PollSpec
 } from '../poll/spec';
 import type { DeviceRequest } from '../request';
-import { applyPatch } from './patch';
 import type { HubChildRule, TraitDescriptor } from './descriptor';
+import { applyPatch } from './patch';
 
 export interface ClimatePid {
     grade: number;
@@ -1317,11 +1318,7 @@ export const ClimateDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<ClimateValues>): ClimateTrait;
 } = {
     name: 'climate',
-    hubChild: {
-        models: new Set(['mts100', 'mts100v3', 'mts150', 'mts150p']),
-        aliases: {},
-        classHint: 'climate'
-    },
+    hubChild: CLIMATE_HUB_CHILD,
     poll: {
         [SENSOR_LATEST_NAMESPACE]: {
             ...SMART_FAST_SLOW_CLOUD,

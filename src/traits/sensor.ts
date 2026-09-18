@@ -1,4 +1,5 @@
 import type { TraitAttachArgs } from '../device/enroll-context';
+import { SENSOR_HUB_CHILD } from '../device/hub-child';
 import {
     decodeHubExceptionPush,
     decodeHubSubDeviceVersionPush
@@ -55,24 +56,11 @@ import {
     type PollSpec
 } from '../poll/spec';
 import type { DeviceRequest } from '../request';
-import { applyPatch } from './patch';
 import type { HubChildRule, TraitDescriptor } from './descriptor';
+import { applyPatch } from './patch';
+import { SENSOR_FAMILY_MAP, type SensorFamily } from './sensor-family';
 
-/** Hub child sensor families. Digest type strings do not match cloud subDeviceType. */
-export type SensorFamily = 'tempHum' | 'contact' | 'leak' | 'motion' | 'smoke';
-
-/** Lowercase model / digest alias → family so enroll and the trait share one table. */
-export const SENSOR_FAMILY_MAP: ReadonlyMap<string, SensorFamily> = new Map([
-    ['ms100', 'tempHum'],
-    ['ms100f', 'tempHum'],
-    ['ms130', 'tempHum'],
-    ['ms120', 'motion'],
-    ['ms200', 'contact'],
-    ['ms400', 'leak'],
-    ['ms405', 'leak'],
-    ['ma151', 'smoke'],
-    ['gs559', 'smoke']
-]);
+export { SENSOR_FAMILY_MAP, type SensorFamily };
 
 /**
  * Known Hub.Sensor.Smoke conditions. Codes outside the firmware table are `unknown`.
@@ -551,19 +539,7 @@ export const SensorDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<SensorValues>): SensorTrait | undefined;
 } = {
     name: 'sensor',
-    hubChild: {
-        // SENSOR_FAMILY_MAP stays the source of truth for SKUs and families.
-        models: new Set(SENSOR_FAMILY_MAP.keys()),
-        aliases: {
-            temphum: 'ms100',
-            temphumi: 'ms130',
-            doorwindow: 'ms200',
-            waterleak: 'ms400',
-            smokealarm: 'gs559',
-            motion: 'ms120'
-        },
-        classHint: 'sensor'
-    },
+    hubChild: SENSOR_HUB_CHILD,
     poll: {
         /**
          * Shared with climate board SET/PUSH; keep unfiltered
