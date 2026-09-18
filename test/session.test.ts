@@ -380,6 +380,22 @@ describe('Session.login and restore', () => {
         ));
         await session.disconnect();
     });
+
+    it('logLevel error emits no traffic on successful login and connect', async () => {
+        const records: LogRecord[] = [];
+        const { session } = await loginConnected({
+            logLevel: 'error',
+            logger: (record) => {
+                records.push(record);
+            }
+        });
+
+        assert.equal(
+            records.some((record) => record.direction === 'tx' || record.direction === 'rx'),
+            false
+        );
+        await session.disconnect();
+    });
 });
 
 describe('Session.connect', () => {

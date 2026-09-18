@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Optional `SessionOptions.logger` for MQTT / LAN / cloud traffic (`LogRecord` types on the public barrel). Hosts own DEBUG gating; the SDK never reads env. Cloud records redact `password` / `token` / `key`. Session events stay on the EventEmitter.
+- Optional `SessionOptions.logger` and `SessionOptions.logLevel` (`'error' | 'debug' | 'trace'`) for MQTT / LAN / cloud traffic (`LogRecord` / `LogLevel` on the public barrel). Default floor is `debug` (one-line summaries, no bodies); set `logLevel: 'trace'` for `data`. The SDK never reads env. Cloud records redact `password` / `token` / `key` / `mfaCode`. Session events stay on the EventEmitter.
 
 ## [0.2.0-alpha] - 2026-09-17
 
