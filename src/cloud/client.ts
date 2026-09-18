@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 import { AuthError, CloudError } from '../errors';
-import { emitLog, redactSecrets, type SessionLogger } from '../log';
+import { emitTraffic, redactSecrets, type LogLevel, type SessionLogger } from '../log';
 import type { LoginOptions, TokenData } from '../session';
 
 /** Well-known app secret; not an account credential. */
@@ -22,9 +22,13 @@ export interface CloudClientOptions {
     nonce?: () => string;
 }
 
-/** Session and unit tests pass a sink without widening the public cloud options. */
+/**
+ * Session and unit tests pass a sink and floor without widening
+ * {@link CloudClientOptions}.
+ */
 interface CloudClientInitOptions extends CloudClientOptions {
     logger?: SessionLogger;
+    logLevel?: LogLevel;
 }
 
 /** Cloud `/Device/devList` row. Graph maps this onto endpoints later. */
@@ -77,6 +81,7 @@ export class CloudClient {
     private readonly now: () => number;
     private readonly nonce: () => string;
     private readonly logger?: SessionLogger;
+    private readonly logLevel?: LogLevel;
     private creds: TokenData | null = null;
     private httpDomain = 'iotx.meross.com';
     private mqttDomain = '';
@@ -87,6 +92,7 @@ export class CloudClient {
         this.now = options.now ?? Date.now;
         this.nonce = options.nonce ?? (() => randomBytes(8).toString('hex'));
         this.logger = options.logger;
+        this.logLevel = options.logLevel;
     }
 
     /**
@@ -196,13 +202,12 @@ export class CloudClient {
             headers.Authorization = `Basic ${this.creds.token}`;
         }
 
-        emitLog(this.logger, {
-            level: 'debug',
+        emitTraffic(this.logger, this.logLevel, {
             channel: 'cloud',
             message,
             direction: 'tx',
             target: url,
-            data: JSON.stringify(redactSecrets(params))
+            data: () => JSON.stringify(redactSecrets(params))
         });
 
         const controller = new AbortController();
@@ -247,13 +252,12 @@ export class CloudClient {
         } catch {
             parsed = undefined;
         }
-        emitLog(this.logger, {
-            level: 'debug',
+        emitTraffic(this.logger, this.logLevel, {
             channel: 'cloud',
             message,
             direction: 'rx',
             target: url,
-            data: parsed === undefined ? text : JSON.stringify(redactSecrets(parsed))
+            data: () => (parsed === undefined ? text : JSON.stringify(redactSecrets(parsed)))
         });
         if (parsed === undefined) {
             throw new CloudError('Cloud response is not valid JSON');

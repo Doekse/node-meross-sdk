@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import mqtt from 'mqtt';
 
 import { TransportError } from '../errors';
-import { emitLog, type SessionLogger } from '../log';
+import { emitLog, emitTraffic, type LogLevel, type SessionLogger } from '../log';
 import { ProtocolDispatcher, decodeMessage, encodeMessage } from '../protocol';
 import type { MerossMessage, MerossPayload } from '../protocol';
 import { PublishRateLimiter, type PublishPriority } from './rate-limit';
@@ -66,6 +66,7 @@ export interface MqttTransportOptions {
     connect?: MqttConnectFn;
     rateLimiter?: PublishRateLimiter;
     logger?: SessionLogger;
+    logLevel?: LogLevel;
     /**
      * Session re-emits this as `connection` so hosts can react to broker
      * drop without a public transport.
@@ -112,6 +113,7 @@ export class MqttTransport {
     private readonly connectFn: MqttConnectFn;
     private readonly rateLimiter: PublishRateLimiter;
     private readonly logger?: SessionLogger;
+    private readonly logLevel?: LogLevel;
     private readonly onConnectionChange?: (connected: boolean) => void;
     private readonly onRateLimit?: (uuid: string, dropped: number) => void;
     private client: MqttBrokerClient | undefined;
@@ -128,6 +130,7 @@ export class MqttTransport {
         this.connectFn = options.connect ?? defaultConnect;
         this.rateLimiter = options.rateLimiter ?? new PublishRateLimiter();
         this.logger = options.logger;
+        this.logLevel = options.logLevel;
         this.onConnectionChange = options.onConnectionChange;
         this.onRateLimit = options.onRateLimit;
         this.appId = options.appId
@@ -199,13 +202,12 @@ export class MqttTransport {
         const messageId = message.header.messageId;
         const topic = `/appliance/${options.uuid}/subscribe`;
         const payload = JSON.stringify(message);
-        emitLog(this.logger, {
-            level: 'debug',
+        emitTraffic(this.logger, this.logLevel, {
             channel: 'mqtt',
             message: `MQTT publish ${options.method} ${options.namespace}`,
             direction: 'tx',
             target: topic,
-            data: payload
+            data: () => payload
         });
         const reply = this.dispatcher.pending.register(messageId);
         this.inflight.add(messageId);
@@ -314,13 +316,12 @@ export class MqttTransport {
      */
     private onMessage(topic: string, payload: Buffer): void {
         const raw = payload.toString();
-        emitLog(this.logger, {
-            level: 'debug',
+        emitTraffic(this.logger, this.logLevel, {
             channel: 'mqtt',
             message: 'MQTT message',
             direction: 'rx',
             target: topic,
-            data: raw
+            data: () => raw
         });
         try {
             this.dispatcher.handle(decodeMessage(payload, this.key));

@@ -360,6 +360,7 @@ describe('CloudClient logger', () => {
             {
                 now: () => NOW,
                 nonce: () => NONCE,
+                logLevel: 'trace',
                 logger: (record) => {
                     records.push(record);
                 },
@@ -368,6 +369,7 @@ describe('CloudClient logger', () => {
         );
 
         assert.equal(records.length, 2);
+        assert.equal(records[0]!.level, 'trace');
         assert.equal(records[0]!.direction, 'tx');
         assert.equal(records[0]!.channel, 'cloud');
         assert.equal(records[0]!.target, SIGN_IN);

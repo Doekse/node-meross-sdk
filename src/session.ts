@@ -15,7 +15,7 @@ import {
 import { attachEndpoint } from './device/attach';
 import { DeviceRuntime } from './device/runtime';
 import { Inventory } from './inventory';
-import type { SessionLogger } from './log';
+import type { LogLevel, SessionLogger } from './log';
 import {
     DEFAULT_POLL_INTERVAL_MS,
     POLL_START_STAGGER_MS,
@@ -58,13 +58,18 @@ export interface TokenData {
 /**
  * Test hooks and host overrides. Transports stay internal; only cloud `fetch`,
  * MQTT connect, and LAN `fetch` are injectable so CI can run without a broker.
- * `logger` is the single host sink; it is not a field on {@link CloudClientOptions}.
  */
 export interface SessionOptions {
     cloud?: CloudClientOptions;
     mqttConnect?: MqttConnectFn;
     lanFetch?: typeof globalThis.fetch;
+    /**
+     * Single host sink. Not a field on {@link CloudClientOptions}; login/restore
+     * copy it onto the internal cloud client so sign-in is visible.
+     */
     logger?: SessionLogger;
+    /** Floor when `logger` is set; omitted means `debug` at emit time. */
+    logLevel?: LogLevel;
 }
 
 interface SessionEvents {
@@ -102,6 +107,7 @@ export class Session extends EventEmitter<SessionEvents> {
     private readonly mqttConnect?: MqttConnectFn;
     private readonly lanFetch?: typeof globalThis.fetch;
     private readonly logger?: SessionLogger;
+    private readonly logLevel?: LogLevel;
     private graph = new DeviceGraph();
     private readonly endpoints = new Map<string, Endpoint>();
     private readonly devices = new Map<string, DeviceRuntime>();
@@ -122,6 +128,7 @@ export class Session extends EventEmitter<SessionEvents> {
         this.mqttConnect = options.mqttConnect;
         this.lanFetch = options.lanFetch;
         this.logger = options.logger;
+        this.logLevel = options.logLevel;
         this.inventory = new Inventory();
     }
 
@@ -134,7 +141,8 @@ export class Session extends EventEmitter<SessionEvents> {
     ): Promise<Session> {
         const cloud = await CloudClient.login(options, {
             ...sessionOptions.cloud,
-            logger: sessionOptions.logger
+            logger: sessionOptions.logger,
+            logLevel: sessionOptions.logLevel
         });
         return new Session(cloud.getToken(), cloud, sessionOptions);
     }
@@ -145,7 +153,8 @@ export class Session extends EventEmitter<SessionEvents> {
     static restore(token: TokenData, sessionOptions: SessionOptions = {}): Session {
         const cloud = CloudClient.restore(token, {
             ...sessionOptions.cloud,
-            logger: sessionOptions.logger
+            logger: sessionOptions.logger,
+            logLevel: sessionOptions.logLevel
         });
         return new Session(cloud.getToken(), cloud, sessionOptions);
     }
@@ -278,6 +287,7 @@ export class Session extends EventEmitter<SessionEvents> {
             dispatcher,
             connect: this.mqttConnect,
             logger: this.logger,
+            logLevel: this.logLevel,
             onConnectionChange: (connected) => {
                 if (!connected) {
                     for (const runtime of this.devices.values()) {
@@ -293,7 +303,8 @@ export class Session extends EventEmitter<SessionEvents> {
             from: mqtt.clientResponseTopic,
             dispatcher,
             fetch: this.lanFetch,
-            logger: this.logger
+            logger: this.logger,
+            logLevel: this.logLevel
         });
         return new TransportRouter({ mqtt, lan });
     }

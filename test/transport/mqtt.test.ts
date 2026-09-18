@@ -494,6 +494,7 @@ describe('MqttTransport', () => {
     it('logs MQTT publish and message traffic on the real topics', async () => {
         const records: LogRecord[] = [];
         const { transport, getClient } = createTransport({
+            logLevel: 'trace',
             logger: (record) => {
                 records.push(record);
             }
@@ -512,10 +513,12 @@ describe('MqttTransport', () => {
         const tx = records.find((record) => record.direction === 'tx');
         const rx = records.find((record) => record.direction === 'rx');
         assert.ok(tx);
+        assert.equal(tx.level, 'trace');
         assert.equal(tx.channel, 'mqtt');
         assert.equal(tx.target, `/appliance/${UUID}/subscribe`);
         assert.equal(tx.data, client.published[0]!.payload);
         assert.ok(rx);
+        assert.equal(rx.level, 'trace');
         assert.equal(rx.target, USER_TOPICS[0]);
         assert.equal(JSON.stringify(records).includes('Authorization'), false);
 
@@ -535,6 +538,26 @@ describe('MqttTransport', () => {
         assert.ok(records.some((record) =>
             record.level === 'error'
             && record.channel === 'mqtt'
+            && record.message === 'Malformed MQTT payload'
+            && record.data === '{not json'
+        ));
+        await transport.disconnect();
+    });
+
+    it('at logLevel error still logs malformed MQTT data without traffic', async () => {
+        const records: LogRecord[] = [];
+        const { transport, getClient } = createTransport({
+            logLevel: 'error',
+            logger: (record) => {
+                records.push(record);
+            }
+        });
+        await transport.connect();
+        getClient().deliver('{not json');
+
+        assert.equal(records.some((record) => record.direction === 'tx' || record.direction === 'rx'), false);
+        assert.ok(records.some((record) =>
+            record.level === 'error'
             && record.message === 'Malformed MQTT payload'
             && record.data === '{not json'
         ));

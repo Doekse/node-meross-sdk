@@ -470,6 +470,7 @@ describe('LanHttpTransport', () => {
             const sent = decodeMessage(plain, KEY);
             return jsonResponse(encryptPayload(JSON.stringify(ackFor(sent, 'GETACK')), ENCRYPTION_KEY));
         }, {
+            logLevel: 'trace',
             logger: (record) => {
                 records.push(record);
             }
@@ -487,10 +488,12 @@ describe('LanHttpTransport', () => {
         const tx = records.find((record) => record.direction === 'tx');
         const rx = records.find((record) => record.direction === 'rx');
         assert.ok(tx);
+        assert.equal(tx.level, 'trace');
         assert.equal(tx.channel, 'lan');
         assert.equal(tx.target, `http://${IP}/config`);
         assert.equal(tx.data!.startsWith('{'), true);
         assert.ok(rx);
+        assert.equal(rx.level, 'trace');
         assert.equal(rx.message, 'LAN HTTP 200');
         assert.equal(rx.data!.startsWith('{'), true);
         assert.equal(JSON.stringify(records).includes('Authorization'), false);

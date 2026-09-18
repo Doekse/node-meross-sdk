@@ -4,7 +4,7 @@
  * exists. Homey (or any host) owns DEBUG gating; this module never reads env.
  */
 
-export type LogLevel = 'debug' | 'error';
+export type LogLevel = 'error' | 'debug' | 'trace';
 
 export type LogChannel = 'mqtt' | 'lan' | 'cloud';
 
@@ -32,8 +32,24 @@ export interface LogRecord {
 /** Host callback; {@link emitLog} is a no-op when this is omitted. */
 export type SessionLogger = (record: LogRecord) => void;
 
+/** Numeric ranks so floor checks never string-compare (`'debug' < 'error'`). */
+const LOG_LEVEL_RANK: Record<LogLevel, number> = {
+    error: 0,
+    debug: 1,
+    trace: 2
+};
+
 const SECRET_KEYS = new Set(['password', 'token', 'key', 'mfaCode']);
 const REDACTED = '[REDACTED]';
+
+/**
+ * Whether `level` should emit when the host floor is `floor`.
+ * Omitted floor resolves to `debug` — the same default {@link emitTraffic} uses.
+ */
+export function isLogEnabled(floor: LogLevel | undefined, level: LogLevel): boolean {
+    const resolved = floor ?? 'debug';
+    return LOG_LEVEL_RANK[level] <= LOG_LEVEL_RANK[resolved];
+}
 
 /**
  * Invokes the host sink without letting a throwing callback fail the request.
@@ -47,6 +63,54 @@ export function emitLog(logger: SessionLogger | undefined, record: LogRecord): v
     } catch {
         // Host logging must not break MQTT/LAN/cloud I/O.
     }
+}
+
+/**
+ * Traffic fields plus a lazy body. `data` runs only when the floor is `trace`.
+ */
+interface TrafficInput {
+    channel: LogChannel;
+    message: string;
+    direction: LogDirection;
+    target?: string;
+    data: () => string;
+}
+
+/**
+ * One traffic line: summary at `debug`, or the same line at `trace` with
+ * `data` when the floor allows. Lazy `data` avoids stringify/redact when
+ * bodies are filtered out. Unfiltered {@link emitLog} stays for errors.
+ * Omitted `logLevel` uses the {@link isLogEnabled} default (`debug`).
+ */
+export function emitTraffic(
+    logger: SessionLogger | undefined,
+    logLevel: LogLevel | undefined,
+    record: TrafficInput
+): void {
+    if (!logger) {
+        return;
+    }
+    if (!isLogEnabled(logLevel, 'debug')) {
+        return;
+    }
+    const traceEnabled = isLogEnabled(logLevel, 'trace');
+    let data: string | undefined;
+    if (traceEnabled) {
+        try {
+            data = record.data();
+        } catch {
+            // Same I/O isolation as emitLog: a bad body must not drop the line.
+        }
+    }
+    const level: LogLevel = traceEnabled ? 'trace' : 'debug';
+    emitLog(logger, {
+        level,
+        channel: record.channel,
+        message: record.message,
+        direction: record.direction,
+        target: record.target,
+        ...(data !== undefined ? { data } : {})
+    });
 }
 
 /**

@@ -1,7 +1,7 @@
 import http from 'node:http';
 
 import { ProtocolError, TransportError } from '../errors';
-import { emitLog, type SessionLogger } from '../log';
+import { emitTraffic, type LogLevel, type SessionLogger } from '../log';
 import {
     DEFAULT_COMMAND_TIMEOUT_MS,
     ProtocolDispatcher,
@@ -34,6 +34,7 @@ export interface LanHttpTransportOptions {
     dispatcher?: ProtocolDispatcher;
     fetch?: typeof globalThis.fetch;
     logger?: SessionLogger;
+    logLevel?: LogLevel;
 }
 
 /**
@@ -54,6 +55,7 @@ export class LanHttpTransport {
     private readonly from: string;
     private readonly fetchFn: typeof globalThis.fetch;
     private readonly logger?: SessionLogger;
+    private readonly logLevel?: LogLevel;
     /** Tail of each uuid's POST chain, not a backlog: one entry per device. */
     private readonly queues = new Map<string, Promise<void>>();
 
@@ -62,6 +64,7 @@ export class LanHttpTransport {
         this.from = options.from;
         this.fetchFn = options.fetch ?? defaultFetch;
         this.logger = options.logger;
+        this.logLevel = options.logLevel;
         this.dispatcher = options.dispatcher ?? new ProtocolDispatcher();
     }
 
@@ -106,13 +109,12 @@ export class LanHttpTransport {
         const target = `http://${options.ip}/config`;
 
         const plaintext = JSON.stringify(message);
-        emitLog(this.logger, {
-            level: 'debug',
+        emitTraffic(this.logger, this.logLevel, {
             channel: 'lan',
             message: `LAN POST ${options.method} ${options.namespace}`,
             direction: 'tx',
             target,
-            data: plaintext
+            data: () => plaintext
         });
         const body = options.encryptionKey
             ? encryptPayload(plaintext, options.encryptionKey)
@@ -172,13 +174,12 @@ export class LanHttpTransport {
             ? decryptPayload(wire, options.encryptionKey)
             : wire;
 
-        emitLog(this.logger, {
-            level: 'debug',
+        emitTraffic(this.logger, this.logLevel, {
             channel: 'lan',
             message: `LAN HTTP ${response.status}`,
             direction: 'rx',
             target,
-            data: plaintext
+            data: () => plaintext
         });
 
         const decoded = decodeMessage(plaintext, this.key);
