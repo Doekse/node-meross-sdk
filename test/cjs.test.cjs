@@ -3,10 +3,10 @@
 const assert = require('node:assert/strict');
 const { describe, it } = require('node:test');
 
-const sdk = require('../dist/index.js');
+const sdk = require('..');
 
 describe('CJS public surface', () => {
-    it('exports Session, Endpoint, Inventory, traits, and public errors', () => {
+    it('exports Session, Endpoint, Inventory, and public errors', () => {
         assert.equal(typeof sdk.Session, 'function');
         assert.equal(typeof sdk.Session.login, 'function');
         assert.equal(typeof sdk.Session.restore, 'function');
@@ -17,7 +17,6 @@ describe('CJS public surface', () => {
         assert.equal(typeof sdk.Session.prototype.sync, 'function');
         assert.equal(typeof sdk.Endpoint, 'function');
         assert.equal(typeof sdk.Inventory, 'function');
-        assert.equal(typeof sdk.SwitchTrait, 'function');
         assert.equal(typeof sdk.AuthError, 'function');
         assert.equal(typeof sdk.CloudError, 'function');
         assert.equal(typeof sdk.MerossError, 'function');
@@ -48,6 +47,9 @@ describe('CJS public surface', () => {
         assert.equal(sdk.decodeAbilityGetAck, undefined);
         assert.equal(sdk.encodeArray, undefined);
         assert.equal(sdk.decodeArray, undefined);
+        assert.equal(sdk.SwitchTrait, undefined);
+        assert.equal(sdk.ClimateTrait, undefined);
+        assert.equal(sdk.SensorTrait, undefined);
         assert.equal(sdk.NotImplementedError, undefined);
         assert.equal(sdk.SessionOptions, undefined);
     });
