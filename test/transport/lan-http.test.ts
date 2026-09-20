@@ -465,7 +465,7 @@ describe('LanHttpTransport', () => {
         }
     });
 
-    it('reuses one TCP connection for sequential defaultFetch POSTs', async () => {
+    it('reuses one TCP connection for sequential default LAN POSTs', async () => {
         let connections = 0;
         const server = createHttpServer((req, res) => {
             const chunks: Buffer[] = [];
@@ -502,6 +502,100 @@ describe('LanHttpTransport', () => {
 
             assert.equal(first.header.method, 'GETACK');
             assert.equal(second.header.method, 'GETACK');
+            assert.equal(connections, 1);
+        } finally {
+            transport.disconnect();
+            server.close();
+        }
+    });
+
+    it('decrypts an encrypted GETACK on the default HTTP client', async () => {
+        const server = createHttpServer((req, res) => {
+            const chunks: Buffer[] = [];
+            req.on('data', (chunk: Buffer) => {
+                chunks.push(chunk);
+            });
+            req.on('end', () => {
+                const sent = decodeMessage(
+                    decryptPayload(Buffer.concat(chunks).toString(), ENCRYPTION_KEY),
+                    KEY
+                );
+                const body = encryptPayload(JSON.stringify(ackFor(sent, 'GETACK')), ENCRYPTION_KEY);
+                res.writeHead(200, {
+                    'Content-Type': 'application/octet-stream',
+                    'Content-Length': Buffer.byteLength(body)
+                });
+                res.end(body);
+            });
+        });
+        await new Promise<void>((resolve) => {
+            server.listen(0, '127.0.0.1', resolve);
+        });
+        const transport = new LanHttpTransport({ key: KEY, from: FROM });
+        try {
+            const reply = await transport.request({
+                uuid: UUID,
+                ip: `127.0.0.1:${(server.address() as AddressInfo).port}`,
+                namespace: TOGGLEX_NAMESPACE,
+                method: 'GET',
+                encryptionKey: ENCRYPTION_KEY
+            });
+            assert.equal(reply.header.method, 'GETACK');
+        } finally {
+            transport.disconnect();
+            server.close();
+        }
+    });
+
+    it('throws LAN_HTTP_ERROR on a default-client non-200 without dropping keep-alive', async () => {
+        let connections = 0;
+        let requests = 0;
+        const server = createHttpServer((req, res) => {
+            const chunks: Buffer[] = [];
+            req.on('data', (chunk: Buffer) => {
+                chunks.push(chunk);
+            });
+            req.on('end', () => {
+                requests++;
+                if (requests === 1) {
+                    const body = 'nope';
+                    res.writeHead(500, {
+                        'Content-Type': 'text/plain',
+                        'Content-Length': Buffer.byteLength(body)
+                    });
+                    res.end(body);
+                    return;
+                }
+                const sent = decodeMessage(Buffer.concat(chunks).toString(), KEY);
+                const body = JSON.stringify(ackFor(sent, 'GETACK'));
+                res.writeHead(200, {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(body)
+                });
+                res.end(body);
+            });
+        });
+        server.on('connection', () => {
+            connections++;
+        });
+        await new Promise<void>((resolve) => {
+            server.listen(0, '127.0.0.1', resolve);
+        });
+        const transport = new LanHttpTransport({ key: KEY, from: FROM });
+        const request = {
+            uuid: UUID,
+            ip: `127.0.0.1:${(server.address() as AddressInfo).port}`,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        };
+
+        try {
+            await assert.rejects(
+                transport.request(request),
+                (err: unknown) => err instanceof TransportError && err.code === 'LAN_HTTP_ERROR'
+            );
+            const reply = await transport.request(request);
+            assert.equal(reply.header.method, 'GETACK');
             assert.equal(connections, 1);
         } finally {
             transport.disconnect();
