@@ -111,6 +111,7 @@ export const DndDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<DndValues>): DndTrait;
 } = {
     name: 'dnd',
+    push: [DND_MODE_NAMESPACE],
     poll: {
         [DND_MODE_NAMESPACE]: {
             ...SMART_CONFIG,

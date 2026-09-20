@@ -234,6 +234,13 @@ export const SwitchDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<SwitchValues>): SwitchTrait;
 } = {
     name: 'switch',
+    push: [
+        TOGGLEX_NAMESPACE,
+        TOGGLE_NAMESPACE,
+        HUB_TOGGLEX_NAMESPACE,
+        HUB_EXCEPTION_NAMESPACE,
+        HUB_SUBDEVICE_VERSION_NAMESPACE
+    ],
     poll: {
         [TOGGLEX_NAMESPACE]: {
             ...DEFAULT,

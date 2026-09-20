@@ -282,6 +282,12 @@ export const EnergyDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<EnergyValues>): EnergyTrait;
 } = {
     name: 'energy',
+    push: [
+        ELECTRICITY_NAMESPACE,
+        ELECTRICITYX_NAMESPACE,
+        CONSUMPTIONX_NAMESPACE,
+        CONSUMPTIONH_NAMESPACE
+    ],
     poll: {
         [ELECTRICITY_NAMESPACE]: {
             ...SMART_FAST,

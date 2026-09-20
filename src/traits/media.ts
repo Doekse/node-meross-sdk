@@ -151,6 +151,7 @@ export const MediaDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<MediaValues>): MediaTrait;
 } = {
     name: 'media',
+    push: [MP3_NAMESPACE],
     poll: {
         [MP3_NAMESPACE]: {
             ...DEFAULT,

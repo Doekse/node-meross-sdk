@@ -402,6 +402,14 @@ export const CoverDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<CoverValues>): CoverTrait;
 } = {
     name: 'cover',
+    push: [
+        GARAGE_STATE_NAMESPACE,
+        GARAGE_MULTIPLE_CONFIG_NAMESPACE,
+        GARAGE_CONFIG_NAMESPACE,
+        SHUTTER_POSITION_NAMESPACE,
+        SHUTTER_STATE_NAMESPACE,
+        SHUTTER_CONFIG_NAMESPACE
+    ],
     poll: {
         [GARAGE_STATE_NAMESPACE]: {
             ...DEFAULT,

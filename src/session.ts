@@ -279,7 +279,7 @@ export class Session extends EventEmitter<SessionEvents> {
 
     private createRouter(): TransportRouter {
         const dispatcher = new ProtocolDispatcher({
-            onPush: (message) => this.handlePush(message),
+            onPush: (message) => this.deviceRuntime(message)?.handlePush(message),
             onInbound: (message, originUuid) => this.handleInbound(message, originUuid)
         });
         const mqtt = new MqttTransport({
@@ -352,29 +352,10 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * HTTP applies on the Device that POSTed; MQTT looks up by header/`from`.
-     * SETACK and ERROR are skipped so they are not parsed as GETACK.
-     */
-    private handlePush(message: MerossMessage, originUuid?: string): void {
-        const runtime = this.deviceRuntime(message, originUuid);
-        if (!runtime) {
-            return;
-        }
-        const method = message.header.method;
-        if (method === 'ERROR' || method === 'SETACK') {
-            return;
-        }
-        for (const endpoint of runtime.endpoints) {
-            endpoint.handlePush(message);
-        }
-    }
-
-    /**
-     * Same lookup as {@link handlePush} so LAN GETACK still counts as liveness.
-     * MQTT inbound (no POST uuid) marks the broker live, including GETACK;
-     * LAN always passes the POST uuid so HTTP replies do not. MQTT
-     * System.Online is broker session state — drop it before recordPush /
-     * handleMessage unless it is PUSH with status 1.
+     * Forwards one inbound frame to the matching runtime. MQTT
+     * (`originUuid` omitted) records liveness, except System.Online that is
+     * not PUSH with status 1. LAN (POST uuid) applies
+     * {@link DeviceRuntime.handleMessage} without recording liveness.
      */
     private handleInbound(message: MerossMessage, originUuid?: string): void {
         const runtime = this.deviceRuntime(message, originUuid);
@@ -397,6 +378,10 @@ export class Session extends EventEmitter<SessionEvents> {
         runtime.handleMessage(message);
     }
 
+    /**
+     * Runtime for `originUuid` when set, otherwise for the uuid in the
+     * message header/`from`.
+     */
     private deviceRuntime(
         message: MerossMessage,
         originUuid?: string
@@ -517,7 +502,7 @@ export class Session extends EventEmitter<SessionEvents> {
                     ...this.lanBind(physical),
                     onPackedFallback
                 }),
-                onAck: (message) => this.handlePush(message, uuid),
+                onAck: (message) => this.deviceRuntime(message, uuid)?.handlePush(message),
                 jobs: buildPollJobs(physical.ability, physical.endpoints, physical.digestNamespaces),
                 startDelayMs
             });

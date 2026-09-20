@@ -242,6 +242,15 @@ export const SystemDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<SystemValues>): SystemTrait;
 } = {
     name: 'system',
+    push: [
+        SYSTEM_ALL_NAMESPACE,
+        SYSTEM_TIME_NAMESPACE,
+        SYSTEM_FIRMWARE_NAMESPACE,
+        SYSTEM_HARDWARE_NAMESPACE,
+        SYSTEM_DEBUG_NAMESPACE,
+        SYSTEM_POSITION_NAMESPACE,
+        SYSTEM_CLOCK_NAMESPACE
+    ],
     poll: {
         [SYSTEM_ALL_NAMESPACE]: {
             strategy: 'all',

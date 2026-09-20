@@ -183,23 +183,19 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     }
 
     /**
-     * Driven by {@link traits} rather than a hand-listed set, so adding a trait
-     * cannot leave it silently deaf to PUSH frames. Handler exceptions are
-     * isolated so one namespace cannot drop the rest of a GETACK batch; the
-     * failure is still surfaced via `warning` rather than swallowed.
-     *
-     * Session/runtime owns PUSH delivery; hosts subscribe to `change` instead.
+     * Session/runtime owns which trait runs; Endpoint isolates `warning` the
+     * way {@link setAvailability} isolates `availability`. Optional chaining
+     * covers a listed name with no instance. Handler exceptions stay local so
+     * one trait cannot drop the rest of a GETACK batch.
      *
      * @internal
      * @package
      */
-    handlePush(message: MerossMessage): void {
-        for (const trait of this.traits) {
-            try {
-                this[trait]?.handlePush(message);
-            } catch (error) {
-                this.emitWarning(error, trait);
-            }
+    handlePush(message: MerossMessage, trait: TraitName): void {
+        try {
+            this[trait]?.handlePush(message);
+        } catch (error) {
+            this.emitWarning(error, trait);
         }
     }
 

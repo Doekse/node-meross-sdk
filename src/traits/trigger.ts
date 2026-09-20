@@ -261,6 +261,7 @@ export const TriggerDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<TriggerValues>): TriggerTrait;
 } = {
     name: 'trigger',
+    push: [CONTROL_TRIGGER_NAMESPACE, DIGEST_TRIGGERX_NAMESPACE, TRIGGERX_NAMESPACE],
     poll: {
         [DIGEST_TRIGGERX_NAMESPACE]: ONCE,
         [CONTROL_TRIGGER_NAMESPACE]: {
