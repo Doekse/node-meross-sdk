@@ -73,6 +73,7 @@ import {
     SYSTEM_FIRMWARE_NAMESPACE,
     SYSTEM_HARDWARE_NAMESPACE,
     SYSTEM_POSITION_NAMESPACE,
+    SYSTEM_RUNTIME_NAMESPACE,
     SYSTEM_TIME_NAMESPACE
 } from '../../src/protocol/codecs/system';
 import {
@@ -94,8 +95,6 @@ import {
 
 const CHANNEL = 0;
 const SUB_ID = '00000102';
-/** Production poll table keys this namespace as a string literal. */
-const SYSTEM_RUNTIME_NAMESPACE = 'Appliance.System.Runtime';
 
 function ability(...namespaces: string[]): AbilityMap {
     return Object.fromEntries(namespaces.map((namespace) => [namespace, {}]));
