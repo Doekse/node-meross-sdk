@@ -15,6 +15,7 @@ import {
     DEFAULT_POLL_INTERVAL_MS,
     type PollJob
 } from '../../src/poll/poller';
+import { DeviceRuntime } from '../../src/device/runtime';
 import { SYSTEM_ALL_NAMESPACE } from '../../src/protocol/codecs/system-all';
 import { Endpoint } from '../../src/endpoint';
 import { CTL_RANGE_NAMESPACE } from '../../src/protocol/codecs/climate';
@@ -1004,12 +1005,22 @@ describe('DevicePoller', () => {
         const electricityAck = {
             electricity: { channel: 0, power: 11_000, current: 53, voltage: 2274 }
         };
+        // Handler table is built in the constructor; this poller is never
+        // started. GETACKs apply through handlePush so a thrown trait cannot
+        // skip later namespaces.
+        const runtime = new DeviceRuntime({
+            uuid: UUID,
+            initialOnline: true,
+            endpoints: [endpoint],
+            request: async () => ack(SYSTEM_ALL_NAMESPACE),
+            isCloudPath: () => false,
+            maxCmdNum: () => 5,
+            requestGets: async () => [],
+            onAck: () => {}
+        });
         const harness = createHarness(t, {
             maxCmdNum: 5,
-            onAck: (message) => {
-                endpoint.handlePush(message, 'standbykiller');
-                endpoint.handlePush(message, 'energy');
-            },
+            onAck: (message) => runtime.handlePush(message),
             jobs: [
                 {
                     namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
@@ -1039,6 +1050,7 @@ describe('DevicePoller', () => {
         assert.equal(warnings[0]?.trait, 'standbykiller');
 
         harness.poller.stop();
+        runtime.stop();
     });
 
     it('dispatches GETACKs through onAck', async (t) => {

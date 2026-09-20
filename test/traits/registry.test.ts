@@ -44,6 +44,31 @@ describe('TRAIT_DESCRIPTORS', () => {
         }
     });
 
+    it('lists a non-empty push array without intra-array duplicates', () => {
+        for (const descriptor of Object.values(TRAIT_DESCRIPTORS)) {
+            assert.ok(
+                descriptor.push.length > 0,
+                `${descriptor.name} push must be non-empty`
+            );
+            assert.equal(
+                new Set(descriptor.push).size,
+                descriptor.push.length,
+                `${descriptor.name} push must not repeat namespaces`
+            );
+        }
+    });
+
+    it('routes Alert.Report and Control.OverTemp on alert/overtemp push', () => {
+        assert.ok(
+            TRAIT_DESCRIPTORS.alert.push.includes(CONTROL_ALERT_REPORT_NAMESPACE),
+            'alert.push must include Alert.Report'
+        );
+        assert.ok(
+            TRAIT_DESCRIPTORS.overtemp.push.includes(CONTROL_OVERTEMP_NAMESPACE),
+            'overtemp.push must include Control.OverTemp'
+        );
+    });
+
     it('supplies every POLL_LOADERS entry by reference', () => {
         const owned = new Set<string>();
         for (const descriptor of Object.values(TRAIT_DESCRIPTORS)) {
