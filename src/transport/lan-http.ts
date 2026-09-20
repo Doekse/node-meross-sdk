@@ -55,11 +55,11 @@ export class LanHttpTransport {
 
     private readonly key: string;
     private readonly from: string;
-    private readonly fetchFn: typeof globalThis.fetch;
+    private readonly fetchFn?: typeof globalThis.fetch;
     private readonly logger?: SessionLogger;
     private readonly logLevel?: LogLevel;
     /**
-     * Present only for {@link defaultFetch}; {@link disconnect} destroys it so
+     * Present only for {@link postHttp}; {@link disconnect} destroys it so
      * keep-alive sockets do not outlive the Session.
      */
     private readonly agent?: http.Agent;
@@ -72,16 +72,13 @@ export class LanHttpTransport {
         this.logger = options.logger;
         this.logLevel = options.logLevel;
         this.dispatcher = options.dispatcher ?? new ProtocolDispatcher();
-        if (options.fetch) {
-            this.fetchFn = options.fetch;
-        } else {
-            const agent = new http.Agent({
+        this.fetchFn = options.fetch;
+        if (!options.fetch) {
+            this.agent = new http.Agent({
                 keepAlive: true,
                 maxSockets: 1,
                 maxFreeSockets: 1
             });
-            this.agent = agent;
-            this.fetchFn = (input, init) => defaultFetch(input, init, agent);
         }
     }
 
@@ -176,38 +173,64 @@ export class LanHttpTransport {
         signal: AbortSignal,
         target: string
     ): Promise<void> {
-        const response = await this.fetchFn(target, {
-            method: 'POST',
-            headers: {
-                'Content-Type': options.encryptionKey
-                    ? 'application/octet-stream'
-                    : 'application/json'
-            },
-            body,
-            signal
-        });
+        const contentType = options.encryptionKey
+            ? 'application/octet-stream'
+            : 'application/json';
+        const fetchFn = this.fetchFn;
+        if (fetchFn) {
+            const response = await fetchFn(target, {
+                method: 'POST',
+                headers: { 'Content-Type': contentType },
+                body,
+                signal
+            });
+            if (response.status !== 200) {
+                throw new TransportError(
+                    `LAN HTTP ${response.status}: ${response.statusText}`,
+                    'LAN_HTTP_ERROR'
+                );
+            }
+            this.onMessage(options, target, await response.text());
+            return;
+        }
 
+        const response = await postHttp(target, body, contentType, signal, this.agent);
         if (response.status !== 200) {
             throw new TransportError(
                 `LAN HTTP ${response.status}: ${response.statusText}`,
                 'LAN_HTTP_ERROR'
             );
         }
+        this.onMessage(options, target, response.body);
+    }
 
-        const wire = await response.text();
+    /**
+     * UTF-8 waits until decrypt or a logger needs the body. Decode reuses that
+     * string when it already ran, same as MQTT inbound.
+     */
+    private onMessage(
+        options: LanHttpRequestOptions,
+        target: string,
+        wire: string | Buffer
+    ): void {
+        let text: string | undefined;
+        const asText = (): string => {
+            text ??= typeof wire === 'string' ? wire : wire.toString('utf8');
+            return text;
+        };
         const plaintext = options.encryptionKey
-            ? decryptPayload(wire, options.encryptionKey)
-            : wire;
+            ? decryptPayload(asText(), options.encryptionKey)
+            : undefined;
 
         emitTraffic(this.logger, this.logLevel, {
             channel: 'lan',
-            message: `LAN HTTP ${response.status}`,
+            message: 'LAN HTTP 200',
             direction: 'rx',
             target,
-            data: () => plaintext
+            data: () => plaintext ?? asText()
         });
 
-        const decoded = decodeMessage(plaintext, this.key);
+        const decoded = decodeMessage(plaintext ?? text ?? wire, this.key);
         // Envelope often cannot identify the device; this POST's uuid can.
         if (this.dispatcher.handle(decoded, options.uuid) !== 'reply') {
             throw new ProtocolError('LAN HTTP response did not match a pending request');
@@ -219,33 +242,39 @@ export class LanHttpTransport {
  * Firmware on some boards ends HTTP lines with LF, not CRLF. undici `fetch`
  * has no way to accept that; `insecureHTTPParser` does. Caller-owned
  * {@link http.Agent} keeps the pool per-transport (not process-wide).
+ *
+ * Returns the socket Buffer so ACK decode does not wrap a Fetch {@link Response}
+ * and call `text()` on the same bytes.
  */
-function defaultFetch(
-    input: string | URL | Request,
-    init: RequestInit = {},
-    agent: http.Agent
-): Promise<Response> {
-    const body = typeof init.body === 'string' ? init.body : '';
+function postHttp(
+    target: string,
+    body: string,
+    contentType: string,
+    signal: AbortSignal,
+    agent: http.Agent | undefined
+): Promise<{ status: number; statusText: string; body: Buffer }> {
     return new Promise((resolve, reject) => {
-        const req = http.request(String(input), {
-            method: init.method ?? 'POST',
+        const req = http.request(target, {
+            method: 'POST',
             headers: {
-                ...(init.headers as http.OutgoingHttpHeaders),
+                'Content-Type': contentType,
                 'Content-Length': Buffer.byteLength(body)
             },
             agent,
             insecureHTTPParser: true,
-            signal: init.signal ?? undefined
+            signal
         }, (res) => {
             const chunks: Buffer[] = [];
             res.on('data', (chunk: Buffer) => {
                 chunks.push(chunk);
             });
+            res.on('error', reject);
             res.on('end', () => {
-                resolve(new Response(Buffer.concat(chunks), {
+                resolve({
                     status: res.statusCode ?? 0,
-                    statusText: res.statusMessage ?? ''
-                }));
+                    statusText: res.statusMessage ?? '',
+                    body: chunks.length === 1 ? chunks[0]! : Buffer.concat(chunks)
+                });
             });
         });
         req.on('error', reject);
