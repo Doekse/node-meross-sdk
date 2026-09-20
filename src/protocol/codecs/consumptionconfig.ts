@@ -1,12 +1,12 @@
 import { ProtocolError } from '../../errors';
-import type { MerossPayload } from '../message';
+import { EMPTY_PAYLOAD, type MerossPayload } from '../message';
 import { parseElectricityConfig, type ElectricityConfig } from './electricity';
 
 export { CONSUMPTION_CONFIG_NAMESPACE } from '../namespaces';
 
 /** Firmware GET uses an empty payload. */
 export function encodeConsumptionConfigGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 export function decodeConsumptionConfigGetAck(payload: MerossPayload): ElectricityConfig {

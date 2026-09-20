@@ -1,5 +1,5 @@
 import { ProtocolError } from '../../errors';
-import type { MerossPayload } from '../message';
+import { EMPTY_PAYLOAD, type MerossPayload } from '../message';
 
 export { CONSUMPTIONX_NAMESPACE } from '../namespaces';
 
@@ -12,12 +12,12 @@ export interface ConsumptionXDay {
 
 /** Firmware GET uses an empty payload. */
 export function encodeConsumptionXGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 /** Firmware DELETE uses an empty payload. */
 export function encodeConsumptionXDelete(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 /**

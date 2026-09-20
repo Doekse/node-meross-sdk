@@ -1,5 +1,5 @@
 import { ProtocolError } from '../../errors';
-import type { MerossPayload } from '../message';
+import { EMPTY_PAYLOAD, type MerossPayload } from '../message';
 
 export { LIGHT_EFFECT_NAMESPACE, LIGHT_NAMESPACE } from '../namespaces';
 
@@ -52,7 +52,7 @@ export interface LightEffectEntry {
  * Firmware GET for Control.Light uses an empty payload.
  */
 export function encodeLightGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { ProtocolError } from '../../errors';
-import type { MerossPayload } from '../message';
+import { EMPTY_PAYLOAD, type MerossPayload } from '../message';
 
 export {
     CONTROL_TRIGGER_NAMESPACE,
@@ -77,7 +77,7 @@ export function encodeTriggerXDelete(options: TriggerXDeleteOptions): MerossPayl
 
 /** Digest.TriggerX GET payload is empty. */
 export function encodeDigestTriggerXGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 export function decodeTriggerXGetAck(payload: MerossPayload): TriggerXEntry[] {

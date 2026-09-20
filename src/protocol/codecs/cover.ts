@@ -1,5 +1,5 @@
 import { ProtocolError } from '../../errors';
-import type { MerossPayload } from '../message';
+import { EMPTY_PAYLOAD, type MerossPayload } from '../message';
 
 export {
     GARAGE_CONFIG_NAMESPACE,
@@ -101,7 +101,7 @@ export function encodeShutterPositionSet(options: ShutterPositionSetOptions): Me
 
 /** Firmware GET for RollerShutter.Position uses an empty payload. */
 export function encodeShutterPositionGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 export function decodeShutterPositionGetAck(payload: MerossPayload): ShutterPositionState[] {
@@ -161,7 +161,7 @@ export function encodeGarageConfigSet(config: Partial<GarageDoorConfig>): Meross
 
 /** GET payload for GarageDoor.Config — empty body fetches the current config. */
 export function encodeGarageConfigGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 export function decodeGarageConfigGetAck(payload: MerossPayload): GarageDoorConfig {
@@ -189,7 +189,7 @@ export function encodeGarageMultipleConfigSet(entry: GarageMultipleConfigEntry):
 
 /** GET payload for GarageDoor.MultipleConfig — empty body fetches all channels. */
 export function encodeGarageMultipleConfigGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 export function decodeGarageMultipleConfigGetAck(payload: MerossPayload): GarageMultipleConfigEntry[] {
@@ -272,7 +272,7 @@ export interface ShutterAdjustStatus {
 
 /** GET payload for RollerShutter.Config — empty body returns all channels. */
 export function encodeShutterConfigGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 /** SET payload for RollerShutter.Config — single-channel object in `config`. */

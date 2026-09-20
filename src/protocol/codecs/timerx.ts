@@ -1,5 +1,5 @@
 import { ProtocolError } from '../../errors';
-import type { MerossPayload } from '../message';
+import { EMPTY_PAYLOAD, type MerossPayload } from '../message';
 
 export {
     CONTROL_TIMER_NAMESPACE,
@@ -74,7 +74,7 @@ export function encodeTimerXDelete(options: TimerXDeleteOptions): MerossPayload 
 
 /** Digest.TimerX GET payload is empty. */
 export function encodeDigestTimerXGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 export function decodeTimerXGetAck(payload: MerossPayload): TimerXEntry[] {

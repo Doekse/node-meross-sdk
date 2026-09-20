@@ -1,5 +1,5 @@
 import { ProtocolError } from '../../errors';
-import type { MerossPayload } from '../message';
+import { EMPTY_PAYLOAD, type MerossPayload } from '../message';
 
 export {
     SYSTEM_CLOCK_NAMESPACE,
@@ -80,7 +80,7 @@ export interface SystemClockState {
 
 /** GET is empty. */
 export function encodeSystemTimeGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 /** SET `{ time: { timezone, timeRule, timestamp? } }`. */
@@ -157,7 +157,7 @@ export function decodeSystemClockPush(payload: MerossPayload): SystemClockState 
 
 /** GET is empty. */
 export function encodeSystemFirmwareGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 export function decodeSystemFirmwareGetAck(payload: MerossPayload): SystemFirmwareState {
@@ -211,7 +211,7 @@ function parseFirmware(raw: Record<string, unknown>): SystemFirmwareState {
 
 /** GET is empty. */
 export function encodeSystemHardwareGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 export function decodeSystemHardwareGetAck(payload: MerossPayload): SystemHardwareState {
@@ -249,7 +249,7 @@ function parseHardware(raw: Record<string, unknown>): SystemHardwareState {
 
 /** GET is empty. */
 export function encodeSystemDebugGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 /**
@@ -280,7 +280,7 @@ export function decodeSystemDebugGetAck(payload: MerossPayload): SystemDebugStat
 
 /** GET is empty. */
 export function encodeSystemPositionGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 /** SET `{ position: { latitude, longitude } }`. */

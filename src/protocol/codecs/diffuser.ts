@@ -1,6 +1,6 @@
 import { ProtocolError } from '../../errors';
 import { decodeArray } from './payload';
-import type { MerossPayload } from '../message';
+import { EMPTY_PAYLOAD, type MerossPayload } from '../message';
 
 export {
     DIFFUSER_LIGHT_NAMESPACE,
@@ -78,7 +78,7 @@ const SPRAY_MODE_TO_WIRE: Record<DiffuserSprayMode, number> = {
 
 /** Firmware GET for Diffuser.Light uses an empty payload. */
 export function encodeDiffuserLightGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 /** SET is a one-entry list with firmware `type` on the payload root. */
@@ -109,7 +109,7 @@ export function decodeDiffuserLightPush(payload: MerossPayload): DiffuserLightSt
 
 /** Firmware GET for Diffuser.Spray uses an empty payload. */
 export function encodeDiffuserSprayGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 /** SET is a one-entry list with firmware `type` on the payload root. */
@@ -130,7 +130,7 @@ export function decodeDiffuserSprayPush(payload: MerossPayload): DiffuserSpraySt
 
 /** Firmware GET for Diffuser.Sensor uses an empty payload. */
 export function encodeDiffuserSensorGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 export function decodeDiffuserSensorGetAck(payload: MerossPayload): DiffuserSensorState {
