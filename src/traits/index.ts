@@ -33,7 +33,7 @@ export type { OverTempValues } from './overtemp';
 export { StandbyKillerTrait } from './standbykiller';
 export type { StandbyKillerValues } from './standbykiller';
 export { SystemTrait } from './system';
-export type { SystemValues, SystemDebugState, SystemFirmwareState, SystemHardwareState, SystemPositionState, SystemTimeState } from './system';
+export type { SystemValues, SystemDebugState, SystemFirmwareState, SystemHardwareState, SystemPositionState, SystemRuntimeState, SystemTimeState } from './system';
 export { TimerTrait } from './timer';
 export type { TimerEntry, TimerGeneration, TimerSetInput, TimerValues } from './timer';
 export { TriggerTrait } from './trigger';

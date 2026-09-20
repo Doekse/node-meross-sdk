@@ -78,6 +78,7 @@ import {
     SYSTEM_FIRMWARE_NAMESPACE,
     SYSTEM_HARDWARE_NAMESPACE,
     SYSTEM_POSITION_NAMESPACE,
+    SYSTEM_RUNTIME_NAMESPACE,
     SYSTEM_TIME_NAMESPACE,
     TEMP_UNIT_NAMESPACE,
     THERMOSTAT_MODE_NAMESPACE,
@@ -166,7 +167,7 @@ export function getDeviceResponseSizeMax(maxCmdNum: number): number {
  */
 export const POLL_LOADERS: Record<string, TraitName> = {
     [SYSTEM_ALL_NAMESPACE]: 'system',
-    'Appliance.System.Runtime': 'system',
+    [SYSTEM_RUNTIME_NAMESPACE]: 'system',
     [SYSTEM_FIRMWARE_NAMESPACE]: 'system',
     [SYSTEM_HARDWARE_NAMESPACE]: 'system',
     [SYSTEM_TIME_NAMESPACE]: 'system',

@@ -78,6 +78,7 @@ export type {
     SystemFirmwareState,
     SystemHardwareState,
     SystemPositionState,
+    SystemRuntimeState,
     SystemTimeState,
     TimerTrait,
     TimerEntry,

@@ -285,7 +285,7 @@ Traits are present only when the device advertised the matching ability. Use opt
 | `overtemp`       | Plugs with Config.OverTemp         | `poll()`, `set({ enabled, type? })`; Control.OverTemp PUSH updates `active` / `timestamp` / `type` |
 | `alert`          | EM06 / MTS300 AlertConfig          | `poll()`, `set({ type?, value? })`; AlertReport PUSH updates `report` (not polled)    |
 | `standbykiller`  | Plugs with Config.StandbyKiller    | `poll()`, `set({ enabled?, power?, time?, alert? })` (power in watts)                 |
-| `system`         | Device firmware, time, diagnostics | `getFirmware` / `getHardware` / `getTime`, `setTimezone`, `getDebug`, `getPosition` / `setPosition`, `clockSkewSeconds` |
+| `system`         | Device firmware, time, diagnostics | `getFirmware` / `getHardware` / `getTime`, `setTimezone`, `getDebug`, `getRuntime()` (signal %), `getPosition` / `setPosition`, `clockSkewSeconds` |
 | `timer`          | Toggle / ToggleX clock schedules   | `list()`, `set()`, `setEnabled()`, `remove()`                                         |
 | `trigger`        | Toggle / ToggleX countdown rules   | `list()`, `set()`, `setEnabled()`, `remove()`                                         |
 
