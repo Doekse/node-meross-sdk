@@ -407,6 +407,58 @@ describe('LanHttpTransport', () => {
         await Promise.all([first, second]);
     });
 
+    it('releases the per-uuid queue when the default HTTP client aborts mid-body', async () => {
+        let requests = 0;
+        const server = createHttpServer((req, res) => {
+            const chunks: Buffer[] = [];
+            req.on('data', (chunk: Buffer) => {
+                chunks.push(chunk);
+            });
+            req.on('end', () => {
+                requests++;
+                if (requests === 1) {
+                    res.writeHead(200, {
+                        'Content-Type': 'application/json',
+                        'Content-Length': 999_999
+                    });
+                    return;
+                }
+                const sent = decodeMessage(Buffer.concat(chunks).toString(), KEY);
+                const body = JSON.stringify(ackFor(sent, 'GETACK'));
+                res.writeHead(200, {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(body)
+                });
+                res.end(body);
+            });
+        });
+        await new Promise<void>((resolve) => {
+            server.listen(0, '127.0.0.1', resolve);
+        });
+        const transport = new LanHttpTransport({ key: KEY, from: FROM });
+        const ip = `127.0.0.1:${(server.address() as AddressInfo).port}`;
+        const request = {
+            uuid: UUID,
+            ip,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        };
+
+        try {
+            await assert.rejects(
+                transport.request(request),
+                (err: unknown) => err instanceof TransportError && err.code === 'LAN_TIMEOUT'
+            );
+
+            const reply = await transport.request(request);
+            assert.equal(reply.header.method, 'GETACK');
+            assert.equal(requests, 2);
+        } finally {
+            transport.disconnect();
+            server.close();
+        }
+    });
+
     it('releases the per-uuid queue after a failed attempt', async () => {
         let calls = 0;
         const { transport } = createTransport(async (_url, init) => {

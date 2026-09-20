@@ -260,6 +260,22 @@ function postHttp(
     agent: http.Agent | undefined
 ): Promise<{ status: number; statusText: string; body: Buffer }> {
     return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (
+            error?: Error,
+            result?: { status: number; statusText: string; body: Buffer }
+        ): void => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            if (error) {
+                reject(error);
+            } else if (result) {
+                resolve(result);
+            }
+        };
+
         const req = http.request(target, {
             method: 'POST',
             headers: {
@@ -274,16 +290,24 @@ function postHttp(
             res.on('data', (chunk: Buffer) => {
                 chunks.push(chunk);
             });
-            res.on('error', reject);
+            res.on('error', finish);
             res.on('end', () => {
-                resolve({
+                finish(undefined, {
                     status: res.statusCode ?? 0,
                     statusText: res.statusMessage ?? '',
                     body: chunks.length === 1 ? chunks[0]! : Buffer.concat(chunks)
                 });
             });
+            // Abort after headers often destroys the socket without `end`.
+            res.on('close', () => {
+                if (!res.complete) {
+                    const error = new Error('The operation was aborted');
+                    error.name = 'AbortError';
+                    finish(error);
+                }
+            });
         });
-        req.on('error', reject);
+        req.on('error', finish);
         req.end(body);
     });
 }
