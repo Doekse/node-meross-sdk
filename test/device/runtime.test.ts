@@ -21,17 +21,17 @@ async function unreachable(): Promise<never> {
     throw new Error('unreachable');
 }
 
-function systemAllGetAck(payload?: MerossPayload): MerossMessage {
+function systemAllGetAck(payload?: MerossPayload, uuid = UUID): MerossMessage {
     return encodeMessage({
         namespace: 'Appliance.System.All',
         method: 'GETACK',
         key: KEY,
-        from: `/appliance/${UUID}/publish`,
-        uuid: UUID,
+        from: `/appliance/${uuid}/publish`,
+        uuid,
         payload: payload ?? {
             all: {
                 system: {
-                    hardware: { type: 'mss110', uuid: UUID },
+                    hardware: { type: 'mss110', uuid },
                     firmware: {},
                     online: { status: 1 }
                 },
@@ -263,6 +263,71 @@ describe('DeviceRuntime', () => {
         assert.equal(warnings.length, 0);
         runtime.handlePush(bad);
         assertSystemAllWarning(warnings);
+    });
+
+    it('applies packed All GETACK to availability from handlePush', async (t: TestContext) => {
+        const ips: Array<string | undefined> = [];
+        const harness = createHarness(t, {
+            onInnerIp(innerIp: string | undefined): void {
+                ips.push(innerIp);
+            }
+        });
+        harness.runtime.start();
+        await harness.advance(0);
+        harness.runtime.recordPush();
+        harness.runtime.handlePush(systemAllGetAck({
+            all: {
+                system: {
+                    hardware: { type: 'mss110', uuid: UUID },
+                    firmware: { innerIp: '10.0.0.42' },
+                    online: { status: 2 }
+                },
+                digest: {}
+            }
+        }));
+
+        assert.deepEqual(ips, ['10.0.0.42']);
+        await harness.advance(INTERVAL_MS);
+        assert.equal(harness.requestGets.mock.callCount(), 2);
+        harness.runtime.stop();
+    });
+
+    it('applies packed All hub digest from handlePush', () => {
+        const hubUuid = '9109182170548290880048b1a9522933';
+        const sensorId = '120027D21C19';
+        const hub = new Endpoint({ id: hubUuid, traits: ['dnd'], initialOnline: true });
+        const sensor = new Endpoint({
+            id: `${hubUuid}#${sensorId}`,
+            traits: ['sensor'],
+            initialOnline: true
+        });
+        const sensorSeen: boolean[] = [];
+        sensor.on('availability', (online) => sensorSeen.push(online));
+        const runtime = new DeviceRuntime({
+            uuid: hubUuid,
+            initialOnline: true,
+            endpoints: [hub, sensor],
+            request: unreachable,
+            isCloudPath: () => false,
+            maxCmdNum: () => 1,
+            requestGets: async () => [],
+            onAck: () => {}
+        });
+        runtime.handlePush(systemAllGetAck({
+            all: {
+                system: {
+                    hardware: { type: 'msh300', uuid: hubUuid },
+                    firmware: { innerIp: '10.0.0.1' },
+                    online: { status: 1 }
+                },
+                digest: {
+                    hub: { subdevice: [{ id: sensorId, status: 2 }] }
+                }
+            }
+        }, hubUuid));
+
+        assert.deepEqual(sensorSeen, [false]);
+        runtime.stop();
     });
 
     it('marks offline and warns when the heartbeat All body is malformed', async (t: TestContext) => {

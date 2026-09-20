@@ -1,5 +1,6 @@
 import type { Endpoint, TraitName } from '../endpoint';
 import { DevicePoller, type PollJob } from '../poll';
+import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
 import type { MerossMessage } from '../protocol/message';
 import { loadTraitDescriptor } from '../traits/load';
 import type { GetCommand } from '../transport/router';
@@ -134,11 +135,19 @@ export class DeviceRuntime {
     /**
      * ERROR and SETACK are skipped so poller onAck and dispatcher onPush share
      * one gate. Unknown namespaces are a no-op.
+     *
+     * Packed Control.Multiple inbound is not System.All; poller onAck delivers
+     * the unpacked GETACK here so {@link handleMessage} still sees innerIp,
+     * clearMqtt, and hub digest. Decode errors stay swallowed so a bad All
+     * cannot fail the rest of the batch.
      */
     handlePush(message: MerossMessage): void {
         const { method, namespace } = message.header;
         if (method === 'ERROR' || method === 'SETACK') {
             return;
+        }
+        if (namespace === SYSTEM_ALL_NAMESPACE) {
+            this.handleMessage(message);
         }
         const list = this.handlers.get(namespace);
         if (!list) {
