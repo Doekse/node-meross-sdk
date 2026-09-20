@@ -1006,7 +1006,10 @@ describe('DevicePoller', () => {
         };
         const harness = createHarness(t, {
             maxCmdNum: 5,
-            onAck: (message) => endpoint.handlePush(message),
+            onAck: (message) => {
+                endpoint.handlePush(message, 'standbykiller');
+                endpoint.handlePush(message, 'energy');
+            },
             jobs: [
                 {
                     namespace: CONFIG_STANDBY_KILLER_NAMESPACE,

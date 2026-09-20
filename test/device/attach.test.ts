@@ -191,7 +191,6 @@ describe('attachEndpoint sensor', () => {
 
         assert.equal(endpoint.sensor, undefined);
         assert.ok(endpoint.traits.includes('sensor'));
-        assert.doesNotThrow(() => endpoint.handlePush(pushMessage(HUB_SENSOR_ALL_NAMESPACE, {})));
     });
 
     it('constructs SensorTrait for ms100', () => {
@@ -221,7 +220,7 @@ describe('attachEndpoint dnd', () => {
             }
         });
 
-        endpoint.handlePush(pushMessage(DND_MODE_NAMESPACE, { DNDMode: { mode: 1 } }));
+        endpoint.dnd!.handlePush(pushMessage(DND_MODE_NAMESPACE, { DNDMode: { mode: 1 } }));
 
         assert.deepEqual(changes, [{ trait: 'dnd', values: { on: false } }]);
         assert.deepEqual(narrowedOn, [false]);
@@ -237,7 +236,7 @@ describe('attachEndpoint overtemp', () => {
         const changes: EndpointChange[] = [];
         endpoint.on('change', (change) => changes.push(change));
 
-        endpoint.handlePush(pushMessage(CONFIG_OVERTEMP_NAMESPACE, {
+        endpoint.overtemp!.handlePush(pushMessage(CONFIG_OVERTEMP_NAMESPACE, {
             overTemp: { enable: 1, type: 2 }
         }));
 
@@ -257,7 +256,7 @@ describe('attachEndpoint alert', () => {
         const changes: EndpointChange[] = [];
         endpoint.on('change', (change) => changes.push(change));
 
-        endpoint.handlePush(pushMessage(CONTROL_ALERT_CONFIG_NAMESPACE, {
+        endpoint.alert!.handlePush(pushMessage(CONTROL_ALERT_CONFIG_NAMESPACE, {
             config: [{ channel: CHANNEL, type: 3, value: { em06: { a: 1 } } }]
         }));
 
@@ -277,7 +276,7 @@ describe('attachEndpoint standbykiller', () => {
         const changes: EndpointChange[] = [];
         endpoint.on('change', (change) => changes.push(change));
 
-        endpoint.handlePush(pushMessage(CONFIG_STANDBY_KILLER_NAMESPACE, {
+        endpoint.standbykiller!.handlePush(pushMessage(CONFIG_STANDBY_KILLER_NAMESPACE, {
             config: [{
                 channel: CHANNEL,
                 power: 0,

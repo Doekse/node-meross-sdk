@@ -365,7 +365,9 @@ export class Session extends EventEmitter<SessionEvents> {
             return;
         }
         for (const endpoint of runtime.endpoints) {
-            endpoint.handlePush(message);
+            for (const trait of endpoint.traits) {
+                endpoint.handlePush(message, trait);
+            }
         }
     }
 
