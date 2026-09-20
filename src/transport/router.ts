@@ -76,6 +76,7 @@ export class TransportRouter {
 
     async disconnect(): Promise<void> {
         this.httpDown.clear();
+        this.lan.disconnect();
         await this.mqtt.disconnect();
     }
 
