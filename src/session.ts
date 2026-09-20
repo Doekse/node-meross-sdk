@@ -466,7 +466,12 @@ export class Session extends EventEmitter<SessionEvents> {
             let endpoint = this.endpoints.get(row.id);
             if (!endpoint) {
                 const physical = this.graph.getPhysical(graphEndpoint.uuid)!;
-                endpoint = attachEndpoint(graphEndpoint, this.deviceRequest(physical), physical);
+                endpoint = attachEndpoint(
+                    graphEndpoint,
+                    this.deviceRequest(physical),
+                    physical,
+                    new Set(Object.keys(physical.ability))
+                );
                 this.endpoints.set(row.id, endpoint);
             }
             const group = byUuid.get(graphEndpoint.uuid) ?? [];

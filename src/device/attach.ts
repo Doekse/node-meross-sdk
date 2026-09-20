@@ -31,14 +31,18 @@ import type { GraphEndpoint, PhysicalDevice } from './index';
  * generation) read `physical.ability`. Channel stealing for light/fan/garage
  * is enroll, not attach — do not "fix" attach to meross_lan's digest-key
  * Toggle test. Trait modules load only when `graphEndpoint.traits` lists them.
+ *
+ * Callers own `namespaces` (typically ability keys). Attach does not derive
+ * the Set from `physical.ability`, so a caller can reuse one Set across
+ * endpoints instead of copying ability keys here.
  */
 export function attachEndpoint(
     graphEndpoint: GraphEndpoint,
     request: DeviceRequest,
-    physical: PhysicalDevice
+    physical: PhysicalDevice,
+    namespaces: ReadonlySet<string>
 ): Endpoint {
     const channel = graphEndpoint.channel ?? 0;
-    const namespaces = new Set(Object.keys(physical.ability));
     // Assigned after traits so emitChange closures can capture the binding.
     // eslint-disable-next-line prefer-const -- definite assignment; constructed below
     let endpoint!: Endpoint;

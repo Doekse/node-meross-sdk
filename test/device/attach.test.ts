@@ -118,7 +118,12 @@ function createHarness(options: {
         key: KEY,
         ack: options.ack
     });
-    const endpoint = attachEndpoint(graph, request, physical(options.ability, graph.model));
+    const endpoint = attachEndpoint(
+        graph,
+        request,
+        physical(options.ability, graph.model),
+        new Set(Object.keys(options.ability))
+    );
     return { endpoint, requests };
 }
 
