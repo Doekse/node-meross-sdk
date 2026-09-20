@@ -1,8 +1,9 @@
-import type { Endpoint } from '../endpoint';
+import type { Endpoint, TraitName } from '../endpoint';
+import { DevicePoller, type PollJob } from '../poll';
 import type { MerossMessage } from '../protocol/message';
+import { loadTraitDescriptor } from '../traits/load';
 import type { GetCommand } from '../transport/router';
 import { DeviceAvailability, type DeviceAvailabilityOptions } from './availability';
-import { DevicePoller, type PollJob } from '../poll';
 
 export interface DeviceRuntimeOptions {
     uuid: string;
@@ -47,10 +48,31 @@ export class DeviceRuntime {
     private readonly isCloudPath: () => boolean;
     private readonly availability: DeviceAvailability;
     private readonly poller: DevicePoller;
+    /**
+     * Namespace → (endpoint, trait) lists. Built once from
+     * {@link loadTraitDescriptor} `push` so each frame is an O(1) lookup
+     * instead of walking every trait on every endpoint. Shared namespaces
+     * (ToggleX on switch+light+fan) stay lists, not 1:1.
+     */
+    private readonly handlers = new Map<string, { endpoint: Endpoint; trait: TraitName }[]>();
 
     constructor(options: DeviceRuntimeOptions) {
         this.endpoints = options.endpoints;
         this.isCloudPath = options.isCloudPath;
+
+        for (const endpoint of this.endpoints) {
+            for (const name of endpoint.traits) {
+                // Names can be listed without a constructed instance (sensor family).
+                if (endpoint[name] === undefined) {
+                    continue;
+                }
+                for (const namespace of loadTraitDescriptor(name).push) {
+                    const list = this.handlers.get(namespace) ?? [];
+                    list.push({ endpoint, trait: name });
+                    this.handlers.set(namespace, list);
+                }
+            }
+        }
 
         const availability = new DeviceAvailability({
             uuid: options.uuid,
@@ -100,11 +122,30 @@ export class DeviceRuntime {
     stop(): void {
         this.poller.stop();
         this.availability.stop();
+        this.handlers.clear();
     }
 
     /** LAN GETACK/PUSH liveness, distinct from {@link handleMessage}'s availability decode. */
     recordPush(): void {
         this.poller.recordPush();
+    }
+
+    /**
+     * ERROR and SETACK are skipped so poller onAck and dispatcher onPush share
+     * one gate. Unknown namespaces are a no-op.
+     */
+    handlePush(message: MerossMessage): void {
+        const { method, namespace } = message.header;
+        if (method === 'ERROR' || method === 'SETACK') {
+            return;
+        }
+        const list = this.handlers.get(namespace);
+        if (!list) {
+            return;
+        }
+        for (const { endpoint, trait } of list) {
+            endpoint.handlePush(message, trait);
+        }
     }
 
     handleMessage(message: MerossMessage): void {

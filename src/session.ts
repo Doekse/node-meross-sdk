@@ -353,22 +353,10 @@ export class Session extends EventEmitter<SessionEvents> {
 
     /**
      * HTTP applies on the Device that POSTed; MQTT looks up by header/`from`.
-     * SETACK and ERROR are skipped so they are not parsed as GETACK.
+     * Runtime owns ERROR/SETACK skip and namespace → trait routing.
      */
     private handlePush(message: MerossMessage, originUuid?: string): void {
-        const runtime = this.deviceRuntime(message, originUuid);
-        if (!runtime) {
-            return;
-        }
-        const method = message.header.method;
-        if (method === 'ERROR' || method === 'SETACK') {
-            return;
-        }
-        for (const endpoint of runtime.endpoints) {
-            for (const trait of endpoint.traits) {
-                endpoint.handlePush(message, trait);
-            }
-        }
+        this.deviceRuntime(message, originUuid)?.handlePush(message);
     }
 
     /**
