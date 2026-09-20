@@ -7,6 +7,7 @@ export {
     SYSTEM_FIRMWARE_NAMESPACE,
     SYSTEM_HARDWARE_NAMESPACE,
     SYSTEM_POSITION_NAMESPACE,
+    SYSTEM_RUNTIME_NAMESPACE,
     SYSTEM_TIME_NAMESPACE
 } from '../namespaces';
 
@@ -72,6 +73,18 @@ export interface SystemDebugState {
 export interface SystemPositionState {
     latitude: number;
     longitude: number;
+}
+
+/**
+ * `signal` is firmware % (docs treat below 75 as weak); not clamped so
+ * out-of-range values stay visible. `netType` is 1 = Wi-Fi or 2 = Ethernet
+ * when firmware sends a number. `iotStatus` is dropped; hosts must not
+ * map it to online.
+ */
+export interface SystemRuntimeState {
+    signal: number;
+    netType?: number;
+    ssid?: string;
 }
 
 export interface SystemClockState {
@@ -306,6 +319,38 @@ export function decodeSystemPositionGetAck(payload: MerossPayload): SystemPositi
         throw new ProtocolError('System.Position longitude is required');
     }
     return { latitude, longitude };
+}
+
+/** GET is empty. */
+export function encodeSystemRuntimeGet(): MerossPayload {
+    return EMPTY_PAYLOAD;
+}
+
+export function decodeSystemRuntimeGetAck(payload: MerossPayload): SystemRuntimeState {
+    return decodeSystemRuntime(payload);
+}
+
+export function decodeSystemRuntimePush(payload: MerossPayload): SystemRuntimeState {
+    return decodeSystemRuntime(payload);
+}
+
+function decodeSystemRuntime(payload: MerossPayload): SystemRuntimeState {
+    const raw = payload.runtime;
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        throw new ProtocolError('System.Runtime runtime must be an object');
+    }
+    const { signal, netType, ssid } = raw as Record<string, unknown>;
+    if (typeof signal !== 'number') {
+        throw new ProtocolError('System.Runtime signal is required');
+    }
+    const state: SystemRuntimeState = { signal };
+    if (typeof netType === 'number') {
+        state.netType = netType;
+    }
+    if (typeof ssid === 'string') {
+        state.ssid = ssid;
+    }
+    return state;
 }
 
 function isPlainObject(value: unknown): boolean {

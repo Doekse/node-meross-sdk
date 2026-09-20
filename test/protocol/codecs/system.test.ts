@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { ProtocolError } from '../../../src/errors';
@@ -9,6 +11,8 @@ import {
     decodeSystemFirmwarePush,
     decodeSystemHardwareGetAck,
     decodeSystemPositionGetAck,
+    decodeSystemRuntimeGetAck,
+    decodeSystemRuntimePush,
     decodeSystemTimeGetAck,
     decodeSystemTimePush,
     encodeSystemDebugGet,
@@ -16,9 +20,19 @@ import {
     encodeSystemHardwareGet,
     encodeSystemPositionGet,
     encodeSystemPositionSet,
+    encodeSystemRuntimeGet,
     encodeSystemTimeGet,
     encodeSystemTimeSet
 } from '../../../src/protocol/codecs/system';
+import { decodeMessage } from '../../../src/protocol/message';
+
+const fixturesDir = join(process.cwd(), 'test/fixtures');
+
+function loadFixture(name: string) {
+    return decodeMessage(
+        JSON.parse(readFileSync(join(fixturesDir, name), 'utf8')) as unknown
+    );
+}
 
 describe('System.Time codec', () => {
     it('encodes GET as an empty payload', () => {
@@ -275,6 +289,50 @@ describe('System.Position codec', () => {
         assert.throws(() => decodeSystemPositionGetAck({}), ProtocolError);
         assert.throws(() => decodeSystemPositionGetAck({
             position: { latitude: 1 }
+        }), ProtocolError);
+    });
+});
+
+describe('System.Runtime codec', () => {
+    it('encodes GET as an empty payload', () => {
+        assert.deepEqual(encodeSystemRuntimeGet(), {});
+    });
+
+    it('decodes GETACK from the abnormal fixture and drops iotStatus', () => {
+        const fixture = loadFixture('runtime-getack-abnormal.json');
+        const state = decodeSystemRuntimeGetAck(fixture.payload);
+        assert.deepEqual(state, {
+            signal: 50,
+            netType: 2,
+            ssid: 'test'
+        });
+        assert.equal('iotStatus' in state, false);
+    });
+
+    it('decodes signal-only payloads', () => {
+        assert.deepEqual(decodeSystemRuntimeGetAck({
+            runtime: { signal: 75 }
+        }), { signal: 75 });
+    });
+
+    it('decodes PUSH via the same decoder', () => {
+        assert.deepEqual(decodeSystemRuntimePush({
+            runtime: { signal: 40, netType: 1, ssid: 'home' }
+        }), {
+            signal: 40,
+            netType: 1,
+            ssid: 'home'
+        });
+    });
+
+    it('rejects missing or non-number signal', () => {
+        assert.throws(() => decodeSystemRuntimeGetAck({}), ProtocolError);
+        assert.throws(() => decodeSystemRuntimeGetAck({ runtime: {} }), ProtocolError);
+        assert.throws(() => decodeSystemRuntimeGetAck({
+            runtime: { signal: '50' }
+        }), ProtocolError);
+        assert.throws(() => decodeSystemRuntimeGetAck({
+            runtime: []
         }), ProtocolError);
     });
 });
