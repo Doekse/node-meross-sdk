@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import type { AbilityMap, GraphEndpoint, PhysicalDevice } from '../../src/device';
 import { attachEndpoint } from '../../src/device/attach';
 import type { Endpoint, EndpointChange, TraitName } from '../../src/endpoint';
+import { MerossError } from '../../src/errors';
 import {
     CONTROL_TIMER_NAMESPACE,
     CONTROL_TRIGGER_NAMESPACE,
@@ -26,6 +27,7 @@ import {
     TRIGGERX_NAMESPACE,
     encodeLightSet,
     encodeMessage,
+    encodeToggleXSet,
     type MerossMessage
 } from '../../src/protocol';
 import { createRequestRecorder } from '../helpers/request';
@@ -77,18 +79,20 @@ function physical(ability: AbilityMap, model: string): PhysicalDevice {
  */
 function graphEndpoint({
     traits,
+    channel = CHANNEL,
     subDeviceId,
     model = 'mss110'
 }: {
     traits: readonly TraitName[];
+    channel?: number;
     subDeviceId?: string;
     model?: string;
 }): GraphEndpoint {
     const isHubChild = subDeviceId !== undefined;
     return {
-        id: isHubChild ? `${UUID}#${subDeviceId}` : `${UUID}:${CHANNEL}`,
+        id: isHubChild ? `${UUID}#${subDeviceId}` : `${UUID}:${channel}`,
         uuid: UUID,
-        channel: isHubChild ? undefined : CHANNEL,
+        channel: isHubChild ? undefined : channel,
         subDeviceId,
         name: model,
         model,
@@ -137,6 +141,57 @@ function pushMessage(namespace: string, payload: Record<string, unknown>): Meros
         payload
     });
 }
+
+describe('attachEndpoint shared request and namespaces', () => {
+    it('reuses one request and Set across two channels', async () => {
+        const ability = { [TOGGLEX_NAMESPACE]: {} };
+        const physicalDevice = physical(ability, 'mss425');
+        const namespaces = new Set([TOGGLEX_NAMESPACE]);
+        const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
+
+        const channel0 = attachEndpoint(
+            graphEndpoint({ traits: ['switch'], channel: CHANNEL }),
+            request,
+            physicalDevice,
+            namespaces
+        );
+        const channel1 = attachEndpoint(
+            graphEndpoint({ traits: ['switch'], channel: 1 }),
+            request,
+            physicalDevice,
+            namespaces
+        );
+
+        await channel0.switch!.setOn(true);
+        await channel1.switch!.setOn(false);
+
+        assert.equal(requests.length, 2);
+        assert.equal(requests[0]?.header.namespace, TOGGLEX_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(requests[0]?.payload, encodeToggleXSet({ channel: CHANNEL, on: true }));
+        assert.equal(requests[1]?.header.namespace, TOGGLEX_NAMESPACE);
+        assert.equal(requests[1]?.header.method, 'SET');
+        assert.deepEqual(requests[1]?.payload, encodeToggleXSet({ channel: 1, on: false }));
+    });
+
+    it('skips a namespace present on ability but omitted from the passed Set', async () => {
+        const ability = { [CONFIG_OVERTEMP_NAMESPACE]: {} };
+        const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
+        const endpoint = attachEndpoint(
+            graphEndpoint({ traits: ['overtemp'] }),
+            request,
+            physical(ability, 'mss110'),
+            new Set()
+        );
+
+        await assert.rejects(
+            () => endpoint.overtemp!.set({ enabled: true }),
+            (error: unknown) => error instanceof MerossError
+                && error.code === 'NAMESPACE_NOT_ADVERTISED'
+        );
+        assert.equal(requests.length, 0);
+    });
+});
 
 describe('attachEndpoint switch', () => {
     it('binds classic Toggle when Toggle is present and ToggleX is absent', async () => {
