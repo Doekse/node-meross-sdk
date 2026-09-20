@@ -327,25 +327,32 @@ export class MqttTransport {
      * Traffic is logged before decode so a malformed frame is still visible.
      * The catch exists because a thrown handler would take down the mqtt.js
      * socket; unsigned payloads are expected on a shared broker topic.
+     *
+     * UTF-8 conversion waits until a logger needs the body (trace traffic or
+     * an error dump). Decode reuses that string when it already ran.
      */
     private onMessage(topic: string, payload: Buffer): void {
-        const raw = payload.toString();
+        let text: string | undefined;
+        const asText = (): string => {
+            text ??= payload.toString('utf8');
+            return text;
+        };
         emitTraffic(this.logger, this.logLevel, {
             channel: 'mqtt',
             message: 'MQTT message',
             direction: 'rx',
             target: topic,
-            data: () => raw
+            data: asText
         });
         try {
-            this.dispatcher.handle(decodeMessage(payload, this.key));
+            this.dispatcher.handle(decodeMessage(text ?? payload, this.key));
         } catch {
             emitLog(this.logger, {
                 level: 'error',
                 channel: 'mqtt',
                 message: 'Malformed MQTT payload',
                 target: topic,
-                data: raw
+                ...(this.logger ? { data: asText() } : {})
             });
         }
     }

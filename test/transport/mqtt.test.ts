@@ -526,6 +526,30 @@ describe('MqttTransport', () => {
         await transport.disconnect();
     });
 
+    it('at debug logs MQTT rx as a summary without a body', async () => {
+        const records: LogRecord[] = [];
+        const { transport, getClient } = createTransport({
+            logger: (record) => {
+                records.push(record);
+            }
+        });
+        await transport.connect();
+        getClient().deliver(encodeMessage({
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            payload: { togglex: [{ channel: 0, onoff: 1 }] }
+        }));
+
+        const rx = records.find((record) => record.direction === 'rx');
+        assert.ok(rx);
+        assert.equal(rx.level, 'debug');
+        assert.equal(rx.data, undefined);
+
+        await transport.disconnect();
+    });
+
     it('logs an error for a malformed payload without dropping the socket', async () => {
         const records: LogRecord[] = [];
         const { transport, getClient } = createTransport({
