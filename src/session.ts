@@ -382,14 +382,14 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Runtime for `originUuid` when set, otherwise for the uuid in the
-     * message header/`from`.
+     * Runtime for a non-empty `originUuid` when set, otherwise for the uuid
+     * in the message header/`from`.
      */
     private deviceRuntime(
         message: MerossMessage,
         originUuid?: string
     ): DeviceRuntime | undefined {
-        const uuid = originUuid ?? uuidFromHeader(message.header);
+        const uuid = originUuid || uuidFromHeader(message.header);
         return uuid ? this.devices.get(uuid) : undefined;
     }
 
@@ -400,11 +400,14 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Stops a device's timers and forgets the endpoints it owns. The graph entry
-     * stays so {@link materializeEndpoints} can rebuild from a fresh enrollment.
+     * Stops a device's timers and forgets the endpoints it owns. Per-uuid
+     * stale-PUSH timestamps, MQTT windows, and HTTP-down go with it so a
+     * later enrollment cannot inherit them. The graph entry stays so
+     * {@link materializeEndpoints} can rebuild from a fresh enrollment.
      */
     private stopDevice(uuid: string): void {
         this.lanEncryptionKeys.remove(uuid);
+        this.router?.forget(uuid);
         const runtime = this.devices.get(uuid);
         if (!runtime) {
             return;

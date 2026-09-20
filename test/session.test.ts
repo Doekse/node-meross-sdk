@@ -831,6 +831,50 @@ describe('Session.sync', () => {
         await session.disconnect();
     });
 
+    it('does not inherit a dropped device MQTT publish window when it returns', async () => {
+        const { session, client, devices } = await loginConnected({
+            devices: [DEVICE_ROW, LAMP_ROW]
+        });
+        const lamp = session.endpoint(`${LAMP_UUID}:0`);
+        let limited = false;
+        for (let i = 0; i < RATE_LIMIT_MAX_PUBLISHES + 2; i += 1) {
+            const publishedBefore = client.published.length;
+            const pending = lamp.switch!.setOn(i % 2 === 0);
+            await Promise.resolve();
+            if (client.published.length === publishedBefore) {
+                await assert.rejects(
+                    pending,
+                    (err: unknown) =>
+                        err instanceof TransportError && err.code === 'MQTT_RATE_LIMITED'
+                );
+                limited = true;
+                break;
+            }
+            const sent = JSON.parse(client.published.at(-1)!.payload) as MerossMessage;
+            client.deliver(ackFor(sent, 'SETACK', {
+                togglex: { channel: 0, onoff: i % 2 === 0 ? 1 : 0 }
+            }));
+            await pending;
+        }
+        assert.equal(limited, true);
+
+        devices.splice(1, 1);
+        await session.sync();
+        devices.push(LAMP_ROW);
+        await session.sync();
+        await waitMacrotask();
+
+        const returned = session.endpoint(`${LAMP_UUID}:0`);
+        const publishedBefore = client.published.length;
+        const pending = returned.switch!.setOn(true);
+        await Promise.resolve();
+        assert.notEqual(client.published.length, publishedBefore);
+        const sent = JSON.parse(client.published.at(-1)!.payload) as MerossMessage;
+        client.deliver(ackFor(sent, 'SETACK', { togglex: { channel: 0, onoff: 1 } }));
+        await pending;
+        await session.disconnect();
+    });
+
     it('keeps the same Endpoint when a re-read finds the same shape', async () => {
         const { session } = await loginConnected();
         const before = session.endpoint(`${UUID}:0`);

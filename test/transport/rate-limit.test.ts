@@ -56,6 +56,22 @@ describe('PublishRateLimiter', () => {
         assert.equal(limiter.droppedCount(UUID_A), 0);
     });
 
+    it('forgets the window and drop count for one uuid', () => {
+        const limiter = new PublishRateLimiter({ now: () => 1_000_000 });
+
+        for (let i = 0; i < RATE_LIMIT_MAX_PUBLISHES; i += 1) {
+            limiter.take(UUID_A, 'user');
+        }
+        assert.equal(limiter.take(UUID_A, 'user'), false);
+        limiter.take(UUID_B, 'user');
+
+        limiter.forget(UUID_A);
+
+        assert.equal(limiter.droppedCount(UUID_A), 0);
+        assert.equal(limiter.take(UUID_A, 'user'), true);
+        assert.equal(limiter.take(UUID_B, 'user'), true);
+    });
+
     it('keeps a reserve so polling cannot starve a user command', () => {
         const limiter = new PublishRateLimiter({ now: () => 1_000_000 });
 

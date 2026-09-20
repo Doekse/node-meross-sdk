@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MQTT inbound frames convert to UTF-8 only when a logger needs the body (`trace` traffic or a malformed-payload error). Decode reuses that string when it already ran. No host-visible API or behavior change.
 - `Appliance.System.All` GETACK/PUSH is projected once per payload object so DeviceAvailability, SystemTrait, and a heartbeat re-apply share the tree. Malformed All is not cached. No host-visible API or behavior change.
 - Default LAN HTTP returns the socket Buffer instead of wrapping it in a Fetch `Response` and calling `text()`. Injected `SessionOptions.lanFetch` is unchanged. No host-visible API or behavior change.
+- Session drops per-uuid stale-PUSH timestamps, MQTT windows, and HTTP-down when a device is stopped, so a later enrollment of the same uuid starts clean. Idle LAN POST tails drop when the last request settles. No host-visible API or behavior change.
 
 ### Fixed
 

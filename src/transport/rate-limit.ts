@@ -73,6 +73,14 @@ export class PublishRateLimiter {
         return this.windows.get(uuid)?.dropped ?? 0;
     }
 
+    /**
+     * Device left or is being rebuilt. A later enrollment must not inherit
+     * this window or the cumulative drop count.
+     */
+    forget(uuid: string): void {
+        this.windows.delete(uuid);
+    }
+
     private windowEntry(uuid: string): WindowEntry {
         let window = this.windows.get(uuid);
         if (!window) {

@@ -163,6 +163,15 @@ export class MqttTransport {
     }
 
     /**
+     * Drop per-uuid MQTT publish state. The shared dispatcher lives on this
+     * transport, so stale-PUSH timestamps go with the rate-limit window.
+     */
+    forget(uuid: string): void {
+        this.rateLimiter.forget(uuid);
+        this.dispatcher.forget(uuid);
+    }
+
+    /**
      * Stops mqtt.js reconnect. Rejects an in-flight first handshake so
      * {@link connect} does not wait out the timeout.
      */
