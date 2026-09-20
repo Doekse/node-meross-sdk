@@ -1,5 +1,5 @@
 import { ProtocolError } from '../../errors';
-import type { MerossPayload } from '../message';
+import { EMPTY_PAYLOAD, type MerossPayload } from '../message';
 
 export { CONFIG_OVERTEMP_NAMESPACE, CONTROL_OVERTEMP_NAMESPACE } from '../namespaces';
 
@@ -19,9 +19,11 @@ export interface ControlOverTempState {
     type?: number;
 }
 
+const CONFIG_OVERTEMP_GET = Object.freeze({ overTemp: EMPTY_PAYLOAD }) as MerossPayload;
+
 /** Config GET `{ overTemp: {} }` (meross_lan dict GET shape). */
 export function encodeConfigOverTempGet(): MerossPayload {
-    return { overTemp: {} };
+    return CONFIG_OVERTEMP_GET;
 }
 
 /**

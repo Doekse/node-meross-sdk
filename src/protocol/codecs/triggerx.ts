@@ -126,9 +126,11 @@ function decodeDigestRow(item: unknown): DigestTriggerXRow {
     return row;
 }
 
+const CONTROL_TRIGGER_GET = Object.freeze({ trigger: EMPTY_PAYLOAD }) as MerossPayload;
+
 /** GET `{ trigger: {} }` returns every countdown on the device. */
 export function encodeControlTriggerGet(): MerossPayload {
-    return { trigger: {} };
+    return CONTROL_TRIGGER_GET;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { ProtocolError } from '../../errors';
-import { EMPTY_PAYLOAD, type MerossPayload } from '../message';
+import { EMPTY_LIST, EMPTY_PAYLOAD, type MerossPayload } from '../message';
 
 export { LIGHT_EFFECT_NAMESPACE, LIGHT_NAMESPACE } from '../namespaces';
 
@@ -91,9 +91,11 @@ export function decodeLightPush(payload: MerossPayload): LightChannelWireState {
     return decodeLight(payload);
 }
 
+const LIGHT_EFFECT_GET = Object.freeze({ effect: EMPTY_LIST }) as MerossPayload;
+
 /** Empty `effect` list returns the full catalog. */
 export function encodeLightEffectGet(): MerossPayload {
-    return { effect: [] };
+    return LIGHT_EFFECT_GET;
 }
 
 export function encodeLightEffectSet(entries: LightEffectEntry[]): MerossPayload {

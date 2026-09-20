@@ -1,5 +1,5 @@
 import { ProtocolError } from '../../errors';
-import type { MerossPayload } from '../message';
+import { EMPTY_PAYLOAD, type MerossPayload } from '../message';
 
 export { DND_MODE_NAMESPACE } from '../namespaces';
 
@@ -8,9 +8,11 @@ export interface DndState {
     on: boolean;
 }
 
+const DND_GET = Object.freeze({ DNDMode: EMPTY_PAYLOAD }) as MerossPayload;
+
 /** GET `{ DNDMode: {} }` (meross_lan dict GET shape). */
 export function encodeDndGet(): MerossPayload {
-    return { DNDMode: {} };
+    return DND_GET;
 }
 
 /**
