@@ -22,7 +22,7 @@ export const EMPTY_PAYLOAD = Object.freeze({}) as MerossPayload;
  * Shared list value for static GET bodies (`effect`, `timer`, list polling).
  * Frozen for the same cross-namespace mutation reason as {@link EMPTY_PAYLOAD}.
  */
-export const EMPTY_LIST = Object.freeze([]) as unknown[];
+export const EMPTY_LIST: readonly unknown[] = Object.freeze([]);
 
 export interface MerossHeader {
     messageId: string;

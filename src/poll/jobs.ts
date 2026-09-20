@@ -370,7 +370,7 @@ function encodePayload(spec: PayloadSpec, endpoints: readonly PollTarget[]): Mer
 function encodeList(
     spec: Extract<PayloadSpec, { list: string }>,
     endpoints: readonly PollTarget[]
-): unknown[] {
+): readonly unknown[] {
     if (spec.by === undefined) {
         return EMPTY_LIST;
     }
