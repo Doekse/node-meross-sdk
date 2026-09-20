@@ -4,8 +4,10 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { ProtocolError } from '../../src/errors';
+import { encodeSystemTimeGet } from '../../src/protocol/codecs/system';
 import {
     DEFAULT_TRIGGER_SRC,
+    EMPTY_PAYLOAD,
     PAYLOAD_VERSION,
     uuidFromHeader,
     decodeMessage,
@@ -77,6 +79,25 @@ describe('protocol sign', () => {
             verifySignature({ messageId, timestamp, sign }, 'wrong'),
             false
         );
+    });
+});
+
+describe('shared empty payloads', () => {
+    it('reuses a frozen EMPTY_PAYLOAD when encodeMessage omits payload', () => {
+        const encoded = encodeMessage({
+            namespace: 'Appliance.Control.ToggleX',
+            method: 'GET',
+            key: 'k',
+            from: '/app/1/subscribe'
+        });
+        assert.equal(encoded.payload, EMPTY_PAYLOAD);
+        assert.equal(Object.isFrozen(EMPTY_PAYLOAD), true);
+        assert.throws(() => {
+            'use strict';
+            (EMPTY_PAYLOAD as { x?: number }).x = 1;
+        }, TypeError);
+        assert.equal(JSON.stringify(EMPTY_PAYLOAD), '{}');
+        assert.equal(encodeSystemTimeGet(), EMPTY_PAYLOAD);
     });
 });
 
