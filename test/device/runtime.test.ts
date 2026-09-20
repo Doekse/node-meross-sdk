@@ -229,11 +229,10 @@ describe('DeviceRuntime', () => {
         });
         const bad = encodeAllGetAck();
         runtime.handleMessage(bad);
-        assert.deepEqual(warnings, []);
+        assert.equal(warnings.length, 0);
         runtime.handlePush(bad);
-        const warning = warnings[0];
-        assert.ok(warning);
-        assert.equal(warning.trait, 'system');
-        assert.match(warning.error.message, /System\.All/);
+        assert.equal(warnings.length, 1);
+        assert.equal(warnings[0]?.trait, 'system');
+        assert.match(warnings[0]?.error.message ?? '', /System\.All/);
     });
 });
