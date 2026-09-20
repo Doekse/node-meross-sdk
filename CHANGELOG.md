@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MQTT inbound frames convert to UTF-8 only when a logger needs the body (`trace` traffic or a malformed-payload error). Decode reuses that string when it already ran. No host-visible API or behavior change.
 - `Appliance.System.All` GETACK/PUSH is projected once per payload object so DeviceAvailability, SystemTrait, and a heartbeat re-apply share the tree. Malformed All is not cached. No host-visible API or behavior change.
 
+### Fixed
+
+- Heartbeat System.All GETACK with a malformed `all` fails the probe (board unavailable) instead of counting as liveness. Inbound All still swallows so a bad PUSH cannot drop reachability. SystemTrait still warns on the same payload.
+
 ## [0.2.0-alpha] - 2026-09-17
 
 ### Added

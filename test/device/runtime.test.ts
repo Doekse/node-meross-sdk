@@ -11,22 +11,44 @@ const UUID = '2206138957096651080248e1e99705a4';
 const KEY = 'stub-key';
 const INTERVAL_MS = 1_000;
 
-function flushMicrotasks(): Promise<void> {
-    return Promise.resolve().then(() => Promise.resolve());
+async function flushMicrotasks(times = 1): Promise<void> {
+    for (let i = 0; i < times; i++) {
+        await Promise.resolve().then(() => Promise.resolve());
+    }
 }
 
 async function unreachable(): Promise<never> {
     throw new Error('unreachable');
 }
 
-function encodeAllGetAck(payload: MerossPayload = {}): MerossMessage {
+function systemAllGetAck(payload?: MerossPayload): MerossMessage {
     return encodeMessage({
         namespace: 'Appliance.System.All',
         method: 'GETACK',
         key: KEY,
         from: `/appliance/${UUID}/publish`,
         uuid: UUID,
-        payload
+        payload: payload ?? {
+            all: {
+                system: {
+                    hardware: { type: 'mss110', uuid: UUID },
+                    firmware: {},
+                    online: { status: 1 }
+                },
+                digest: {}
+            }
+        }
+    });
+}
+
+function togglePush(): MerossMessage {
+    return encodeMessage({
+        namespace: 'Appliance.Control.ToggleX',
+        method: 'PUSH',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload: { togglex: [{ channel: 0, onoff: 1 }] }
     });
 }
 
@@ -56,7 +78,7 @@ function createHarness(t: TestContext, overrides: Partial<DeviceRuntimeOptions> 
         payload: get.payload ?? {}
     })));
 
-    const request = t.mock.fn(async () => encodeAllGetAck());
+    const request = t.mock.fn(async () => systemAllGetAck());
 
     const runtime = new DeviceRuntime({
         uuid: UUID,
@@ -86,8 +108,7 @@ function createHarness(t: TestContext, overrides: Partial<DeviceRuntimeOptions> 
         advance: async (ms: number) => {
             if (ms === 0) {
                 t.mock.timers.tick(0);
-                await flushMicrotasks();
-                await flushMicrotasks();
+                await flushMicrotasks(2);
                 return;
             }
             let remaining = ms;
@@ -95,12 +116,51 @@ function createHarness(t: TestContext, overrides: Partial<DeviceRuntimeOptions> 
                 const delta = Math.min(INTERVAL_MS, remaining);
                 clock += delta;
                 t.mock.timers.tick(delta);
-                await flushMicrotasks();
-                await flushMicrotasks();
+                await flushMicrotasks(2);
                 remaining -= delta;
             }
         }
     };
+}
+
+interface SystemRuntimeHarness {
+    runtime: DeviceRuntime;
+    endpoint: Endpoint;
+    warnings: { error: Error; trait: string }[];
+}
+
+function createSystemRuntime(overrides: Partial<DeviceRuntimeOptions> = {}): SystemRuntimeHarness {
+    const endpoint = new Endpoint({
+        id: `${UUID}:0`,
+        traits: ['system'],
+        system: new SystemTrait({
+            request: unreachable,
+            emitChange: () => {}
+        }),
+        initialOnline: true
+    });
+    const warnings: { error: Error; trait: string }[] = [];
+    endpoint.on('warning', (error, traitName) => {
+        warnings.push({ error, trait: traitName });
+    });
+    const runtime = new DeviceRuntime({
+        uuid: UUID,
+        initialOnline: true,
+        endpoints: [endpoint],
+        request: unreachable,
+        isCloudPath: () => false,
+        maxCmdNum: () => 1,
+        requestGets: async () => [],
+        onAck: () => {},
+        ...overrides
+    });
+    return { runtime, endpoint, warnings };
+}
+
+function assertSystemAllWarning(warnings: { error: Error; trait: string }[]): void {
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0]?.trait, 'system');
+    assert.match(warnings[0]?.error.message ?? '', /System\.All/);
 }
 
 describe('DeviceRuntime', () => {
@@ -130,14 +190,7 @@ describe('DeviceRuntime', () => {
         await harness.advance(0);
         const pollsWhileOffline = harness.requestGets.mock.callCount();
 
-        harness.runtime.handleMessage(encodeMessage({
-            namespace: 'Appliance.Control.ToggleX',
-            method: 'PUSH',
-            key: KEY,
-            from: `/appliance/${UUID}/publish`,
-            uuid: UUID,
-            payload: { togglex: [{ channel: 0, onoff: 1 }] }
-        }));
+        harness.runtime.handleMessage(togglePush());
         await harness.advance(0);
 
         assert.equal(harness.requestGets.mock.callCount(), pollsWhileOffline + 1);
@@ -204,35 +257,38 @@ describe('DeviceRuntime', () => {
     });
 
     it('still warns from SystemTrait when availability swallowed the same malformed All', () => {
-        const trait = new SystemTrait({
-            request: unreachable,
-            emitChange: () => {}
-        });
-        const endpoint = new Endpoint({
-            id: `${UUID}:0`,
-            traits: ['system'],
-            system: trait
-        });
-        const warnings: { error: Error; trait: string }[] = [];
-        endpoint.on('warning', (error, traitName) => {
-            warnings.push({ error, trait: traitName });
-        });
-        const runtime = new DeviceRuntime({
-            uuid: UUID,
-            initialOnline: true,
-            endpoints: [endpoint],
-            request: unreachable,
-            isCloudPath: () => false,
-            maxCmdNum: () => 1,
-            requestGets: async () => [],
-            onAck: () => {}
-        });
-        const bad = encodeAllGetAck();
+        const { runtime, warnings } = createSystemRuntime();
+        const bad = systemAllGetAck({});
         runtime.handleMessage(bad);
         assert.equal(warnings.length, 0);
         runtime.handlePush(bad);
-        assert.equal(warnings.length, 1);
-        assert.equal(warnings[0]?.trait, 'system');
-        assert.match(warnings[0]?.error.message ?? '', /System\.All/);
+        assertSystemAllWarning(warnings);
+    });
+
+    it('marks offline and warns when the heartbeat All body is malformed', async (t: TestContext) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let clock = 0;
+        const { runtime, endpoint, warnings } = createSystemRuntime({
+            heartbeatIntervalMs: INTERVAL_MS,
+            now(): number {
+                return clock;
+            },
+            request: async () => systemAllGetAck({}),
+            pollIntervalMs: 60_000,
+            startDelayMs: 60_000
+        });
+        const seen: boolean[] = [];
+        endpoint.on('availability', (online) => seen.push(online));
+        runtime.start();
+        runtime.handleMessage(togglePush());
+        seen.length = 0;
+        warnings.length = 0;
+        clock = INTERVAL_MS + 1;
+        t.mock.timers.tick(INTERVAL_MS + 1);
+        await flushMicrotasks(3);
+
+        assert.deepEqual(seen, [false]);
+        assertSystemAllWarning(warnings);
+        runtime.stop();
     });
 });

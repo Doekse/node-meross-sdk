@@ -6,7 +6,7 @@ import { describe, it, type TestContext } from 'node:test';
 import { DeviceAvailability } from '../../src/device/availability';
 import { Heartbeat } from '../../src/device/heartbeat';
 import { Endpoint } from '../../src/endpoint';
-import { decodeMessage, encodeMessage, type MerossMessage } from '../../src/protocol';
+import { decodeMessage, encodeMessage, type MerossMessage, type MerossPayload } from '../../src/protocol';
 
 const fixturesDir = join(process.cwd(), 'test/fixtures');
 const UUID = '2206138957096651080248e1e99705a4';
@@ -17,15 +17,34 @@ function loadFixture(name: string): MerossMessage {
     return decodeMessage(JSON.parse(readFileSync(join(fixturesDir, name), 'utf8')) as unknown);
 }
 
-function stubRequest(uuid = UUID): () => Promise<MerossMessage> {
-    return async () => encodeMessage({
+function systemAllGetAck(options: {
+    uuid?: string;
+    status?: number;
+    payload?: MerossPayload;
+} = {}): MerossMessage {
+    const uuid = options.uuid ?? UUID;
+    const payload = options.payload ?? {
+        all: {
+            system: {
+                hardware: { type: 'mss110', uuid },
+                firmware: {},
+                online: { status: options.status ?? 1 }
+            },
+            digest: {}
+        }
+    };
+    return encodeMessage({
         namespace: 'Appliance.System.All',
         method: 'GETACK',
         key: KEY,
         from: `/appliance/${uuid}/publish`,
         uuid,
-        payload: {}
+        payload
     });
+}
+
+function stubRequest(uuid = UUID): () => Promise<MerossMessage> {
+    return async (): Promise<MerossMessage> => systemAllGetAck({ uuid });
 }
 
 async function unreachable(): Promise<never> {
@@ -45,30 +64,6 @@ async function settle(hops: number): Promise<void> {
     for (let i = 0; i < hops; i++) {
         await Promise.resolve();
     }
-}
-
-function systemAllGetAck(status: number): MerossMessage {
-    return encodeMessage({
-        namespace: 'Appliance.System.All',
-        method: 'GETACK',
-        key: KEY,
-        from: `/appliance/${UUID}/publish`,
-        uuid: UUID,
-        payload: {
-            all: {
-                system: {
-                    hardware: { type: 'mss110', uuid: UUID },
-                    firmware: {},
-                    online: { status }
-                },
-                digest: {}
-            }
-        }
-    });
-}
-
-async function probeAllStatus2(): Promise<MerossMessage> {
-    return systemAllGetAck(2);
 }
 
 async function runSilenceProbe(
@@ -271,6 +266,47 @@ describe('Heartbeat silence detection', () => {
     });
 });
 
+/**
+ * DeviceAvailability silence uses the same timer dance as Heartbeat; this
+ * keeps malformed vs unreachable vs success probes from copying it.
+ */
+async function runBoardSilence(
+    t: TestContext,
+    request: () => Promise<MerossMessage>
+): Promise<{
+    endpoint: Endpoint;
+    seen: boolean[];
+    monitor: DeviceAvailability;
+    clearMqttCalls: number;
+}> {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    let clock = 0;
+    let clearMqttCalls = 0;
+    const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
+    const seen: boolean[] = [];
+    endpoint.on('availability', (online) => seen.push(online));
+    const monitor = new DeviceAvailability({
+        uuid: UUID,
+        initialOnline: true,
+        endpoints: [endpoint],
+        heartbeatIntervalMs: INTERVAL_MS,
+        now(): number {
+            return clock;
+        },
+        clearMqtt(): void {
+            clearMqttCalls += 1;
+        },
+        request
+    });
+    monitor.start();
+    monitor.handleMessage(loadFixture('online-getack.json'));
+    seen.length = 0;
+    clock = INTERVAL_MS + 1;
+    t.mock.timers.tick(INTERVAL_MS + 1);
+    await settle(3);
+    return { endpoint, seen, monitor, clearMqttCalls };
+}
+
 describe('DeviceAvailability', () => {
     it('syncs initial availability on start', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
@@ -414,7 +450,7 @@ describe('DeviceAvailability', () => {
         monitor.start();
         seen.length = 0;
 
-        monitor.handleMessage(systemAllGetAck(2));
+        monitor.handleMessage(systemAllGetAck({ status: 2 }));
 
         assert.deepEqual(seen, []);
         assert.equal(clearMqttCalls, 1);
@@ -465,34 +501,10 @@ describe('DeviceAvailability', () => {
     });
 
     it('does not offline after silence when the liveness probe All succeeds', async (t: TestContext) => {
-        t.mock.timers.enable({ apis: ['setTimeout'] });
-        let clock = 0;
-        let clearMqttCalls = 0;
-        const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
-        const seen: boolean[] = [];
-        endpoint.on('availability', (online) => seen.push(online));
-
-        const monitor = new DeviceAvailability({
-            uuid: UUID,
-            initialOnline: true,
-            endpoints: [endpoint],
-            heartbeatIntervalMs: INTERVAL_MS,
-            now(): number {
-                return clock;
-            },
-            clearMqtt(): void {
-                clearMqttCalls += 1;
-            },
-            request: probeAllStatus2
-        });
-
-        monitor.start();
-        monitor.handleMessage(loadFixture('online-getack.json'));
-        seen.length = 0;
-        clock = INTERVAL_MS + 1;
-
-        t.mock.timers.tick(INTERVAL_MS + 1);
-        await settle(3);
+        const { endpoint, seen, monitor, clearMqttCalls } = await runBoardSilence(
+            t,
+            async () => systemAllGetAck({ status: 2 })
+        );
 
         assert.deepEqual(seen, []);
         assert.equal(endpoint.isOnline(), true);
@@ -500,9 +512,7 @@ describe('DeviceAvailability', () => {
         monitor.stop();
     });
 
-    it('marks offline after heartbeat silence when the liveness probe fails', async (t: TestContext) => {
-        t.mock.timers.enable({ apis: ['setTimeout'] });
-        let clock = 0;
+    it('does not offline from a malformed inbound All', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
         const seen: boolean[] = [];
         endpoint.on('availability', (online) => seen.push(online));
@@ -511,50 +521,34 @@ describe('DeviceAvailability', () => {
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
-            heartbeatIntervalMs: INTERVAL_MS,
-            now(): number {
-                return clock;
-            },
-            request: unreachable
+            request: stubRequest()
         });
-
         monitor.start();
-        monitor.handleMessage(loadFixture('online-getack.json'));
         seen.length = 0;
-        clock = INTERVAL_MS + 1;
 
-        t.mock.timers.tick(INTERVAL_MS + 1);
-        await settle(3);
+        monitor.handleMessage(systemAllGetAck({ payload: {} }));
+
+        assert.deepEqual(seen, []);
+        assert.equal(endpoint.isOnline(), true);
+        monitor.stop();
+    });
+
+    it('marks offline after heartbeat silence when the liveness probe All is malformed', async (t: TestContext) => {
+        const { seen, monitor } = await runBoardSilence(t, async () => systemAllGetAck({ payload: {} }));
+
+        assert.deepEqual(seen, [false]);
+        monitor.stop();
+    });
+
+    it('marks offline after heartbeat silence when the liveness probe fails', async (t: TestContext) => {
+        const { seen, monitor } = await runBoardSilence(t, unreachable);
 
         assert.deepEqual(seen, [false]);
         monitor.stop();
     });
 
     it('recovers online on any inbound after silence offline', async (t: TestContext) => {
-        t.mock.timers.enable({ apis: ['setTimeout'] });
-        let clock = 0;
-        const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
-        const seen: boolean[] = [];
-        endpoint.on('availability', (online) => seen.push(online));
-
-        const monitor = new DeviceAvailability({
-            uuid: UUID,
-            initialOnline: true,
-            endpoints: [endpoint],
-            heartbeatIntervalMs: INTERVAL_MS,
-            now(): number {
-                return clock;
-            },
-            request: unreachable
-        });
-
-        monitor.start();
-        monitor.handleMessage(loadFixture('online-getack.json'));
-        seen.length = 0;
-        clock = INTERVAL_MS + 1;
-
-        t.mock.timers.tick(INTERVAL_MS + 1);
-        await settle(3);
+        const { endpoint, seen, monitor } = await runBoardSilence(t, unreachable);
 
         assert.deepEqual(seen, [false]);
 

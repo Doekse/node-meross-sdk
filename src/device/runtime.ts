@@ -85,6 +85,7 @@ export class DeviceRuntime {
                 options.onInnerIp?.(innerIp);
                 this.publishProtocol();
             },
+            onAck: (message) => this.handlePush(message),
             heartbeatIntervalMs: options.heartbeatIntervalMs,
             now: options.now
         });

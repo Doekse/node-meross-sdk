@@ -23,6 +23,11 @@ export interface DeviceAvailabilityOptions {
     clearMqtt?: () => void;
     /** System.All `firmware.innerIp` can change after DHCP. */
     onInnerIp?: (innerIp: string | undefined) => void;
+    /**
+     * GETACK is a pending reply, not PUSH, so the dispatcher will not call
+     * onPush. Runtime still applies the payload on this device.
+     */
+    onAck?: (message: MerossMessage) => void;
     heartbeatIntervalMs?: number;
     now?: () => number;
 }
@@ -39,6 +44,7 @@ export class DeviceAvailability {
     private readonly onOnlineChange?: (online: boolean) => void;
     private readonly clearMqtt?: () => void;
     private readonly onInnerIp?: (innerIp: string | undefined) => void;
+    private readonly onAck?: (message: MerossMessage) => void;
     private readonly heartbeat: Heartbeat;
 
     private online: boolean;
@@ -48,6 +54,7 @@ export class DeviceAvailability {
         this.onOnlineChange = options.onOnlineChange;
         this.clearMqtt = options.clearMqtt;
         this.onInnerIp = options.onInnerIp;
+        this.onAck = options.onAck;
         this.online = options.initialOnline;
         const prefix = `${options.uuid}#`;
         for (const endpoint of options.endpoints) {
@@ -107,15 +114,22 @@ export class DeviceAvailability {
         }
 
         if (namespace === SYSTEM_ALL_NAMESPACE && isPushOrGetAck(method)) {
-            this.applySystemAll(message);
+            try {
+                this.applySystemAll(message);
+            } catch {
+                // A bad PUSH/GETACK must not drop board reachability; heartbeat
+                // pollOnline still fails the probe when All cannot be decoded.
+            }
         }
     }
 
     /**
      * Firmware liveness is System.All; System.Online is not used as the probe.
+     * Decode errors reject so Heartbeat.perform marks offline.
      */
     private async pollOnline(): Promise<void> {
         const reply = await this.request(SYSTEM_ALL_NAMESPACE, 'GET', {});
+        this.onAck?.(reply);
         this.applySystemAll(reply);
     }
 
@@ -126,19 +140,15 @@ export class DeviceAvailability {
      * `online.status` — status !== 1 only clears MQTT-active.
      */
     private applySystemAll(message: MerossMessage): void {
-        try {
-            const all = decodeSystemAllGetAck(message.payload);
-            if (all.online.status !== 1) {
-                this.clearMqtt?.();
+        const all = decodeSystemAllGetAck(message.payload);
+        if (all.online.status !== 1) {
+            this.clearMqtt?.();
+        }
+        this.onInnerIp?.(all.firmware.innerIp);
+        for (const sub of all.digest.hub?.subdevice ?? []) {
+            if (sub.status !== undefined) {
+                this.setChildOnline(sub.id, sub.status === 1);
             }
-            this.onInnerIp?.(all.firmware.innerIp);
-            for (const sub of all.digest.hub?.subdevice ?? []) {
-                if (sub.status !== undefined) {
-                    this.setChildOnline(sub.id, sub.status === 1);
-                }
-            }
-        } catch {
-            // Malformed All is ignored; a failed heartbeat probe still marks offline.
         }
     }
 
