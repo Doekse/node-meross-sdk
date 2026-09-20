@@ -1,5 +1,5 @@
 import { canPackInMultiple } from '../protocol/codecs/multiple';
-import type { MerossMessage, MerossPayload } from '../protocol/message';
+import { EMPTY_PAYLOAD, type MerossMessage, type MerossPayload } from '../protocol/message';
 import type { GetCommand } from '../transport/router';
 import {
     estimateResponseSize,
@@ -215,7 +215,7 @@ export class DevicePoller {
                 continue;
             }
             const prior = previous.get(job.namespace);
-            const payload = job.payload ?? {};
+            const payload = job.payload ?? EMPTY_PAYLOAD;
             this.jobs.set(job.namespace, {
                 namespace: job.namespace,
                 strategy: job.strategy,
@@ -378,7 +378,7 @@ export class DevicePoller {
         this.lastRequestMs = epoch;
         try {
             const replies = await this.requestGets(
-                [{ namespace: SYSTEM_ALL_NAMESPACE, payload: {} }],
+                [{ namespace: SYSTEM_ALL_NAMESPACE, payload: EMPTY_PAYLOAD }],
                 1
             );
             this.lastResponseMs = epoch;
