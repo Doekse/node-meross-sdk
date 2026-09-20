@@ -461,17 +461,24 @@ export class Session extends EventEmitter<SessionEvents> {
         const rows = this.graph.inventoryRows();
         this.inventory.replace(rows);
         const byUuid = new Map<string, Endpoint[]>();
+        const deviceRequests = new Map<string, DeviceRequest>();
+        const abilityNamespaces = new Map<string, ReadonlySet<string>>();
         for (const row of rows) {
             const graphEndpoint = this.graph.getEndpoint(row.id)!;
             let endpoint = this.endpoints.get(row.id);
             if (!endpoint) {
                 const physical = this.graph.getPhysical(graphEndpoint.uuid)!;
-                endpoint = attachEndpoint(
-                    graphEndpoint,
-                    this.deviceRequest(physical),
-                    physical,
-                    new Set(Object.keys(physical.ability))
-                );
+                let request = deviceRequests.get(physical.uuid);
+                if (!request) {
+                    request = this.deviceRequest(physical);
+                    deviceRequests.set(physical.uuid, request);
+                }
+                let namespaces = abilityNamespaces.get(physical.uuid);
+                if (!namespaces) {
+                    namespaces = new Set(Object.keys(physical.ability));
+                    abilityNamespaces.set(physical.uuid, namespaces);
+                }
+                endpoint = attachEndpoint(graphEndpoint, request, physical, namespaces);
                 this.endpoints.set(row.id, endpoint);
             }
             const group = byUuid.get(graphEndpoint.uuid) ?? [];
@@ -484,7 +491,11 @@ export class Session extends EventEmitter<SessionEvents> {
                 continue;
             }
             const physical = this.graph.getPhysical(uuid)!;
-            const request = this.deviceRequest(physical);
+            let request = deviceRequests.get(physical.uuid);
+            if (!request) {
+                request = this.deviceRequest(physical);
+                deviceRequests.set(physical.uuid, request);
+            }
             const startDelayMs = (this.startedDevices * POLL_START_STAGGER_MS) % DEFAULT_POLL_INTERVAL_MS;
             this.startedDevices += 1;
             const runtime = new DeviceRuntime({
