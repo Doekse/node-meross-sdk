@@ -611,6 +611,34 @@ describe('Session.connect', () => {
         await session.disconnect();
     });
 
+    it('sends plaintext LAN when Ability lacks Encrypt.ECDHE', async () => {
+        const lanCalls: RequestInit[] = [];
+        const lanFetch: typeof fetch = async (_url, init) => {
+            lanCalls.push(init ?? {});
+            const sent = decodeMessage(String(init?.body), KEY);
+            const ack = enrollmentAck(sent, { innerIp: true });
+            return {
+                status: 200,
+                statusText: 'OK',
+                ok: true,
+                async text() {
+                    return JSON.stringify(ack);
+                }
+            } as Response;
+        };
+
+        const { session } = await loginConnected({
+            lanFetch,
+            ack: { innerIp: true }
+        });
+
+        assert.ok(lanCalls.length >= 1);
+        const headers = lanCalls[0]!.headers as Record<string, string>;
+        assert.equal(headers['Content-Type'], 'application/json');
+        assert.equal(String(lanCalls[0]!.body).startsWith('{'), true);
+        await session.disconnect();
+    });
+
     it('retargets LAN after System.All reports a new innerIp', async () => {
         const lanUrls: string[] = [];
         const lanFetch: typeof fetch = async (url, init) => {
@@ -943,18 +971,66 @@ describe('Session.reauthenticate', () => {
     });
 
     it('rebuilds transports when the device key rotated but keeps endpoints', async () => {
+        const mac = '48:e1:e9:97:05:a4';
+        let accountKey = KEY;
+        const lanCalls: RequestInit[] = [];
+        const lanFetch: typeof fetch = async (_url, init) => {
+            lanCalls.push(init ?? {});
+            const encryptionKey = deriveEncryptionKey(UUID, accountKey, mac);
+            const plain = decryptPayload(String(init?.body), encryptionKey);
+            const sent = decodeMessage(plain, accountKey);
+            let payload: MerossMessage['payload'];
+            if (sent.header.namespace === TOGGLEX_NAMESPACE) {
+                payload = { togglex: { channel: 0, onoff: 1, entity: 1, lmTime: 1 } };
+            } else {
+                payload = enrollmentAck(sent, { innerIp: true, encrypt: true }).payload;
+            }
+            const ack = encodeMessage({
+                namespace: sent.header.namespace,
+                method: sent.header.method === 'SET' ? 'SETACK' : 'GETACK',
+                key: accountKey,
+                from: `/appliance/${UUID}/publish`,
+                messageId: sent.header.messageId,
+                timestamp: sent.header.timestamp,
+                uuid: UUID,
+                payload
+            });
+            return {
+                status: 200,
+                statusText: 'OK',
+                ok: true,
+                async text() {
+                    return encryptPayload(JSON.stringify(ack), encryptionKey);
+                }
+            } as Response;
+        };
+
         let loginData: unknown = LOGIN_DATA;
         const { session, client, clientRef } = await loginConnected({
-            login: () => loginData
+            login: () => loginData,
+            lanFetch,
+            ack: { encrypt: true, innerIp: true }
         });
         const before = session.endpoint(`${UUID}:0`);
+        const callsBeforeRotate = lanCalls.length;
 
         loginData = { ...LOGIN_DATA, key: 'rotated-key' };
         await session.reauthenticate({ email: EMAIL, password: PASSWORD });
+        accountKey = 'rotated-key';
 
         assert.equal(session.getToken().key, 'rotated-key');
         assert.notEqual(clientRef.current, client);
         assert.equal(session.endpoint(`${UUID}:0`), before);
+
+        await session.endpoint(`${UUID}:0`).switch!.setOn(true);
+        assert.ok(lanCalls.length > callsBeforeRotate);
+        const lastBody = String(lanCalls.at(-1)!.body);
+        const plain = decryptPayload(lastBody, deriveEncryptionKey(UUID, 'rotated-key', mac));
+        assert.equal(decodeMessage(plain, 'rotated-key').header.namespace, TOGGLEX_NAMESPACE);
+        assert.throws(() => {
+            const stale = decryptPayload(lastBody, deriveEncryptionKey(UUID, KEY, mac));
+            decodeMessage(stale, KEY);
+        });
         await session.disconnect();
     });
 });

@@ -41,7 +41,11 @@ export interface LanHttpTransportOptions {
  * with MQTT (a cloud PUSH can arrive while a LAN GET is in flight).
  *
  * Default client is `node:http` with `insecureHTTPParser`: some firmware ends
- * response lines with LF, which undici `fetch` rejects.
+ * response lines with LF, which undici `fetch` rejects. That path owns a
+ * keep-alive {@link http.Agent} (`maxSockets: 1`) so sequential POSTs to one
+ * host reuse a socket — defense if two uuids share an IP.
+ * {@link disconnect} destroys the agent on router teardown so Sessions do not
+ * leak free sockets. Injected `fetch` skips the agent (tests stay Agent-free).
  *
  * POSTs to the same uuid are serialized: Meross devices mishandle concurrent
  * HTTP ([meross_lan #206](https://github.com/krahabb/meross_lan/issues/206)).
@@ -54,16 +58,39 @@ export class LanHttpTransport {
     private readonly fetchFn: typeof globalThis.fetch;
     private readonly logger?: SessionLogger;
     private readonly logLevel?: LogLevel;
+    /**
+     * Present only for {@link defaultFetch}; {@link disconnect} destroys it so
+     * keep-alive sockets do not outlive the Session.
+     */
+    private readonly agent?: http.Agent;
     /** Tail of each uuid's POST chain, not a backlog: one entry per device. */
     private readonly queues = new Map<string, Promise<void>>();
 
     constructor(options: LanHttpTransportOptions) {
         this.key = options.key;
         this.from = options.from;
-        this.fetchFn = options.fetch ?? defaultFetch;
         this.logger = options.logger;
         this.logLevel = options.logLevel;
         this.dispatcher = options.dispatcher ?? new ProtocolDispatcher();
+        if (options.fetch) {
+            this.fetchFn = options.fetch;
+        } else {
+            const agent = new http.Agent({
+                keepAlive: true,
+                maxSockets: 1,
+                maxFreeSockets: 1
+            });
+            this.agent = agent;
+            this.fetchFn = (input, init) => defaultFetch(input, init, agent);
+        }
+    }
+
+    /**
+     * Drop keep-alive sockets owned by this transport. Injected-fetch
+     * instances are a no-op.
+     */
+    disconnect(): void {
+        this.agent?.destroy();
     }
 
     async request(options: LanHttpRequestOptions): Promise<MerossMessage> {
@@ -190,9 +217,14 @@ export class LanHttpTransport {
 
 /**
  * Firmware on some boards ends HTTP lines with LF, not CRLF. undici `fetch`
- * has no way to accept that; `insecureHTTPParser` does.
+ * has no way to accept that; `insecureHTTPParser` does. Caller-owned
+ * {@link http.Agent} keeps the pool per-transport (not process-wide).
  */
-function defaultFetch(input: string | URL | Request, init: RequestInit = {}): Promise<Response> {
+function defaultFetch(
+    input: string | URL | Request,
+    init: RequestInit = {},
+    agent: http.Agent
+): Promise<Response> {
     const body = typeof init.body === 'string' ? init.body : '';
     return new Promise((resolve, reject) => {
         const req = http.request(String(input), {
@@ -201,7 +233,7 @@ function defaultFetch(input: string | URL | Request, init: RequestInit = {}): Pr
                 ...(init.headers as http.OutgoingHttpHeaders),
                 'Content-Length': Buffer.byteLength(body)
             },
-            agent: false,
+            agent,
             insecureHTTPParser: true,
             signal: init.signal ?? undefined
         }, (res) => {

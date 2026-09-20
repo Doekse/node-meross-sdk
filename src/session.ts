@@ -27,7 +27,7 @@ import {
 } from './protocol/codecs/online';
 import { ProtocolDispatcher } from './protocol/dispatcher';
 import {
-    deriveEncryptionKey,
+    LanEncryptionKeys,
     macAddressFromUuid,
     supportsLanEncryption
 } from './protocol/encryption';
@@ -118,6 +118,8 @@ export class Session extends EventEmitter<SessionEvents> {
     private router: TransportRouter | undefined;
     /** In-flight {@link Session.sync}, shared by overlapping callers. */
     private syncing: Promise<void> | undefined;
+    /** Session-owned LAN AES memo; fingerprint misses when key or MAC changes. */
+    private readonly lanEncryptionKeys = new LanEncryptionKeys();
 
     private constructor(
         token: TokenData,
@@ -251,6 +253,7 @@ export class Session extends EventEmitter<SessionEvents> {
         this.stopAllDevices();
         this.graph = new DeviceGraph();
         this.inventory.replace([]);
+        this.lanEncryptionKeys.clear();
         await this.teardownRouter();
     }
 
@@ -401,6 +404,7 @@ export class Session extends EventEmitter<SessionEvents> {
      * stays so {@link materializeEndpoints} can rebuild from a fresh enrollment.
      */
     private stopDevice(uuid: string): void {
+        this.lanEncryptionKeys.remove(uuid);
         const runtime = this.devices.get(uuid);
         if (!runtime) {
             return;
@@ -512,15 +516,18 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     private lanBind(physical: PhysicalDevice) {
+        if (!supportsLanEncryption(physical.ability)) {
+            this.lanEncryptionKeys.remove(physical.uuid);
+            return { ip: physical.innerIp };
+        }
+        const mac = physical.macAddress ?? macAddressFromUuid(physical.uuid);
         return {
             ip: physical.innerIp,
-            encryptionKey: supportsLanEncryption(physical.ability)
-                ? deriveEncryptionKey(
-                    physical.uuid,
-                    this.token.key,
-                    physical.macAddress ?? macAddressFromUuid(physical.uuid)
-                )
-                : undefined
+            encryptionKey: this.lanEncryptionKeys.derive(
+                physical.uuid,
+                this.token.key,
+                mac
+            )
         };
     }
 

@@ -8,6 +8,7 @@ import {
     ENCRYPT_ECDHE_NAMESPACE,
     ENCRYPT_SUITE_NAMESPACE,
     EcdheHandshake,
+    LanEncryptionKeys,
     decodeEncryptEcdheSetAck,
     decodeEncryptSuiteGetAck,
     decryptPayload,
@@ -139,5 +140,42 @@ describe('LAN encryption ability', () => {
     it('is not advertised by Encrypt.Suite alone', () => {
         assert.equal(supportsLanEncryption({ [ENCRYPT_SUITE_NAMESPACE]: {} }), false);
         assert.equal(supportsLanEncryption({}), false);
+    });
+});
+
+describe('LanEncryptionKeys', () => {
+    const uuid = '12345678-0000-0000-0000-000000000000';
+    const accountKey = '0123456789abcdefghijklmnopqr';
+    const mac = 'aa:bb:cc:dd:ee:ff';
+
+    it('returns the same Buffer instance for matching uuid/key/mac', () => {
+        const keys = new LanEncryptionKeys();
+        const first = keys.derive(uuid, accountKey, mac);
+        assert.equal(keys.derive(uuid, accountKey, mac), first);
+    });
+
+    it('misses when mac or key changes', () => {
+        const keys = new LanEncryptionKeys();
+        const first = keys.derive(uuid, accountKey, mac);
+        assert.notEqual(keys.derive(uuid, accountKey, '11:22:33:44:55:66'), first);
+        assert.notEqual(keys.derive(uuid, 'rotated-keyabcdefghijklmnopq', mac), first);
+    });
+
+    it('remove forces a new Buffer on the next derive', () => {
+        const keys = new LanEncryptionKeys();
+        const first = keys.derive(uuid, accountKey, mac);
+        keys.remove(uuid);
+        const second = keys.derive(uuid, accountKey, mac);
+        assert.notEqual(second, first);
+        assert.deepEqual(second, first);
+    });
+
+    it('clear forces a new Buffer on the next derive', () => {
+        const keys = new LanEncryptionKeys();
+        const first = keys.derive(uuid, accountKey, mac);
+        keys.clear();
+        const second = keys.derive(uuid, accountKey, mac);
+        assert.notEqual(second, first);
+        assert.deepEqual(second, first);
     });
 });
