@@ -5,6 +5,8 @@
 export { signMessage, verifySignature } from './sign';
 export {
     DEFAULT_TRIGGER_SRC,
+    EMPTY_LIST,
+    EMPTY_PAYLOAD,
     PAYLOAD_VERSION,
     uuidFromHeader,
     decodeMessage,

@@ -11,6 +11,19 @@ export const PAYLOAD_VERSION = 1;
  */
 export const DEFAULT_TRIGGER_SRC = 'Android';
 
+/**
+ * Shared across empty GET/DELETE/PUSH-query bodies and nested templates.
+ * Frozen so a caller mutating a returned payload cannot corrupt every
+ * namespace that reuses this singleton.
+ */
+export const EMPTY_PAYLOAD = Object.freeze({}) as MerossPayload;
+
+/**
+ * Shared list value for static GET bodies (`effect`, `timer`, list polling).
+ * Frozen for the same cross-namespace mutation reason as {@link EMPTY_PAYLOAD}.
+ */
+export const EMPTY_LIST = Object.freeze([]) as unknown[];
+
 export interface MerossHeader {
     messageId: string;
     namespace: string;
@@ -76,7 +89,7 @@ export function encodeMessage(options: EncodeMessageOptions): MerossMessage {
             sign: signMessage(messageId, options.key, timestamp),
             ...(options.uuid ? { uuid: options.uuid } : {})
         },
-        payload: options.payload ?? {}
+        payload: options.payload ?? EMPTY_PAYLOAD
     };
 }
 
