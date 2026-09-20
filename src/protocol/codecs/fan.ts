@@ -1,5 +1,5 @@
 import { ProtocolError } from '../../errors';
-import type { MerossPayload } from '../message';
+import { EMPTY_PAYLOAD, type MerossPayload } from '../message';
 
 export {
     FAN_BTN_CONFIG_NAMESPACE,
@@ -91,7 +91,7 @@ export function decodeFanConfigGetAck(payload: MerossPayload): FanConfigState[] 
  * PUSH-query body is `{}`. GET disconnects on MFC100.
  */
 export function encodeFanBtnConfigPushQuery(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 /**
@@ -116,7 +116,7 @@ export function decodeFanBtnConfigPush(payload: MerossPayload): FanButtonConfig[
  * FilterMaintenance is push-query only. GET disconnects on MAP100.
  */
 export function encodeFilterMaintenancePushQuery(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 export function decodeFilterMaintenancePush(payload: MerossPayload): FilterMaintenanceState[] {

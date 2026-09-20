@@ -88,7 +88,7 @@ import {
     TOGGLEX_NAMESPACE,
     WINDOW_OPENED_NAMESPACE
 } from '../protocol/namespaces';
-import type { MerossPayload } from '../protocol/message';
+import { EMPTY_LIST, EMPTY_PAYLOAD, type MerossPayload } from '../protocol/message';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import { loadTraitDescriptor } from '../traits/load';
 import type { PollJob } from './poller';
@@ -309,7 +309,7 @@ function getPayloadItemCount(payload: MerossPayload): number {
  */
 export function estimateResponseSize(
     namespace: string,
-    payload: MerossPayload = {}
+    payload: MerossPayload = EMPTY_PAYLOAD
 ): number {
     const { base, item } = getResponseSizeParts(namespace);
     if (item === 0) {
@@ -350,7 +350,7 @@ export function buildPollJobs(
             strategy: inDigest ? 'digest' : spec.strategy,
             periodMs: inDigest ? 0 : spec.periodMs,
             periodCloudMs: spec.periodCloudMs,
-            payload: spec.payload ? encodePayload(spec.payload, endpoints) : {},
+            payload: spec.payload ? encodePayload(spec.payload, endpoints) : EMPTY_PAYLOAD,
             ...(spec.method ? { method: spec.method } : {}),
             ...(spec.calibrate ? { calibrate: spec.calibrate } : {})
         });
@@ -361,7 +361,7 @@ export function buildPollJobs(
 function encodePayload(spec: PayloadSpec, endpoints: readonly PollTarget[]): MerossPayload {
     if ('dict' in spec) {
         return {
-            [spec.dict]: spec.channel === undefined ? {} : { channel: spec.channel }
+            [spec.dict]: spec.channel === undefined ? EMPTY_PAYLOAD : { channel: spec.channel }
         };
     }
     return { [spec.list]: encodeList(spec, endpoints) };
@@ -370,9 +370,9 @@ function encodePayload(spec: PayloadSpec, endpoints: readonly PollTarget[]): Mer
 function encodeList(
     spec: Extract<PayloadSpec, { list: string }>,
     endpoints: readonly PollTarget[]
-): unknown[] {
+): readonly unknown[] {
     if (spec.by === undefined) {
-        return [];
+        return EMPTY_LIST;
     }
 
     const trait = spec.for;

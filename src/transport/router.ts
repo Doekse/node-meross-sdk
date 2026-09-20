@@ -5,7 +5,7 @@ import {
     decodeMultipleAck,
     encodeMultipleSet
 } from '../protocol/codecs/multiple';
-import type { MerossMessage, MerossPayload } from '../protocol/message';
+import { EMPTY_PAYLOAD, type MerossMessage, type MerossPayload } from '../protocol/message';
 import { SYSTEM_ALL_NAMESPACE } from '../protocol/namespaces';
 import type { LanHttpTransport } from './lan-http';
 import type { MqttTransport } from './mqtt';
@@ -183,7 +183,7 @@ export class TransportRouter {
                 method: 'SET',
                 payload: encodeMultipleSet(chunk.map((get) => ({
                     header: { method: 'GET', namespace: get.namespace },
-                    payload: get.payload ?? {}
+                    payload: get.payload ?? EMPTY_PAYLOAD
                 }))),
                 ip: options.ip,
                 encryptionKey: options.encryptionKey,

@@ -1,5 +1,5 @@
 import { ProtocolError } from '../../errors';
-import type { MerossPayload } from '../message';
+import { EMPTY_PAYLOAD, type MerossPayload } from '../message';
 
 export { SPRAY_NAMESPACE } from '../namespaces';
 
@@ -23,9 +23,11 @@ const SPRAY_MODE_TO_WIRE: Record<SprayMode, number> = {
     intermittent: 2
 };
 
+const SPRAY_GET = Object.freeze({ spray: EMPTY_PAYLOAD }) as MerossPayload;
+
 /** GET `{ spray: {} }` returns every channel. */
 export function encodeSprayGet(): MerossPayload {
-    return { spray: {} };
+    return SPRAY_GET;
 }
 
 /** SET is a single-channel object. */

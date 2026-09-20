@@ -1,5 +1,5 @@
 import { ProtocolError } from '../../errors';
-import type { MerossPayload } from '../message';
+import { EMPTY_LIST, EMPTY_PAYLOAD, type MerossPayload } from '../message';
 
 export {
     CONTROL_TIMER_NAMESPACE,
@@ -74,7 +74,7 @@ export function encodeTimerXDelete(options: TimerXDeleteOptions): MerossPayload 
 
 /** Digest.TimerX GET payload is empty. */
 export function encodeDigestTimerXGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 export function decodeTimerXGetAck(payload: MerossPayload): TimerXEntry[] {
@@ -122,9 +122,11 @@ function decodeDigestRow(item: unknown): DigestTimerXRow {
     return row;
 }
 
+const CONTROL_TIMER_GET = Object.freeze({ timer: EMPTY_LIST }) as MerossPayload;
+
 /** GET `{ timer: [] }` returns every schedule on the device. */
 export function encodeControlTimerGet(): MerossPayload {
-    return { timer: [] };
+    return CONTROL_TIMER_GET;
 }
 
 /**

@@ -31,7 +31,7 @@ import {
     macAddressFromUuid,
     supportsLanEncryption
 } from './protocol/encryption';
-import { uuidFromHeader, type MerossMessage } from './protocol/message';
+import { EMPTY_PAYLOAD, uuidFromHeader, type MerossMessage } from './protocol/message';
 import { HUB_SUBDEVICE_LIST_NAMESPACE } from './protocol/namespaces';
 import type { DeviceRequest } from './request';
 import {
@@ -425,8 +425,8 @@ export class Session extends EventEmitter<SessionEvents> {
         const [abilityReply, allReply] = await this.connectedRouter.requestGets({
             uuid: cloudDevice.uuid,
             gets: [
-                { namespace: ABILITY_NAMESPACE, payload: {} },
-                { namespace: SYSTEM_ALL_NAMESPACE, payload: {} }
+                { namespace: ABILITY_NAMESPACE, payload: EMPTY_PAYLOAD },
+                { namespace: SYSTEM_ALL_NAMESPACE, payload: EMPTY_PAYLOAD }
             ]
         });
 
@@ -489,7 +489,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 request: (namespace, method, payload) => request({
                     namespace,
                     method,
-                    payload: payload ?? {},
+                    payload: payload ?? EMPTY_PAYLOAD,
                     priority: 'background'
                 }),
                 onInnerIp: (innerIp) => {

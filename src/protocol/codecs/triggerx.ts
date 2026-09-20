@@ -1,5 +1,5 @@
 import { ProtocolError } from '../../errors';
-import type { MerossPayload } from '../message';
+import { EMPTY_PAYLOAD, type MerossPayload } from '../message';
 
 export {
     CONTROL_TRIGGER_NAMESPACE,
@@ -77,7 +77,7 @@ export function encodeTriggerXDelete(options: TriggerXDeleteOptions): MerossPayl
 
 /** Digest.TriggerX GET payload is empty. */
 export function encodeDigestTriggerXGet(): MerossPayload {
-    return {};
+    return EMPTY_PAYLOAD;
 }
 
 export function decodeTriggerXGetAck(payload: MerossPayload): TriggerXEntry[] {
@@ -126,9 +126,11 @@ function decodeDigestRow(item: unknown): DigestTriggerXRow {
     return row;
 }
 
+const CONTROL_TRIGGER_GET = Object.freeze({ trigger: EMPTY_PAYLOAD }) as MerossPayload;
+
 /** GET `{ trigger: {} }` returns every countdown on the device. */
 export function encodeControlTriggerGet(): MerossPayload {
-    return { trigger: {} };
+    return CONTROL_TRIGGER_GET;
 }
 
 /**
