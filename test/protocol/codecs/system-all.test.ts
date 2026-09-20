@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
+import { ProtocolError } from '../../../src/errors';
 import {
     THERMOSTAT_MODE_NAMESPACE,
     WINDOW_OPENED_NAMESPACE
@@ -12,8 +15,20 @@ import {
 } from '../../../src/protocol/codecs/diffuser';
 import { FAN_NAMESPACE } from '../../../src/protocol/codecs/fan';
 import { LIGHT_NAMESPACE } from '../../../src/protocol/codecs/light';
-import { getDigestNamespaces } from '../../../src/protocol/codecs/system-all';
+import {
+    decodeSystemAllGetAck,
+    getDigestNamespaces
+} from '../../../src/protocol/codecs/system-all';
 import { TOGGLEX_NAMESPACE } from '../../../src/protocol/codecs/togglex';
+import { decodeMessage, type MerossPayload } from '../../../src/protocol/message';
+
+const fixturesDir = join(process.cwd(), 'test/fixtures');
+
+function loadFixture(name: string): MerossPayload {
+    return decodeMessage(
+        JSON.parse(readFileSync(join(fixturesDir, name), 'utf8')) as unknown
+    ).payload;
+}
 
 describe('getDigestNamespaces', () => {
     it('maps populated digest lists to their namespaces', () => {
@@ -82,5 +97,36 @@ describe('getDigestNamespaces', () => {
             THERMOSTAT_MODE_NAMESPACE,
             WINDOW_OPENED_NAMESPACE
         ]);
+    });
+});
+
+describe('decodeSystemAllGetAck', () => {
+    it('returns the same projection when the payload object is reused', () => {
+        const payload = loadFixture('system-all-getack.json');
+        const first = decodeSystemAllGetAck(payload);
+        const second = decodeSystemAllGetAck(payload);
+        assert.equal(second, first);
+        assert.equal(first.hardware.type, 'mss110');
+        assert.equal(first.firmware.innerIp, '192.168.201.190');
+    });
+
+    it('projects a second payload object independently', () => {
+        const firstPayload = loadFixture('system-all-getack.json');
+        const secondPayload = structuredClone(firstPayload);
+        const firmware = (secondPayload.all as {
+            system: { firmware: { innerIp?: string } };
+        }).system.firmware;
+        firmware.innerIp = '10.0.0.42';
+        const first = decodeSystemAllGetAck(firstPayload);
+        const second = decodeSystemAllGetAck(secondPayload);
+        assert.notEqual(second, first);
+        assert.equal(first.firmware.innerIp, '192.168.201.190');
+        assert.equal(second.firmware.innerIp, '10.0.0.42');
+    });
+
+    it('does not cache a failed decode so a later caller still throws', () => {
+        const payload = {};
+        assert.throws(() => decodeSystemAllGetAck(payload), ProtocolError);
+        assert.throws(() => decodeSystemAllGetAck(payload), ProtocolError);
     });
 });

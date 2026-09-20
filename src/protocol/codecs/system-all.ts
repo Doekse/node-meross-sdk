@@ -123,9 +123,27 @@ export function getDigestNamespaces(digest: SystemAll['digest']): Set<string> {
 }
 
 /**
+ * Successful projections only. Availability swallows a bad All; SystemTrait
+ * must still throw that same payload into Endpoint `warning`. Keyed by
+ * payload identity so DeviceAvailability, SystemTrait, and a heartbeat
+ * re-apply share one tree without keeping All on DeviceRuntime.
+ */
+const decodedAll = new WeakMap<MerossPayload, SystemAll>();
+
+/**
  * Firmware GETACK: `all.system` is shared; `all.digest` varies by product.
  */
 export function decodeSystemAllGetAck(payload: MerossPayload): SystemAll {
+    const cached = decodedAll.get(payload);
+    if (cached !== undefined) {
+        return cached;
+    }
+    const projected = projectSystemAll(payload);
+    decodedAll.set(payload, projected);
+    return projected;
+}
+
+function projectSystemAll(payload: MerossPayload): SystemAll {
     const all = payload.all;
     if (typeof all !== 'object' || all === null || Array.isArray(all)) {
         throw new ProtocolError('System.All GETACK all must be an object');

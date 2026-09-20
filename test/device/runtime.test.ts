@@ -3,7 +3,8 @@ import { describe, it, type TestContext } from 'node:test';
 
 import { DeviceRuntime, type DeviceRuntimeOptions } from '../../src/device/runtime';
 import { Endpoint, type Protocol } from '../../src/endpoint';
-import { encodeMessage, type MerossMessage } from '../../src/protocol';
+import { encodeMessage, type MerossMessage, type MerossPayload } from '../../src/protocol';
+import { SystemTrait } from '../../src/traits/system';
 import type { GetCommand } from '../../src/transport/router';
 
 const UUID = '2206138957096651080248e1e99705a4';
@@ -12,6 +13,21 @@ const INTERVAL_MS = 1_000;
 
 function flushMicrotasks(): Promise<void> {
     return Promise.resolve().then(() => Promise.resolve());
+}
+
+async function unreachable(): Promise<never> {
+    throw new Error('unreachable');
+}
+
+function encodeAllGetAck(payload: MerossPayload = {}): MerossMessage {
+    return encodeMessage({
+        namespace: 'Appliance.System.All',
+        method: 'GETACK',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload
+    });
 }
 
 interface Harness {
@@ -40,14 +56,7 @@ function createHarness(t: TestContext, overrides: Partial<DeviceRuntimeOptions> 
         payload: get.payload ?? {}
     })));
 
-    const request = t.mock.fn(async () => encodeMessage({
-        namespace: 'Appliance.System.All',
-        method: 'GETACK',
-        key: KEY,
-        from: `/appliance/${UUID}/publish`,
-        uuid: UUID,
-        payload: {}
-    }));
+    const request = t.mock.fn(async () => encodeAllGetAck());
 
     const runtime = new DeviceRuntime({
         uuid: UUID,
@@ -192,5 +201,39 @@ describe('DeviceRuntime', () => {
         assert.equal(harness.endpoint.protocol(), 'mqtt');
         assert.deepEqual(seen, ['http', 'mqtt']);
         harness.runtime.stop();
+    });
+
+    it('still warns from SystemTrait when availability swallowed the same malformed All', () => {
+        const trait = new SystemTrait({
+            request: unreachable,
+            emitChange: () => {}
+        });
+        const endpoint = new Endpoint({
+            id: `${UUID}:0`,
+            traits: ['system'],
+            system: trait
+        });
+        const warnings: { error: Error; trait: string }[] = [];
+        endpoint.on('warning', (error, traitName) => {
+            warnings.push({ error, trait: traitName });
+        });
+        const runtime = new DeviceRuntime({
+            uuid: UUID,
+            initialOnline: true,
+            endpoints: [endpoint],
+            request: unreachable,
+            isCloudPath: () => false,
+            maxCmdNum: () => 1,
+            requestGets: async () => [],
+            onAck: () => {}
+        });
+        const bad = encodeAllGetAck();
+        runtime.handleMessage(bad);
+        assert.deepEqual(warnings, []);
+        runtime.handlePush(bad);
+        const warning = warnings[0];
+        assert.ok(warning);
+        assert.equal(warning.trait, 'system');
+        assert.match(warning.error.message, /System\.All/);
     });
 });
