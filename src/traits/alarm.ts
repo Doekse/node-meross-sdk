@@ -204,6 +204,7 @@ export const AlarmDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<AlarmValues>): AlarmTrait;
 } = {
     name: 'alarm',
+    push: [CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE],
     poll: {
         [CONTROL_ALARM_NAMESPACE]: {
             ...DEFAULT,

@@ -181,6 +181,7 @@ export const AlertDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<AlertValues>): AlertTrait;
 } = {
     name: 'alert',
+    push: [CONTROL_ALERT_CONFIG_NAMESPACE, CONTROL_ALERT_REPORT_NAMESPACE],
     poll: {
         [CONTROL_ALERT_CONFIG_NAMESPACE]: {
             ...SMART_CONFIG,

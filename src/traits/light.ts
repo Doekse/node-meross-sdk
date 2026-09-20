@@ -322,6 +322,12 @@ export const LightDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<LightValues>): LightTrait;
 } = {
     name: 'light',
+    push: [
+        TOGGLEX_NAMESPACE,
+        TOGGLE_NAMESPACE,
+        LIGHT_NAMESPACE,
+        LIGHT_EFFECT_NAMESPACE
+    ],
     poll: {
         [LIGHT_NAMESPACE]: DEFAULT,
         [LIGHT_EFFECT_NAMESPACE]: {

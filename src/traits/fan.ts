@@ -278,6 +278,13 @@ export const FanDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<FanValues>): FanTrait;
 } = {
     name: 'fan',
+    push: [
+        TOGGLEX_NAMESPACE,
+        TOGGLE_NAMESPACE,
+        FAN_NAMESPACE,
+        FAN_CONFIG_NAMESPACE,
+        FILTER_MAINTENANCE_NAMESPACE
+    ],
     poll: {
         [FAN_NAMESPACE]: {
             ...DEFAULT,

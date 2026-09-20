@@ -3,13 +3,14 @@ import type { TraitName } from '../endpoint';
 import type { PollSpec } from '../poll/spec';
 
 /**
- * Colocated catalog record for one trait. Poll ownership lives here; enroll
- * and attach stay as named helpers / concrete methods so attach can keep
- * typed emit closures.
+ * Colocated catalog record for one trait. Poll ownership and PUSH routing
+ * live here; enroll and attach stay as named helpers / concrete methods so
+ * attach can keep typed emit closures.
  */
 export interface TraitDescriptor {
     readonly name: TraitName;
     readonly poll: Readonly<Record<string, PollSpec>>;
+    readonly push: readonly string[];
 }
 
 /**

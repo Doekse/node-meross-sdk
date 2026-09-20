@@ -194,6 +194,7 @@ export const PresenceDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<PresenceValues>): PresenceTrait;
 } = {
     name: 'presence',
+    push: [SENSOR_LATESTX_NAMESPACE, PRESENCE_CONFIG_NAMESPACE],
     poll: {
         [PRESENCE_CONFIG_NAMESPACE]: {
             ...SMART_CONFIG,

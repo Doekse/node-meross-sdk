@@ -263,6 +263,7 @@ export const TimerDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<TimerValues>): TimerTrait;
 } = {
     name: 'timer',
+    push: [CONTROL_TIMER_NAMESPACE, DIGEST_TIMERX_NAMESPACE, TIMERX_NAMESPACE],
     poll: {
         [DIGEST_TIMERX_NAMESPACE]: ONCE,
         [CONTROL_TIMER_NAMESPACE]: {

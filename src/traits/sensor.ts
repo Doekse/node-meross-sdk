@@ -540,6 +540,22 @@ export const SensorDescriptor: TraitDescriptor & {
 } = {
     name: 'sensor',
     hubChild: SENSOR_HUB_CHILD,
+    push: [
+        HUB_SENSOR_TEMPHUM_NAMESPACE,
+        HUB_SENSOR_DOORWINDOW_NAMESPACE,
+        HUB_SENSOR_WATERLEAK_NAMESPACE,
+        HUB_SENSOR_MOTION_NAMESPACE,
+        HUB_SENSOR_SMOKE_NAMESPACE,
+        SMOKE_CONFIG_NAMESPACE,
+        HUB_BATTERY_NAMESPACE,
+        HUB_EXCEPTION_NAMESPACE,
+        HUB_SUBDEVICE_VERSION_NAMESPACE,
+        HUB_SENSOR_ADJUST_NAMESPACE,
+        HUB_SENSOR_ALERT_NAMESPACE,
+        HUB_SENSOR_ALL_NAMESPACE,
+        SENSOR_LATESTX_NAMESPACE,
+        CONFIG_SENSOR_ASSOCIATION_NAMESPACE
+    ],
     poll: {
         /**
          * Shared with climate board SET/PUSH; keep unfiltered

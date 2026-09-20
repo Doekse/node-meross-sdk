@@ -248,6 +248,11 @@ export const DiffuserDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<DiffuserValues>): DiffuserTrait;
 } = {
     name: 'diffuser',
+    push: [
+        DIFFUSER_LIGHT_NAMESPACE,
+        DIFFUSER_SPRAY_NAMESPACE,
+        DIFFUSER_SENSOR_NAMESPACE
+    ],
     poll: {
         [DIFFUSER_LIGHT_NAMESPACE]: DEFAULT,
         [DIFFUSER_SPRAY_NAMESPACE]: DEFAULT,

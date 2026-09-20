@@ -174,6 +174,7 @@ export const OverTempDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<OverTempValues>): OverTempTrait;
 } = {
     name: 'overtemp',
+    push: [CONFIG_OVERTEMP_NAMESPACE, CONTROL_OVERTEMP_NAMESPACE],
     poll: {
         [CONFIG_OVERTEMP_NAMESPACE]: {
             ...SMART_CONFIG,

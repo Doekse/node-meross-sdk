@@ -290,6 +290,14 @@ export const SprinklerDescriptor: TraitDescriptor & {
 } = {
     name: 'sprinkler',
     hubChild: SPRINKLER_HUB_CHILD,
+    push: [
+        CONTROL_WATER_NAMESPACE,
+        CONTROL_WATER_EVENT_NAMESPACE,
+        DEVICE_CFG_NAMESPACE,
+        HUB_BATTERY_NAMESPACE,
+        HUB_EXCEPTION_NAMESPACE,
+        HUB_SUBDEVICE_VERSION_NAMESPACE
+    ],
     poll: {
         [CONTROL_WATER_NAMESPACE]: {
             ...DEFAULT,

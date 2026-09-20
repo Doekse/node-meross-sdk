@@ -87,6 +87,7 @@ export const SprayDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<SprayValues>): SprayTrait;
 } = {
     name: 'spray',
+    push: [SPRAY_NAMESPACE],
     poll: {
         [SPRAY_NAMESPACE]: {
             ...DEFAULT,

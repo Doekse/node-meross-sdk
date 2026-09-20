@@ -177,6 +177,7 @@ export const StandbyKillerDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<StandbyKillerValues>): StandbyKillerTrait;
 } = {
     name: 'standbykiller',
+    push: [CONFIG_STANDBY_KILLER_NAMESPACE],
     poll: {
         [CONFIG_STANDBY_KILLER_NAMESPACE]: {
             ...SMART_CONFIG,
