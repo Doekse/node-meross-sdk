@@ -216,6 +216,72 @@ describe('ProtocolDispatcher with fake transport', () => {
         ]);
     });
 
+    it('forgets the stale-PUSH gate for one uuid so a later enrollment is not gated', () => {
+        const applied: string[] = [];
+        const dispatcher = new ProtocolDispatcher((message) => {
+            applied.push(message.header.from);
+        });
+        const ts = 1_700_000_000;
+        const fromA = '/appliance/device-a/publish';
+        const fromB = '/appliance/device-b/publish';
+
+        assert.equal(dispatcher.handle(pushMessage(ts, fromA)), 'push');
+        assert.equal(dispatcher.handle(pushMessage(ts - 1, fromA)), 'stale');
+        dispatcher.forget('device-a');
+        assert.equal(dispatcher.handle(pushMessage(ts - 1, fromA)), 'push');
+
+        assert.equal(dispatcher.handle(pushMessage(ts, fromB)), 'push');
+        dispatcher.forget('device-a');
+        assert.equal(dispatcher.handle(pushMessage(ts - 1, fromB)), 'stale');
+        assert.deepEqual(applied, [fromA, fromA, fromB]);
+    });
+
+    it('keys the stale-PUSH gate on originUuid when the envelope cannot name the device', () => {
+        const applied: string[] = [];
+        const dispatcher = new ProtocolDispatcher((message) => {
+            applied.push(message.header.messageId);
+        });
+        const ts = 1_700_000_000;
+        const fromApp = '/app/1/subscribe';
+
+        assert.equal(
+            dispatcher.handle(pushMessage(ts, fromApp, { messageId: 'a-new' }), 'device-a'),
+            'push'
+        );
+        assert.equal(
+            dispatcher.handle(pushMessage(ts - 1, fromApp, { messageId: 'a-old' }), 'device-a'),
+            'stale'
+        );
+        assert.equal(
+            dispatcher.handle(pushMessage(ts - 1, fromApp, { messageId: 'b-old' }), 'device-b'),
+            'push'
+        );
+        dispatcher.forget('device-a');
+        assert.equal(
+            dispatcher.handle(pushMessage(ts - 1, fromApp, { messageId: 'a-retry' }), 'device-a'),
+            'push'
+        );
+        assert.deepEqual(applied, ['a-new', 'b-old', 'a-retry']);
+    });
+
+    it('does not treat an empty originUuid as a device identity', () => {
+        const dispatcher = new ProtocolDispatcher();
+        const ts = 1_700_000_000;
+        const fromA = '/appliance/device-a/publish';
+        const fromApp = '/app/1/subscribe';
+
+        assert.equal(dispatcher.handle(pushMessage(ts, fromA), ''), 'push');
+        assert.equal(dispatcher.handle(pushMessage(ts - 1, fromA)), 'stale');
+        dispatcher.forget('device-a');
+        assert.equal(dispatcher.handle(pushMessage(ts - 1, fromA)), 'push');
+
+        assert.equal(dispatcher.handle(pushMessage(ts, fromApp)), 'push');
+        assert.equal(dispatcher.handle(pushMessage(ts - 1, fromApp)), 'stale');
+        dispatcher.forget('');
+        dispatcher.forget('device-a');
+        assert.equal(dispatcher.handle(pushMessage(ts - 1, fromApp)), 'stale');
+    });
+
     it('treats a PUSH that reuses a pending messageId as a reply, not a state update', async () => {
         const applied: MerossMessage[] = [];
         const dispatcher = new ProtocolDispatcher((message) => {

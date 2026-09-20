@@ -217,6 +217,68 @@ describe('TransportRouter', () => {
         assert.equal(router.isHttpDown(UUID), false);
     });
 
+    it('forgets HTTP-down and the MQTT publish window for one uuid', async () => {
+        const limiter = new PublishRateLimiter({ now: () => 1_000_000 });
+        const { router, mqtt, lanCalls } = createRouted({
+            rateLimiter: limiter,
+            lan: async () => {
+                throw new Error('EHOSTUNREACH');
+            }
+        });
+        await router.connect();
+
+        await connectAndAckMqtt(mqtt, router.request({
+            uuid: UUID,
+            ip: IP,
+            namespace: SYSTEM_ALL_NAMESPACE,
+            method: 'GET'
+        }));
+        assert.equal(router.isHttpDown(UUID), true);
+
+        while (limiter.take(UUID, 'user')) {
+            // Failover already recorded a publish; fill whatever remains.
+        }
+
+        router.forget(UUID);
+
+        assert.equal(router.isHttpDown(UUID), false);
+        assert.equal(limiter.take(UUID, 'user'), true);
+        assert.equal(lanCalls.length, 1);
+        await router.disconnect();
+    });
+
+    it('does not abort an in-flight LAN POST when forgetting the uuid', async () => {
+        let unblock!: () => void;
+        const blocked = new Promise<void>((resolve) => {
+            unblock = resolve;
+        });
+        const { router, lanCalls } = createRouted({
+            lan: async (sent) => {
+                await blocked;
+                return defaultLanOk(sent);
+            }
+        });
+        await router.connect();
+
+        const pending = router.request({
+            uuid: UUID,
+            ip: IP,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        while (lanCalls.length < 1) {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+
+        router.forget(UUID);
+        unblock();
+
+        const reply = await pending;
+        assert.equal(reply.header.method, 'GETACK');
+        assert.equal(lanCalls.length, 1);
+        await router.disconnect();
+    });
+
     it('marks HTTP down after a System.All LAN miss and skips later LAN', async () => {
         const { router, mqtt, lanCalls } = createRouted({
             lan: async () => {

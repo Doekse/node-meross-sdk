@@ -81,6 +81,15 @@ export class TransportRouter {
     }
 
     /**
+     * Device left or is being rebuilt. HTTP-down and MQTT per-uuid state
+     * from the previous runtime must not leak into a later enrollment.
+     */
+    forget(uuid: string): void {
+        this.httpDown.delete(uuid);
+        this.mqtt.forget(uuid);
+    }
+
+    /**
      * DevicePoller uses this for cloud smart/once caps: no IP, or HTTP marked
      * down.
      */

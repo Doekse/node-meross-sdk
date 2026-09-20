@@ -93,15 +93,21 @@ export class LanHttpTransport {
     async request(options: LanHttpRequestOptions): Promise<MerossMessage> {
         const previous = this.queues.get(options.uuid);
         let release!: () => void;
-        this.queues.set(options.uuid, new Promise<void>((resolve) => {
+        const current = new Promise<void>((resolve) => {
             release = resolve;
-        }));
+        });
+        this.queues.set(options.uuid, current);
 
         await previous;
         try {
             return await this.post(options);
         } finally {
             release();
+            // A departed uuid must not keep a settled Promise; a POST that
+            // queued while this one was in flight must stay the tail.
+            if (this.queues.get(options.uuid) === current) {
+                this.queues.delete(options.uuid);
+            }
         }
     }
 
