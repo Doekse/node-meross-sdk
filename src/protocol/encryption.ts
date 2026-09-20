@@ -50,6 +50,46 @@ export function deriveEncryptionKey(uuid: string, mrskey: string, mac: string): 
 }
 
 /**
+ * Fingerprints the account `key` and device MAC so a credential rotation or
+ * MAC refresh invalidates the stored Buffer without a separate callback.
+ */
+interface LanEncryptionEntry {
+    encryptionKey: Buffer;
+    key: string;
+    mac: string;
+}
+
+/**
+ * Memoizes {@link deriveEncryptionKey} per uuid. Node cannot reuse
+ * `createCipheriv` across messages, so only the encryptionKey Buffer is kept.
+ */
+export class LanEncryptionKeys {
+    private readonly entries = new Map<string, LanEncryptionEntry>();
+
+    /**
+     * Hit skips MD5 on every LAN wrap; miss refreshes when the key or MAC
+     * fingerprint no longer matches the stored entry.
+     */
+    derive(uuid: string, key: string, mac: string): Buffer {
+        const entry = this.entries.get(uuid);
+        if (entry && entry.key === key && entry.mac === mac) {
+            return entry.encryptionKey;
+        }
+        const encryptionKey = deriveEncryptionKey(uuid, key, mac);
+        this.entries.set(uuid, { encryptionKey, key, mac });
+        return encryptionKey;
+    }
+
+    remove(uuid: string): void {
+        this.entries.delete(uuid);
+    }
+
+    clear(): void {
+        this.entries.clear();
+    }
+}
+
+/**
  * Ability maps advertise ECDHE when LAN HTTP bodies must be AES-wrapped.
  */
 export function supportsLanEncryption(abilities: Record<string, unknown>): boolean {
