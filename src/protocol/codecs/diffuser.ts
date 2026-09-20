@@ -2,9 +2,11 @@ import { ProtocolError } from '../../errors';
 import { decodeArray } from './payload';
 import type { MerossPayload } from '../message';
 
-export const DIFFUSER_LIGHT_NAMESPACE = 'Appliance.Control.Diffuser.Light';
-export const DIFFUSER_SPRAY_NAMESPACE = 'Appliance.Control.Diffuser.Spray';
-export const DIFFUSER_SENSOR_NAMESPACE = 'Appliance.Control.Diffuser.Sensor';
+export {
+    DIFFUSER_LIGHT_NAMESPACE,
+    DIFFUSER_SENSOR_NAMESPACE,
+    DIFFUSER_SPRAY_NAMESPACE
+} from '../namespaces';
 
 /**
  * Firmware product family on SET. MOD150 keeps using `mod100` because the

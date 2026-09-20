@@ -2,17 +2,19 @@ import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-conte
 import {
     PRESENCE_CONFIG_NAMESPACE,
     PRESENCE_STUDY_NAMESPACE,
-    SENSOR_LATESTX_NAMESPACE,
-    decodeLatestXPush,
     decodePresenceConfigGetAck,
     decodePresenceConfigPush,
     encodePresenceConfigGet,
     encodePresenceConfigSet,
     encodePresenceStudySet,
-    type MerossMessage,
     type PresenceConfig,
     type PresenceConfigSetOptions
-} from '../protocol';
+} from '../protocol/codecs/presence';
+import {
+    SENSOR_LATESTX_NAMESPACE,
+    decodeLatestXPush
+} from '../protocol/codecs/sensor';
+import type { MerossMessage } from '../protocol/message';
 import {
     channelList,
     SMART_CONFIG,

@@ -1,6 +1,6 @@
 import type { TraitName } from '../endpoint';
 import type { MerossPayload } from '../protocol/message';
-import { TOGGLEX_ALL_CHANNELS } from '../protocol/codecs/togglex';
+import { TOGGLEX_ALL_CHANNELS } from '../protocol/namespaces';
 
 /**
  * How a namespace is scheduled. Traits register jobs; the poller owns the

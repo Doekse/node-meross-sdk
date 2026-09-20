@@ -1,7 +1,7 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
-export const SPRAY_NAMESPACE = 'Appliance.Control.Spray';
+export { SPRAY_NAMESPACE } from '../namespaces';
 
 /** Wire 0 = off, 1 = continuous, 2 = intermittent. */
 export type SprayMode = 'off' | 'continuous' | 'intermittent';

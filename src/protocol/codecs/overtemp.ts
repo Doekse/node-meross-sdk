@@ -1,10 +1,7 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
-/** Live over-temperature signal (GET list / device SET). */
-export const CONTROL_OVERTEMP_NAMESPACE = 'Appliance.Control.OverTemp';
-/** Protection enable / type config (GET/SET dict). */
-export const CONFIG_OVERTEMP_NAMESPACE = 'Appliance.Config.OverTemp';
+export { CONFIG_OVERTEMP_NAMESPACE, CONTROL_OVERTEMP_NAMESPACE } from '../namespaces';
 
 export interface ConfigOverTempState {
     enabled: boolean;

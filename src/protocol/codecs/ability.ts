@@ -1,8 +1,8 @@
 import { ProtocolError } from '../../errors';
-import { MULTIPLE_NAMESPACE } from './multiple';
 import type { MerossPayload } from '../message';
+import { MULTIPLE_NAMESPACE } from '../namespaces';
 
-export const ABILITY_NAMESPACE = 'Appliance.System.Ability';
+export { ABILITY_NAMESPACE } from '../namespaces';
 
 /**
  * Ability GETACK is a map of namespace → capability object (`maxCmdNum`, empty

@@ -1,18 +1,23 @@
 import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
 import type { GraphEndpoint } from '../device/index';
 import {
-    HUB_EXCEPTION_NAMESPACE,
-    HUB_SUBDEVICE_VERSION_NAMESPACE,
-    HUB_TOGGLEX_NAMESPACE,
-    TOGGLEX_NAMESPACE,
     decodeHubExceptionPush,
     decodeHubSubDeviceVersionPush,
     decodeHubToggleXPush,
+    encodeHubToggleXSet
+} from '../protocol/codecs/hub';
+import {
     decodeToggleXPush,
-    encodeHubToggleXSet,
-    encodeToggleXSet,
-    type MerossMessage
-} from '../protocol';
+    encodeToggleXSet
+} from '../protocol/codecs/togglex';
+import type { MerossMessage } from '../protocol/message';
+import {
+    HUB_EXCEPTION_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE,
+    HUB_TOGGLEX_NAMESPACE,
+    TOGGLE_NAMESPACE,
+    TOGGLEX_NAMESPACE
+} from '../protocol/namespaces';
 import {
     ALL_CHANNELS,
     DEFAULT,
@@ -24,15 +29,14 @@ import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 
+export { TOGGLE_NAMESPACE };
+
 export interface SwitchValues {
     on?: boolean;
     fault?: number;
     firmwareVersion?: string;
     hardwareVersion?: string;
 }
-
-/** Classic Toggle (not ToggleX). Shared so poll/jobs can key the same string. */
-export const TOGGLE_NAMESPACE = 'Appliance.Control.Toggle';
 
 /**
  * Board bind: one Toggle/ToggleX channel on the physical device.

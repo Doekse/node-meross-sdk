@@ -1,7 +1,7 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
-export const MP3_NAMESPACE = 'Appliance.Control.Mp3';
+export { MP3_NAMESPACE } from '../namespaces';
 
 /** HP110 firmware volume is 0–16. Host traits scale this to 0..1. */
 export const MP3_VOLUME_MAX = 16;

@@ -2,15 +2,13 @@ import http from 'node:http';
 
 import { ProtocolError, TransportError } from '../errors';
 import { emitTraffic, type LogLevel, type SessionLogger } from '../log';
+import { ProtocolDispatcher } from '../protocol/dispatcher';
 import {
-    DEFAULT_COMMAND_TIMEOUT_MS,
-    ProtocolDispatcher,
-    decodeMessage,
     decryptPayload,
-    encodeMessage,
     encryptPayload
-} from '../protocol';
-import type { MerossMessage, MerossPayload } from '../protocol';
+} from '../protocol/encryption';
+import { decodeMessage, encodeMessage, type MerossMessage, type MerossPayload } from '../protocol/message';
+import { DEFAULT_COMMAND_TIMEOUT_MS } from '../protocol/pending';
 
 /**
  * meross_lan `ClientTimeout.total`. Sleepy boards take 0.6s–3.2s to accept TCP

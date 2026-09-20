@@ -1,9 +1,10 @@
+import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+import { CLIMATE_HUB_CHILD } from '../device/hub-child';
 import {
     ALARM_CONFIG_NAMESPACE,
     ALARM_NAMESPACE,
     CALIBRATION_NAMESPACE,
     COMPRESSOR_DELAY_NAMESPACE,
-    CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
     CTL_RANGE_NAMESPACE,
     DEAD_ZONE_NAMESPACE,
     FROST_NAMESPACE,
@@ -17,9 +18,6 @@ import {
     HUB_MTS100_SUPERCTL_NAMESPACE,
     HUB_MTS100_TEMPERATURE_NAMESPACE,
     HUB_MTS100_TIMESYNC_NAMESPACE,
-    HUB_TOGGLEX_NAMESPACE,
-    HUB_EXCEPTION_NAMESPACE,
-    HUB_SUBDEVICE_VERSION_NAMESPACE,
     OVERHEAT_NAMESPACE,
     SCHEDULEB_NAMESPACE,
     SCHEDULE_NAMESPACE,
@@ -50,12 +48,8 @@ import {
     decodeHubSchedule,
     decodeHubSuperCtl,
     decodeHubTimeSync,
-    decodeHubToggleXPush,
-    decodeHubExceptionPush,
-    decodeHubSubDeviceVersionPush,
     decodeOverheat,
     decodeSchedule,
-    decodeSensorAssociationPush,
     decodeSensorMode,
     decodeSummerMode,
     decodeTempUnit,
@@ -80,12 +74,10 @@ import {
     encodeHubMts100TemperatureSet,
     encodeHubScheduleSet,
     encodeHubSuperCtlSet,
-    encodeHubToggleXSet,
     encodeOverheatSet,
     encodePhysicalLockSet,
     encodeScheduleSet,
     encodeScreenBrightnessSet,
-    encodeSensorAssociationSet,
     encodeSensorModeSet,
     encodeSummerModeSet,
     encodeTempUnitSet,
@@ -105,22 +97,36 @@ import {
     type ClimateSystemWire,
     type ClimateTempUnit,
     type ClimateTimer,
-    type ClimateWorkMode,
-    type MerossMessage,
-    type MerossPayload,
-    SENSOR_LATEST_NAMESPACE,
+    type ClimateWorkMode
+} from '../protocol/codecs/climate';
+import {
+    decodeHubExceptionPush,
+    decodeHubSubDeviceVersionPush,
+    decodeHubToggleXPush,
+    encodeHubToggleXSet
+} from '../protocol/codecs/hub';
+import {
+    CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
     SENSOR_HISTORY_NAMESPACE,
     SENSOR_HISTORYX_NAMESPACE,
-    decodeSensorLatestPush,
-    encodeSensorHistoryGet,
+    SENSOR_LATEST_NAMESPACE,
+    decodeSensorAssociationPush,
     decodeSensorHistoryGetAck,
-    encodeSensorHistoryXGet,
     decodeSensorHistoryXGetAck,
+    decodeSensorLatestPush,
+    encodeSensorAssociationSet,
+    encodeSensorHistoryGet,
+    encodeSensorHistoryXGet,
     type SensorHistorySample,
     type SensorHistoryXState,
     type SensorLatestState
-} from '../protocol';
-import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+} from '../protocol/codecs/sensor';
+import type { MerossMessage, MerossPayload } from '../protocol/message';
+import {
+    HUB_EXCEPTION_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE,
+    HUB_TOGGLEX_NAMESPACE
+} from '../protocol/namespaces';
 import {
     DEFAULT,
     ONCE,
@@ -134,8 +140,8 @@ import {
     type PollSpec
 } from '../poll/spec';
 import type { DeviceRequest } from '../request';
-import { applyPatch } from './patch';
 import type { HubChildRule, TraitDescriptor } from './descriptor';
+import { applyPatch } from './patch';
 
 export interface ClimatePid {
     grade: number;
@@ -1312,11 +1318,7 @@ export const ClimateDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<ClimateValues>): ClimateTrait;
 } = {
     name: 'climate',
-    hubChild: {
-        models: new Set(['mts100', 'mts100v3', 'mts150', 'mts150p']),
-        aliases: {},
-        classHint: 'climate'
-    },
+    hubChild: CLIMATE_HUB_CHILD,
     poll: {
         [SENSOR_LATEST_NAMESPACE]: {
             ...SMART_FAST_SLOW_CLOUD,

@@ -1,12 +1,11 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
+export { LIGHT_EFFECT_NAMESPACE, LIGHT_NAMESPACE } from '../namespaces';
+
 /**
  * Firmware `capacity` bitmask: 0x1 RGB, 0x2 temperature, 0x4 luminance, 0x8 effect.
  */
-export const LIGHT_NAMESPACE = 'Appliance.Control.Light';
-export const LIGHT_EFFECT_NAMESPACE = 'Appliance.Control.Light.Effect';
-
 export const LIGHT_CAPACITY_RGB = 0x1;
 export const LIGHT_CAPACITY_TEMPERATURE = 0x2;
 export const LIGHT_CAPACITY_LUMINANCE = 0x4;

@@ -6,9 +6,9 @@ import {
     MP3_VOLUME_MAX,
     decodeMp3Push,
     encodeMp3Set,
-    type MerossMessage,
     type Mp3State
-} from '../protocol';
+} from '../protocol/codecs/mp3';
+import type { MerossMessage } from '../protocol/message';
 import { DEFAULT, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';

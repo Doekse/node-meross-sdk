@@ -12,13 +12,15 @@ import {
     decodeLightPush,
     encodeLightEffectSet,
     encodeLightSet,
-    TOGGLEX_NAMESPACE,
-    decodeToggleXPush,
-    encodeToggleXSet,
     type LightChannelWireState,
-    type LightEffectEntry,
-    type MerossMessage
-} from '../protocol';
+    type LightEffectEntry
+} from '../protocol/codecs/light';
+import {
+    decodeToggleXPush,
+    encodeToggleXSet
+} from '../protocol/codecs/togglex';
+import type { MerossMessage } from '../protocol/message';
+import { TOGGLE_NAMESPACE, TOGGLEX_NAMESPACE } from '../protocol/namespaces';
 import {
     DEFAULT,
     SMART_CONFIG,
@@ -27,8 +29,6 @@ import {
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
-
-const TOGGLE_NAMESPACE = 'Appliance.Control.Toggle';
 
 export interface LightRgb {
     r: number;

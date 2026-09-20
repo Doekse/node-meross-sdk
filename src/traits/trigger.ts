@@ -14,10 +14,10 @@ import {
     encodeTriggerXDelete,
     encodeTriggerXGet,
     encodeTriggerXSet,
-    type MerossMessage,
     type TriggerXEntry,
     type TriggerXRule
-} from '../protocol';
+} from '../protocol/codecs/triggerx';
+import type { MerossMessage } from '../protocol/message';
 import { ONCE, SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import type { TraitDescriptor } from './descriptor';

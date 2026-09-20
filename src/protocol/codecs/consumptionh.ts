@@ -1,7 +1,7 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
-export const CONSUMPTIONH_NAMESPACE = 'Appliance.Control.ConsumptionH';
+export { CONSUMPTIONH_NAMESPACE } from '../namespaces';
 
 /** One hourly board-level consumption sample in watt-hours. */
 export interface ConsumptionHHour {

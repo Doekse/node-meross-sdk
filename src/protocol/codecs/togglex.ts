@@ -1,13 +1,8 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
+import { TOGGLEX_ALL_CHANNELS, TOGGLEX_NAMESPACE } from '../namespaces';
 
-export const TOGGLEX_NAMESPACE = 'Appliance.Control.ToggleX';
-
-/**
- * GET channel `0xffff` means every channel. Firmware wants decimal 65535,
- * not `0xffffffff`.
- */
-export const TOGGLEX_ALL_CHANNELS = 0xffff;
+export { TOGGLEX_ALL_CHANNELS, TOGGLEX_NAMESPACE };
 
 export interface ToggleXChannel {
     channel: number;

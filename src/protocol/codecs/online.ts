@@ -1,8 +1,7 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
-export const ONLINE_NAMESPACE = 'Appliance.System.Online';
-export const HUB_ONLINE_NAMESPACE = 'Appliance.Hub.Online';
+export { HUB_ONLINE_NAMESPACE, ONLINE_NAMESPACE } from '../namespaces';
 
 export interface HubOnlineEntry {
     id: string;

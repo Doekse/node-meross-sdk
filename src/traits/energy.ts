@@ -1,30 +1,36 @@
 import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
 import type { TraitName } from '../endpoint';
 import {
-    CONSUMPTIONH_NAMESPACE,
-    CONSUMPTIONX_NAMESPACE,
     CONSUMPTION_CONFIG_NAMESPACE,
+    decodeConsumptionConfigGetAck,
+    encodeConsumptionConfigGet
+} from '../protocol/codecs/consumptionconfig';
+import {
+    CONSUMPTIONH_NAMESPACE,
+    decodeConsumptionHGetAck,
+    encodeConsumptionHGet,
+    type ConsumptionHHour
+} from '../protocol/codecs/consumptionh';
+import {
+    CONSUMPTIONX_NAMESPACE,
+    consumptionXDays,
+    decodeConsumptionXGetAck,
+    encodeConsumptionXDelete,
+    encodeConsumptionXGet,
+    type ConsumptionXDay
+} from '../protocol/codecs/consumptionx';
+import {
     ELECTRICITY_NAMESPACE,
     ELECTRICITYX_ALL_CHANNELS,
     ELECTRICITYX_NAMESPACE,
-    consumptionXDays,
-    decodeConsumptionConfigGetAck,
-    decodeConsumptionHGetAck,
-    decodeConsumptionXGetAck,
     decodeElectricityGetAck,
     decodeElectricityXGetAck,
-    encodeConsumptionConfigGet,
-    encodeConsumptionHGet,
-    encodeConsumptionXDelete,
-    encodeConsumptionXGet,
     encodeElectricityGet,
     encodeElectricityXGet,
-    type ConsumptionHHour,
-    type ConsumptionXDay,
     type ElectricityConfig,
-    type ElectricitySample,
-    type MerossMessage
-} from '../protocol';
+    type ElectricitySample
+} from '../protocol/codecs/electricity';
+import type { MerossMessage } from '../protocol/message';
 import {
     channelList,
     pollSpecSize,

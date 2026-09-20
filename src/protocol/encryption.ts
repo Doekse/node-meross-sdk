@@ -2,9 +2,12 @@ import { createCipheriv, createDecipheriv, createECDH, createHash } from 'node:c
 
 import { ProtocolError } from '../errors';
 import type { MerossPayload } from './message';
+import {
+    ENCRYPT_ECDHE_NAMESPACE,
+    ENCRYPT_SUITE_NAMESPACE
+} from './namespaces';
 
-export const ENCRYPT_SUITE_NAMESPACE = 'Appliance.Encrypt.Suite';
-export const ENCRYPT_ECDHE_NAMESPACE = 'Appliance.Encrypt.ECDHE';
+export { ENCRYPT_ECDHE_NAMESPACE, ENCRYPT_SUITE_NAMESPACE };
 
 /**
  * AES-CBC IV is 16 ASCII `0` characters, not 16 NUL bytes.

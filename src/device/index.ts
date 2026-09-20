@@ -1,7 +1,6 @@
 import type { CloudDevice, CloudSubDevice } from '../cloud';
 import type { TraitName } from '../endpoint';
 import type { ClassHint, InventoryRow } from '../inventory';
-import type { HubChildRule } from '../traits/descriptor';
 import type {
     SystemFirmwareState,
     SystemHardwareState,
@@ -13,41 +12,39 @@ import type { AbilityMap } from '../protocol/codecs/ability';
 import { decodeSystemAllGetAck, getDigestNamespaces } from '../protocol/codecs/system-all';
 import type { SystemAll } from '../protocol/codecs/system-all';
 import {
-    enrollAlarmStandalone,
-    enrollBoardAlarmExtra,
-    enrollHubAlarmExtra
-} from '../traits/alarm';
-import { enrollBoardAlertExtra } from '../traits/alert';
-import { ClimateDescriptor, enrollClimate } from '../traits/climate';
-import { enrollCover } from '../traits/cover';
-import { enrollDiffuser } from '../traits/diffuser';
-import {
-    enrollBoardDndExtra,
-    enrollDndStandalone,
-    enrollHubDndExtra
-} from '../traits/dnd';
-import { enrollBoardEnergyExtra } from '../traits/energy';
-import { enrollFan } from '../traits/fan';
-import { enrollLight } from '../traits/light';
-import { enrollBoardMediaExtra, enrollMediaStandalone } from '../traits/media';
-import {
-    enrollBoardOverTempExtra,
-    enrollHubOverTempExtra,
-    enrollOverTempStandalone
-} from '../traits/overtemp';
-import { enrollPresence } from '../traits/presence';
-import { SensorDescriptor } from '../traits/sensor';
-import { enrollSpray } from '../traits/spray';
-import { SprinklerDescriptor } from '../traits/sprinkler';
-import { enrollBoardStandbyKillerExtra } from '../traits/standbykiller';
-import { enrollBoardSystemExtra } from '../traits/system';
-import {
-    enrollHubUntypedOnoff,
-    enrollSwitchLeftover
-} from '../traits/switch';
-import { enrollBoardTimerExtra } from '../traits/timer';
-import { enrollBoardTriggerExtra } from '../traits/trigger';
+    CONFIG_OVERTEMP_NAMESPACE,
+    CONFIG_STANDBY_KILLER_NAMESPACE,
+    CONSUMPTIONH_NAMESPACE,
+    CONSUMPTIONX_NAMESPACE,
+    CONTROL_ALARM_NAMESPACE,
+    CONTROL_ALERT_CONFIG_NAMESPACE,
+    CONTROL_BEEP_NAMESPACE,
+    CONTROL_TIMER_NAMESPACE,
+    CONTROL_TRIGGER_NAMESPACE,
+    DIFFUSER_LIGHT_NAMESPACE,
+    DIFFUSER_SPRAY_NAMESPACE,
+    DND_MODE_NAMESPACE,
+    ELECTRICITY_NAMESPACE,
+    ELECTRICITYX_NAMESPACE,
+    FAN_NAMESPACE,
+    GARAGE_STATE_NAMESPACE,
+    LIGHT_NAMESPACE,
+    MP3_NAMESPACE,
+    PRESENCE_CONFIG_NAMESPACE,
+    PRESENCE_STUDY_NAMESPACE,
+    SHUTTER_STATE_NAMESPACE,
+    SPRAY_NAMESPACE,
+    THERMOSTAT_MODEB_NAMESPACE,
+    THERMOSTAT_MODEC_NAMESPACE,
+    THERMOSTAT_MODE_NAMESPACE,
+    TIMERX_NAMESPACE,
+    TOGGLE_NAMESPACE,
+    TOGGLEX_NAMESPACE,
+    TRIGGERX_NAMESPACE
+} from '../protocol/namespaces';
+import { loadTrait } from '../traits/load';
 import type { EnrollBoardContext, EnrollBoardExtraInput } from './enroll-context';
+import { HUB_CHILD_RULES } from './hub-child';
 
 export { ABILITY_NAMESPACE, abilityMaxCmdNum, decodeAbilityGetAck } from '../protocol/codecs/ability';
 export type { AbilityMap } from '../protocol/codecs/ability';
@@ -264,13 +261,19 @@ export class DeviceGraph {
 }
 
 /**
- * Local climate → sensor → sprinkler order. Must not be derived from
- * TRAIT_DESCRIPTORS — enroll must not iterate that catalog.
+ * First matching digest alias across climate → sensor → sprinkler. A separate
+ * pass from model lookup so a later map's alias cannot be mixed into an
+ * earlier trait's model test.
  */
-const HUB_CHILD_RULES: readonly {
-    readonly name: TraitName;
-    readonly hubChild: HubChildRule;
-}[] = [ClimateDescriptor, SensorDescriptor, SprinklerDescriptor];
+function rewriteHubChildAlias(lowered: string): string {
+    for (const rule of HUB_CHILD_RULES) {
+        const aliased = rule.hubChild.aliases[lowered];
+        if (aliased !== undefined) {
+            return aliased;
+        }
+    }
+    return lowered;
+}
 
 /**
  * Unknown digest types return undefined so enrollHub can fall back to onoff
@@ -285,21 +288,13 @@ function classifyHubChild(raw: string | undefined): {
     if (!raw) {
         return undefined;
     }
-    const lowered = raw.toLowerCase();
-    let model = lowered;
-    for (const descriptor of HUB_CHILD_RULES) {
-        const aliased = descriptor.hubChild.aliases[lowered];
-        if (aliased !== undefined) {
-            model = aliased;
-            break;
-        }
-    }
-    for (const descriptor of HUB_CHILD_RULES) {
-        if (descriptor.hubChild.models.has(model)) {
+    const model = rewriteHubChildAlias(raw.toLowerCase());
+    for (const rule of HUB_CHILD_RULES) {
+        if (rule.hubChild.models.has(model)) {
             return {
                 model,
-                classHint: descriptor.hubChild.classHint,
-                traits: [descriptor.name]
+                classHint: rule.hubChild.classHint,
+                traits: [rule.name]
             };
         }
     }
@@ -312,7 +307,9 @@ function classifyHubChild(raw: string | undefined): {
  * parent. Classic Electricity stays on the master because it reports the
  * whole board; ElectricityX/ConsumptionH also land on children because those
  * namespaces are per outlet. MSG200 ToggleX 0 is omitted because the doors
- * live on 1-n.
+ * live on 1-n. Ability/digest gates run before each loadTrait so unused
+ * trait modules stay unloaded; extra helpers still apply their own
+ * channel/classHint rules.
  */
 function enrollBoard(
     uuid: string,
@@ -325,6 +322,20 @@ function enrollBoard(
 ): GraphEndpoint[] {
     const endpoints: GraphEndpoint[] = [];
     const taken = new Set<number>();
+    // Once per board so add() does not loadTrait on leftover channels when
+    // Ability never advertised that extra.
+    const hasEnergy = ELECTRICITY_NAMESPACE in ability
+        || CONSUMPTIONX_NAMESPACE in ability
+        || ELECTRICITYX_NAMESPACE in ability
+        || CONSUMPTIONH_NAMESPACE in ability;
+    const hasMedia = MP3_NAMESPACE in ability;
+    const hasDnd = DND_MODE_NAMESPACE in ability;
+    const hasOverTemp = CONFIG_OVERTEMP_NAMESPACE in ability;
+    const hasAlert = CONTROL_ALERT_CONFIG_NAMESPACE in ability;
+    const hasStandbyKiller = CONFIG_STANDBY_KILLER_NAMESPACE in ability;
+    const hasAlarm = CONTROL_ALARM_NAMESPACE in ability || CONTROL_BEEP_NAMESPACE in ability;
+    const hasTimer = TIMERX_NAMESPACE in ability || CONTROL_TIMER_NAMESPACE in ability;
+    const hasTrigger = TRIGGERX_NAMESPACE in ability || CONTROL_TRIGGER_NAMESPACE in ability;
     const add = (
         channel: number,
         classHint: ClassHint,
@@ -348,16 +359,36 @@ function enrollBoard(
             parentId,
             ability
         };
-        extra.push(...enrollBoardSystemExtra(input));
-        extra.push(...enrollBoardEnergyExtra(input));
-        extra.push(...enrollBoardMediaExtra(input));
-        extra.push(...enrollBoardDndExtra(input));
-        extra.push(...enrollBoardOverTempExtra(input));
-        extra.push(...enrollBoardAlertExtra(input));
-        extra.push(...enrollBoardStandbyKillerExtra(input));
-        extra.push(...enrollBoardAlarmExtra(input));
-        extra.push(...enrollBoardTimerExtra(input));
-        extra.push(...enrollBoardTriggerExtra(input));
+        if (channel === 0) {
+            extra.push(...loadTrait('system').enrollBoardSystemExtra(input));
+        }
+        if (hasEnergy) {
+            extra.push(...loadTrait('energy').enrollBoardEnergyExtra(input));
+        }
+        if (hasMedia) {
+            extra.push(...loadTrait('media').enrollBoardMediaExtra(input));
+        }
+        if (hasDnd) {
+            extra.push(...loadTrait('dnd').enrollBoardDndExtra(input));
+        }
+        if (hasOverTemp) {
+            extra.push(...loadTrait('overtemp').enrollBoardOverTempExtra(input));
+        }
+        if (hasAlert) {
+            extra.push(...loadTrait('alert').enrollBoardAlertExtra(input));
+        }
+        if (hasStandbyKiller) {
+            extra.push(...loadTrait('standbykiller').enrollBoardStandbyKillerExtra(input));
+        }
+        if (hasAlarm) {
+            extra.push(...loadTrait('alarm').enrollBoardAlarmExtra(input));
+        }
+        if (hasTimer) {
+            extra.push(...loadTrait('timer').enrollBoardTimerExtra(input));
+        }
+        if (hasTrigger) {
+            extra.push(...loadTrait('trigger').enrollBoardTriggerExtra(input));
+        }
         endpoints.push({
             id: `${uuid}:${channel}`,
             uuid,
@@ -386,21 +417,65 @@ function enrollBoard(
         add
     };
 
-    enrollLight(ctx);
-    enrollCover(ctx);
-    enrollClimate(ctx);
-    enrollPresence(ctx);
-    enrollDiffuser(ctx);
-    enrollSpray(ctx);
-    enrollFan(ctx);
+    if (all.digest.light.length > 0 || LIGHT_NAMESPACE in ability) {
+        loadTrait('light').enrollLight(ctx);
+    }
+    if (
+        all.digest.garageDoor.length > 0
+        || all.digest.rollerShutter.length > 0
+        || GARAGE_STATE_NAMESPACE in ability
+        || SHUTTER_STATE_NAMESPACE in ability
+    ) {
+        loadTrait('cover').enrollCover(ctx);
+    }
+    if (
+        THERMOSTAT_MODE_NAMESPACE in ability
+        || THERMOSTAT_MODEB_NAMESPACE in ability
+        || THERMOSTAT_MODEC_NAMESPACE in ability
+        || all.digest.thermostat
+    ) {
+        loadTrait('climate').enrollClimate(ctx);
+    }
+    if (PRESENCE_CONFIG_NAMESPACE in ability || PRESENCE_STUDY_NAMESPACE in ability) {
+        loadTrait('presence').enrollPresence(ctx);
+    }
+    if (
+        all.digest.diffuser
+        || DIFFUSER_LIGHT_NAMESPACE in ability
+        || DIFFUSER_SPRAY_NAMESPACE in ability
+    ) {
+        loadTrait('diffuser').enrollDiffuser(ctx);
+    }
+    if (all.digest.spray.length > 0 || SPRAY_NAMESPACE in ability) {
+        loadTrait('spray').enrollSpray(ctx);
+    }
+    if (all.digest.fan.length > 0 || FAN_NAMESPACE in ability) {
+        loadTrait('fan').enrollFan(ctx);
+    }
 
-    enrollMediaStandalone(ctx);
+    if (hasMedia) {
+        loadTrait('media').enrollMediaStandalone(ctx);
+    }
 
-    enrollSwitchLeftover(ctx);
+    if (
+        all.digest.togglex.length > 0
+        || (cloud?.channels?.length ?? 0) > 0
+        || TOGGLEX_NAMESPACE in ability
+        || TOGGLE_NAMESPACE in ability
+        || all.digest.garageDoor.some((door) => door.channel !== 0)
+    ) {
+        loadTrait('switch').enrollSwitchLeftover(ctx);
+    }
 
-    enrollDndStandalone(ctx);
-    enrollOverTempStandalone(ctx);
-    enrollAlarmStandalone(ctx);
+    if (hasDnd) {
+        loadTrait('dnd').enrollDndStandalone(ctx);
+    }
+    if (hasOverTemp) {
+        loadTrait('overtemp').enrollOverTempStandalone(ctx);
+    }
+    if (hasAlarm) {
+        loadTrait('alarm').enrollAlarmStandalone(ctx);
+    }
 
     return endpoints;
 }
@@ -418,12 +493,16 @@ function enrollHub(
     all: SystemAll,
     cloudSubs: CloudSubDevice[]
 ): GraphEndpoint[] {
-    const hubTraits: TraitName[] = [
-        'system',
-        ...enrollHubAlarmExtra(ability),
-        ...enrollHubDndExtra(ability),
-        ...enrollHubOverTempExtra(ability)
-    ];
+    const hubTraits: TraitName[] = ['system'];
+    if (CONTROL_ALARM_NAMESPACE in ability || CONTROL_BEEP_NAMESPACE in ability) {
+        hubTraits.push(...loadTrait('alarm').enrollHubAlarmExtra(ability));
+    }
+    if (DND_MODE_NAMESPACE in ability) {
+        hubTraits.push(...loadTrait('dnd').enrollHubDndExtra(ability));
+    }
+    if (CONFIG_OVERTEMP_NAMESPACE in ability) {
+        hubTraits.push(...loadTrait('overtemp').enrollHubOverTempExtra(ability));
+    }
     const endpoints: GraphEndpoint[] = [{
         id: uuid,
         uuid,
@@ -468,16 +547,19 @@ function enrollHub(
             });
             continue;
         }
-        const untyped = enrollHubUntypedOnoff({
-            uuid,
-            subDeviceId,
-            name: sub.name,
-            model: sub.model,
-            online: sub.online,
-            on: sub.on
-        });
-        if (untyped) {
-            endpoints.push(untyped);
+        // Unknown SKUs without digest onoff stay trait-less; skip loadTrait.
+        if (sub.on !== undefined) {
+            const untyped = loadTrait('switch').enrollHubUntypedOnoff({
+                uuid,
+                subDeviceId,
+                name: sub.name,
+                model: sub.model,
+                online: sub.online,
+                on: sub.on
+            });
+            if (untyped) {
+                endpoints.push(untyped);
+            }
         }
     }
     return endpoints;

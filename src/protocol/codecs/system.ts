@@ -1,12 +1,14 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
-export const SYSTEM_TIME_NAMESPACE = 'Appliance.System.Time';
-export const SYSTEM_CLOCK_NAMESPACE = 'Appliance.System.Clock';
-export const SYSTEM_FIRMWARE_NAMESPACE = 'Appliance.System.Firmware';
-export const SYSTEM_HARDWARE_NAMESPACE = 'Appliance.System.Hardware';
-export const SYSTEM_DEBUG_NAMESPACE = 'Appliance.System.Debug';
-export const SYSTEM_POSITION_NAMESPACE = 'Appliance.System.Position';
+export {
+    SYSTEM_CLOCK_NAMESPACE,
+    SYSTEM_DEBUG_NAMESPACE,
+    SYSTEM_FIRMWARE_NAMESPACE,
+    SYSTEM_HARDWARE_NAMESPACE,
+    SYSTEM_POSITION_NAMESPACE,
+    SYSTEM_TIME_NAMESPACE
+} from '../namespaces';
 
 /**
  * One DST rule: `[switchTime, utcOffsetSeconds, isDst]`.

@@ -23,14 +23,16 @@ import {
 } from './poll';
 import {
     ONLINE_NAMESPACE,
-    ProtocolDispatcher,
-    decodeOnlineStatus,
-    uuidFromHeader,
+    decodeOnlineStatus
+} from './protocol/codecs/online';
+import { ProtocolDispatcher } from './protocol/dispatcher';
+import {
     deriveEncryptionKey,
     macAddressFromUuid,
-    supportsLanEncryption,
-    type MerossMessage
-} from './protocol';
+    supportsLanEncryption
+} from './protocol/encryption';
+import { uuidFromHeader, type MerossMessage } from './protocol/message';
+import { HUB_SUBDEVICE_LIST_NAMESPACE } from './protocol/namespaces';
 import type { DeviceRequest } from './request';
 import {
     LanHttpTransport,
@@ -441,7 +443,7 @@ export class Session extends EventEmitter<SessionEvents> {
 
         const ability = decodeAbilityGetAck(abilityReply.payload);
         let subDevices: CloudSubDevice[] | undefined;
-        if ('Appliance.Hub.SubdeviceList' in ability) {
+        if (HUB_SUBDEVICE_LIST_NAMESPACE in ability) {
             try {
                 subDevices = await this.cloud.listSubDevices(cloudDevice.uuid);
             } catch (error) {

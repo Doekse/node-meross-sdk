@@ -1,14 +1,50 @@
 import { ProtocolError } from '../../errors';
-import { decodeArray, encodeArray } from './payload';
 import type { MerossPayload } from '../message';
+import type { HubSubdeviceGetOptions } from './hub';
+import { decodeArray, encodeArray } from './payload';
 
-export const THERMOSTAT_MODE_NAMESPACE = 'Appliance.Control.Thermostat.Mode';
-export const THERMOSTAT_MODEB_NAMESPACE = 'Appliance.Control.Thermostat.ModeB';
-export const THERMOSTAT_MODEC_NAMESPACE = 'Appliance.Control.Thermostat.ModeC';
+export {
+    ALARM_CONFIG_NAMESPACE,
+    ALARM_NAMESPACE,
+    CALIBRATION_NAMESPACE,
+    COMPRESSOR_DELAY_NAMESPACE,
+    CTL_RANGE_NAMESPACE,
+    DEAD_ZONE_NAMESPACE,
+    FROST_NAMESPACE,
+    HOLD_ACTION_NAMESPACE,
+    HUB_MTS100_ADJUST_NAMESPACE,
+    HUB_MTS100_ALL_NAMESPACE,
+    HUB_MTS100_CONFIG_NAMESPACE,
+    HUB_MTS100_MODE_NAMESPACE,
+    HUB_MTS100_SCHEDULE_NAMESPACE,
+    HUB_MTS100_SCHEDULEB_NAMESPACE,
+    HUB_MTS100_SUPERCTL_NAMESPACE,
+    HUB_MTS100_TEMPERATURE_NAMESPACE,
+    HUB_MTS100_TIMESYNC_NAMESPACE,
+    OVERHEAT_NAMESPACE,
+    PHYSICAL_LOCK_NAMESPACE,
+    SCHEDULE_NAMESPACE,
+    SCHEDULEB_NAMESPACE,
+    SCREEN_BRIGHTNESS_NAMESPACE,
+    SENSOR_NAMESPACE,
+    SUMMER_MODE_NAMESPACE,
+    TEMP_UNIT_NAMESPACE,
+    THERMOSTAT_MODE_NAMESPACE,
+    THERMOSTAT_MODEB_NAMESPACE,
+    THERMOSTAT_MODEC_NAMESPACE,
+    THERMOSTAT_SYSTEM_NAMESPACE,
+    TIMER_NAMESPACE,
+    WINDOW_OPENED_NAMESPACE
+} from '../namespaces';
 
-export const HUB_TOGGLEX_NAMESPACE = 'Appliance.Hub.ToggleX';
-export const HUB_MTS100_MODE_NAMESPACE = 'Appliance.Hub.Mts100.Mode';
-export const HUB_MTS100_TEMPERATURE_NAMESPACE = 'Appliance.Hub.Mts100.Temperature';
+export {
+    HUB_TOGGLEX_NAMESPACE,
+    decodeHubToggleXGetAck,
+    decodeHubToggleXPush,
+    encodeHubToggleXGet,
+    encodeHubToggleXSet
+} from './hub';
+export type { HubSubdeviceGetOptions, HubToggleXSetOptions } from './hub';
 
 export type ClimateMode = 'off' | 'heat' | 'cool' | 'auto' | 'eco' | 'manual' | 'custom';
 export type ClimateWorkMode = 'manual' | 'schedule' | 'timer';
@@ -56,15 +92,6 @@ export interface ThermostatModeBSetOptions {
     working?: 'heat' | 'cool';
     workMode?: ClimateWorkMode;
     targetTemperature?: number;
-}
-
-export interface HubSubdeviceGetOptions {
-    id: string;
-}
-
-export interface HubToggleXSetOptions {
-    id: string;
-    on: boolean;
 }
 
 export interface HubMts100ModeSetOptions {
@@ -318,39 +345,6 @@ function decodeThermostatModeC(payload: MerossPayload): ThermostatState[] {
     });
 }
 
-export function encodeHubToggleXSet(options: HubToggleXSetOptions): MerossPayload {
-    return { togglex: [{ id: options.id, onoff: options.on ? 1 : 0 }] };
-}
-
-export function encodeHubToggleXGet(options: HubSubdeviceGetOptions): MerossPayload {
-    return { togglex: [{ id: options.id }] };
-}
-
-export function decodeHubToggleXGetAck(payload: MerossPayload): Array<{ id: string; on: boolean }> {
-    return decodeHubToggleX(payload);
-}
-
-export function decodeHubToggleXPush(payload: MerossPayload): Array<{ id: string; on: boolean }> {
-    return decodeHubToggleX(payload);
-}
-
-function decodeHubToggleX(payload: MerossPayload): Array<{ id: string; on: boolean }> {
-    const raw = payload.togglex;
-    if (!Array.isArray(raw)) {
-        throw new ProtocolError('Hub.ToggleX payload must contain a togglex array');
-    }
-    return raw.map((item) => {
-        if (typeof item !== 'object' || item === null) {
-            throw new ProtocolError('Hub.ToggleX entry must be an object');
-        }
-        const { id, onoff } = item as Record<string, unknown>;
-        if (typeof id !== 'string' || typeof onoff !== 'number') {
-            throw new ProtocolError('Hub.ToggleX entry requires id and onoff');
-        }
-        return { id, on: onoff === 1 };
-    });
-}
-
 export function encodeHubMts100ModeSet(options: HubMts100ModeSetOptions): MerossPayload {
     return { mode: [{ id: options.id, state: options.state }] };
 }
@@ -452,23 +446,6 @@ function decodeHubMts100Temperature(payload: MerossPayload): HubMts100Temperatur
         };
     });
 }
-
-export const HOLD_ACTION_NAMESPACE = 'Appliance.Control.Thermostat.HoldAction';
-export const WINDOW_OPENED_NAMESPACE = 'Appliance.Control.Thermostat.WindowOpened';
-export const SENSOR_NAMESPACE = 'Appliance.Control.Thermostat.Sensor';
-export const FROST_NAMESPACE = 'Appliance.Control.Thermostat.Frost';
-export const CALIBRATION_NAMESPACE = 'Appliance.Control.Thermostat.Calibration';
-export const OVERHEAT_NAMESPACE = 'Appliance.Control.Thermostat.Overheat';
-export const DEAD_ZONE_NAMESPACE = 'Appliance.Control.Thermostat.DeadZone';
-export const SUMMER_MODE_NAMESPACE = 'Appliance.Control.Thermostat.SummerMode';
-export const COMPRESSOR_DELAY_NAMESPACE = 'Appliance.Control.Thermostat.CompressorDelay';
-export const CTL_RANGE_NAMESPACE = 'Appliance.Control.Thermostat.CtlRange';
-export const TIMER_NAMESPACE = 'Appliance.Control.Thermostat.Timer';
-export const ALARM_NAMESPACE = 'Appliance.Control.Thermostat.Alarm';
-export const ALARM_CONFIG_NAMESPACE = 'Appliance.Control.Thermostat.AlarmConfig';
-export const SCHEDULE_NAMESPACE = 'Appliance.Control.Thermostat.Schedule';
-export const SCHEDULEB_NAMESPACE = 'Appliance.Control.Thermostat.ScheduleB';
-export const THERMOSTAT_SYSTEM_NAMESPACE = 'Appliance.Control.Thermostat.System';
 
 /** Firmware `wire` terminals; keys and numbers are passed through as-is. */
 export type ClimateSystemWire = Record<string, number>;
@@ -587,17 +564,6 @@ function decodeSystemWire(raw: Record<string, unknown>): ClimateSystemWire {
     }
     return wire;
 }
-
-export const HUB_MTS100_ALL_NAMESPACE = 'Appliance.Hub.Mts100.All';
-export const HUB_MTS100_ADJUST_NAMESPACE = 'Appliance.Hub.Mts100.Adjust';
-export const HUB_MTS100_CONFIG_NAMESPACE = 'Appliance.Hub.Mts100.Config';
-export const HUB_MTS100_SUPERCTL_NAMESPACE = 'Appliance.Hub.Mts100.SuperCtl';
-export const HUB_MTS100_SCHEDULE_NAMESPACE = 'Appliance.Hub.Mts100.Schedule';
-export const HUB_MTS100_SCHEDULEB_NAMESPACE = 'Appliance.Hub.Mts100.ScheduleB';
-export const HUB_MTS100_TIMESYNC_NAMESPACE = 'Appliance.Hub.Mts100.TimeSync';
-export const TEMP_UNIT_NAMESPACE = 'Appliance.Control.TempUnit';
-export const PHYSICAL_LOCK_NAMESPACE = 'Appliance.Control.PhysicalLock';
-export const SCREEN_BRIGHTNESS_NAMESPACE = 'Appliance.Control.Screen.Brightness';
 
 /** Board ScheduleB sentinel for an off slot; send as-is, do not scale. */
 export const SCHEDULEB_OFF = 43690;

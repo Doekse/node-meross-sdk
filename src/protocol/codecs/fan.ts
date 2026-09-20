@@ -1,10 +1,12 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
-export const FAN_NAMESPACE = 'Appliance.Control.Fan';
-export const FAN_CONFIG_NAMESPACE = 'Appliance.Control.Fan.Config';
-export const FAN_BTN_CONFIG_NAMESPACE = 'Appliance.Control.Fan.BtnConfig';
-export const FILTER_MAINTENANCE_NAMESPACE = 'Appliance.Control.FilterMaintenance';
+export {
+    FAN_BTN_CONFIG_NAMESPACE,
+    FAN_CONFIG_NAMESPACE,
+    FAN_NAMESPACE,
+    FILTER_MAINTENANCE_NAMESPACE
+} from '../namespaces';
 
 export interface FanChannelState {
     channel: number;

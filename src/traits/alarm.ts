@@ -15,9 +15,9 @@ import {
     encodeAlarmSet,
     encodeBeepSet,
     type AlarmChannelState,
-    type BeepChannelState,
-    type MerossMessage
-} from '../protocol';
+    type BeepChannelState
+} from '../protocol/codecs/alarm';
+import type { MerossMessage } from '../protocol/message';
 import { channelList, DEFAULT, SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';

@@ -5,20 +5,22 @@ import {
     FAN_CONFIG_NAMESPACE,
     FAN_NAMESPACE,
     FILTER_MAINTENANCE_NAMESPACE,
-    TOGGLEX_NAMESPACE,
     decodeFanBtnConfigPush,
     decodeFanConfigGetAck,
     decodeFanPush,
     decodeFilterMaintenancePush,
-    decodeToggleXPush,
     encodeFanBtnConfigPushQuery,
     encodeFanBtnConfigSet,
     encodeFanSet,
-    encodeToggleXSet,
     type FanButtonConfig,
-    type FanButtonConfigSetOptions,
-    type MerossMessage
-} from '../protocol';
+    type FanButtonConfigSetOptions
+} from '../protocol/codecs/fan';
+import {
+    decodeToggleXPush,
+    encodeToggleXSet
+} from '../protocol/codecs/togglex';
+import type { MerossMessage } from '../protocol/message';
+import { TOGGLE_NAMESPACE, TOGGLEX_NAMESPACE } from '../protocol/namespaces';
 import {
     channelList,
     DEFAULT,
@@ -29,8 +31,6 @@ import {
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
-
-const TOGGLE_NAMESPACE = 'Appliance.Control.Toggle';
 
 export interface FanValues {
     on?: boolean;

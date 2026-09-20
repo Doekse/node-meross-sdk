@@ -5,8 +5,8 @@ import { connect, type ConnectionOptions, type TLSSocket } from 'node:tls';
 
 import { TransportError } from '../errors';
 import { emitLog, emitTraffic, type LogLevel, type SessionLogger } from '../log';
-import { ProtocolDispatcher, decodeMessage, encodeMessage } from '../protocol';
-import type { MerossMessage, MerossPayload } from '../protocol';
+import { ProtocolDispatcher } from '../protocol/dispatcher';
+import { decodeMessage, encodeMessage, type MerossMessage, type MerossPayload } from '../protocol/message';
 import { PublishRateLimiter, type PublishPriority } from './rate-limit';
 
 /** Cloud brokers listen on 443; older firmware used 2001. */

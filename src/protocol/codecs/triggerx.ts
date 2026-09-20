@@ -1,10 +1,11 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
-export const TRIGGERX_NAMESPACE = 'Appliance.Control.TriggerX';
-export const DIGEST_TRIGGERX_NAMESPACE = 'Appliance.Digest.TriggerX';
-/** Pre-X firmware; no Digest. GET uses an empty dict; GETACK/SET/PUSH are lists. */
-export const CONTROL_TRIGGER_NAMESPACE = 'Appliance.Control.Trigger';
+export {
+    CONTROL_TRIGGER_NAMESPACE,
+    DIGEST_TRIGGERX_NAMESPACE,
+    TRIGGERX_NAMESPACE
+} from '../namespaces';
 
 /**
  * Countdown rule from firmware TriggerX. `duration` is seconds; `week` is the

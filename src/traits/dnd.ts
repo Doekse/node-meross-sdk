@@ -11,9 +11,9 @@ import {
     decodeDndGetAck,
     decodeDndPush,
     encodeDndGet,
-    encodeDndSet,
-    type MerossMessage
-} from '../protocol';
+    encodeDndSet
+} from '../protocol/codecs/dnd';
+import type { MerossMessage } from '../protocol/message';
 import { SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';

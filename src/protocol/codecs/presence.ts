@@ -1,8 +1,7 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
 
-export const PRESENCE_CONFIG_NAMESPACE = 'Appliance.Control.Presence.Config';
-export const PRESENCE_STUDY_NAMESPACE = 'Appliance.Control.Presence.Study';
+export { PRESENCE_CONFIG_NAMESPACE, PRESENCE_STUDY_NAMESPACE } from '../namespaces';
 
 /** Firmware mode block: workMode (0–2) and testMode (0–2). */
 export interface PresenceMode {

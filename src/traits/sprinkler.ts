@@ -1,16 +1,20 @@
+import type { TraitAttachArgs } from '../device/enroll-context';
+import { SPRINKLER_HUB_CHILD } from '../device/hub-child';
 import { CommandError } from '../errors';
+import {
+    decodeHubExceptionPush,
+    decodeHubSubDeviceVersionPush
+} from '../protocol/codecs/hub';
+import {
+    HUB_BATTERY_NAMESPACE,
+    decodeBatteryPush
+} from '../protocol/codecs/sensor';
 import {
     CONTROL_WATER_EVENT_NAMESPACE,
     CONTROL_WATER_NAMESPACE,
     DEVICE_CFG_NAMESPACE,
-    HUB_BATTERY_NAMESPACE,
-    HUB_EXCEPTION_NAMESPACE,
-    HUB_SUBDEVICE_VERSION_NAMESPACE,
     WATER_PLAN_NAMESPACE,
-    decodeBatteryPush,
     decodeDeviceCfgPush,
-    decodeHubExceptionPush,
-    decodeHubSubDeviceVersionPush,
     decodeWaterEventPush,
     decodeWaterPlanGetAck,
     decodeWaterPush,
@@ -18,12 +22,15 @@ import {
     encodeWaterPlanGet,
     encodeWaterPlanSet,
     encodeWaterSet,
-    type MerossMessage,
     type WaterControlState,
     type WaterEventState,
     type WaterPlanEntry
-} from '../protocol';
-import type { TraitAttachArgs } from '../device/enroll-context';
+} from '../protocol/codecs/water';
+import type { MerossMessage } from '../protocol/message';
+import {
+    HUB_EXCEPTION_NAMESPACE,
+    HUB_SUBDEVICE_VERSION_NAMESPACE
+} from '../protocol/namespaces';
 import {
     DEFAULT,
     SMART_CONFIG,
@@ -31,8 +38,8 @@ import {
     type PollSpec
 } from '../poll/spec';
 import type { DeviceRequest } from '../request';
-import { applyPatch } from './patch';
 import type { HubChildRule, TraitDescriptor } from './descriptor';
+import { applyPatch } from './patch';
 
 /** Completed watering cycle from Control.WaterEvent. */
 export interface SprinklerCycleSummary {
@@ -282,11 +289,7 @@ export const SprinklerDescriptor: TraitDescriptor & {
     attach(args: TraitAttachArgs<SprinklerValues>): SprinklerTrait | undefined;
 } = {
     name: 'sprinkler',
-    hubChild: {
-        models: new Set(['mst100']),
-        aliases: { mst: 'mst100' },
-        classHint: 'sprinkler'
-    },
+    hubChild: SPRINKLER_HUB_CHILD,
     poll: {
         [CONTROL_WATER_NAMESPACE]: {
             ...DEFAULT,

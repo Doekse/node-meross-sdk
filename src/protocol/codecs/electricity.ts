@@ -1,7 +1,16 @@
 import { ProtocolError } from '../../errors';
 import type { MerossPayload } from '../message';
+import {
+    ELECTRICITY_NAMESPACE,
+    ELECTRICITYX_ALL_CHANNELS,
+    ELECTRICITYX_NAMESPACE
+} from '../namespaces';
 
-export const ELECTRICITY_NAMESPACE = 'Appliance.Control.Electricity';
+export {
+    ELECTRICITY_NAMESPACE,
+    ELECTRICITYX_ALL_CHANNELS,
+    ELECTRICITYX_NAMESPACE
+};
 
 /** Voltage/current coefficients. `maxElectricityCurrent` is milliamps when present. */
 export interface ElectricityConfig {
@@ -108,13 +117,6 @@ export function decodeElectricityGetAck(payload: MerossPayload): ElectricitySamp
         voltage: 10
     });
 }
-
-export const ELECTRICITYX_NAMESPACE = 'Appliance.Control.ElectricityX';
-
-/**
- * GET channel `0xffff` means every channel. An empty GET misses some devices.
- */
-export const ELECTRICITYX_ALL_CHANNELS = 0xffff;
 
 export function encodeElectricityXGet(): MerossPayload {
     return { electricity: { channel: ELECTRICITYX_ALL_CHANNELS } };
