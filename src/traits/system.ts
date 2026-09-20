@@ -7,12 +7,14 @@ import {
     SYSTEM_FIRMWARE_NAMESPACE,
     SYSTEM_HARDWARE_NAMESPACE,
     SYSTEM_POSITION_NAMESPACE,
+    SYSTEM_RUNTIME_NAMESPACE,
     SYSTEM_TIME_NAMESPACE,
     decodeSystemClockPush,
     decodeSystemDebugGetAck,
     decodeSystemFirmwareGetAck,
     decodeSystemHardwareGetAck,
     decodeSystemPositionGetAck,
+    decodeSystemRuntimeGetAck,
     decodeSystemTimeGetAck,
     encodeSystemPositionSet,
     encodeSystemTimeSet,
@@ -20,6 +22,7 @@ import {
     type SystemFirmwareState,
     type SystemHardwareState,
     type SystemPositionState,
+    type SystemRuntimeState,
     type SystemTimeState
 } from '../protocol/codecs/system';
 import type { MerossMessage } from '../protocol/message';
@@ -39,6 +42,7 @@ export type {
     SystemFirmwareState,
     SystemHardwareState,
     SystemPositionState,
+    SystemRuntimeState,
     SystemTimeState
 };
 
@@ -52,6 +56,7 @@ export interface SystemValues {
     time?: SystemTimeState;
     debug?: SystemDebugState;
     position?: SystemPositionState;
+    runtime?: SystemRuntimeState;
     clockSkewSeconds?: number;
 }
 
@@ -123,6 +128,11 @@ export class SystemTrait {
         return this.last.position;
     }
 
+    /** Undefined until Runtime GETACK/PUSH fills it. */
+    getRuntime(): SystemRuntimeState | undefined {
+        return this.last.runtime;
+    }
+
     /**
      * Device clock minus local Unix seconds at the last Time / Clock update.
      * Prefers System.Clock when seen. Undefined until either timestamp is known.
@@ -187,6 +197,10 @@ export class SystemTrait {
             this.applyChange({ position: decodeSystemPositionGetAck(message.payload) });
             return;
         }
+        if (namespace === SYSTEM_RUNTIME_NAMESPACE) {
+            this.applyChange({ runtime: decodeSystemRuntimeGetAck(message.payload) });
+            return;
+        }
         if (namespace === SYSTEM_CLOCK_NAMESPACE) {
             this.clockTimestamp = decodeSystemClockPush(message.payload).timestamp;
             this.applyChange({ clockSkewSeconds: this.skewFor(this.clockTimestamp) });
@@ -249,6 +263,7 @@ export const SystemDescriptor: TraitDescriptor & {
         SYSTEM_HARDWARE_NAMESPACE,
         SYSTEM_DEBUG_NAMESPACE,
         SYSTEM_POSITION_NAMESPACE,
+        SYSTEM_RUNTIME_NAMESPACE,
         SYSTEM_CLOCK_NAMESPACE
     ],
     poll: {
@@ -258,7 +273,7 @@ export const SystemDescriptor: TraitDescriptor & {
             periodCloudMs: 0,
             base: 1_000
         },
-        'Appliance.System.Runtime': { ...SMART_CONFIG, base: 330 },
+        [SYSTEM_RUNTIME_NAMESPACE]: { ...SMART_CONFIG, base: 330 },
         // Firmware / Hardware / Time ride System.All; standalone GET is the fallback.
         [SYSTEM_FIRMWARE_NAMESPACE]: {
             ...ONCE,

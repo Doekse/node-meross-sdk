@@ -12,6 +12,7 @@ export const SYSTEM_FIRMWARE_NAMESPACE = 'Appliance.System.Firmware';
 export const SYSTEM_HARDWARE_NAMESPACE = 'Appliance.System.Hardware';
 export const SYSTEM_DEBUG_NAMESPACE = 'Appliance.System.Debug';
 export const SYSTEM_POSITION_NAMESPACE = 'Appliance.System.Position';
+export const SYSTEM_RUNTIME_NAMESPACE = 'Appliance.System.Runtime';
 export const ONLINE_NAMESPACE = 'Appliance.System.Online';
 export const DND_MODE_NAMESPACE = 'Appliance.System.DNDMode';
 

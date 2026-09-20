@@ -35,6 +35,7 @@ export {
     SYSTEM_FIRMWARE_NAMESPACE,
     SYSTEM_HARDWARE_NAMESPACE,
     SYSTEM_POSITION_NAMESPACE,
+    SYSTEM_RUNTIME_NAMESPACE,
     SYSTEM_TIME_NAMESPACE,
     decodeSystemClockPush,
     decodeSystemDebugGetAck,
@@ -42,6 +43,8 @@ export {
     decodeSystemFirmwarePush,
     decodeSystemHardwareGetAck,
     decodeSystemPositionGetAck,
+    decodeSystemRuntimeGetAck,
+    decodeSystemRuntimePush,
     decodeSystemTimeGetAck,
     decodeSystemTimePush,
     encodeSystemDebugGet,
@@ -49,6 +52,7 @@ export {
     encodeSystemHardwareGet,
     encodeSystemPositionGet,
     encodeSystemPositionSet,
+    encodeSystemRuntimeGet,
     encodeSystemTimeGet,
     encodeSystemTimeSet
 } from './codecs/system';
@@ -59,6 +63,7 @@ export type {
     SystemFirmwareState,
     SystemHardwareState,
     SystemPositionState,
+    SystemRuntimeState,
     SystemTimeRule,
     SystemTimeSetOptions,
     SystemTimeState

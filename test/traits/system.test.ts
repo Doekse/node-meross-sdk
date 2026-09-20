@@ -6,6 +6,7 @@ import {
     SYSTEM_ALL_NAMESPACE,
     SYSTEM_CLOCK_NAMESPACE,
     SYSTEM_FIRMWARE_NAMESPACE,
+    SYSTEM_RUNTIME_NAMESPACE,
     SYSTEM_TIME_NAMESPACE,
     encodeMessage,
     type MerossMessage
@@ -50,6 +51,21 @@ function pushMessage(namespace: string, payload: Record<string, unknown>): Meros
         from: `/appliance/${UUID}/publish`,
         uuid: UUID,
         payload
+    });
+}
+
+/**
+ * Poller delivers Runtime via GETACK; DeviceRuntime.handlePush routes both
+ * GETACK and PUSH through the same trait handler.
+ */
+function runtimeGetAck(runtime: Record<string, unknown>): MerossMessage {
+    return encodeMessage({
+        namespace: SYSTEM_RUNTIME_NAMESPACE,
+        method: 'GETACK',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload: { runtime }
     });
 }
 
@@ -167,6 +183,62 @@ describe('SystemTrait', () => {
 
         assert.equal(changes.length, 1);
         assert.equal(trait.getFirmware()?.version, '7.4.0');
+    });
+
+    it('Runtime GETACK fills getRuntime and drops iotStatus', () => {
+        const { trait, changes } = createHarness();
+        trait.handlePush(runtimeGetAck({
+            signal: 50,
+            netType: 2,
+            iotStatus: 2,
+            ssid: 'test'
+        }));
+
+        const runtime = trait.getRuntime();
+        assert.deepEqual(runtime, {
+            signal: 50,
+            netType: 2,
+            ssid: 'test'
+        });
+        assert.equal('iotStatus' in (runtime ?? {}), false);
+        assert.deepEqual(changes, [{
+            runtime: { signal: 50, netType: 2, ssid: 'test' }
+        }]);
+    });
+
+    it('does not emit change when Runtime GETACK repeats the same snapshot', () => {
+        const { trait, changes } = createHarness();
+        const payload = { signal: 50, netType: 1, ssid: 'home' };
+
+        trait.handlePush(runtimeGetAck(payload));
+        trait.handlePush(runtimeGetAck(payload));
+
+        assert.equal(changes.length, 1);
+        assert.deepEqual(trait.getRuntime(), payload);
+    });
+
+    it('emits a full Runtime replace when signal changes', () => {
+        const { trait, changes } = createHarness();
+        const first = { signal: 50, netType: 1, ssid: 'home' };
+        const next = { signal: 51, netType: 1, ssid: 'home' };
+
+        trait.handlePush(runtimeGetAck(first));
+        trait.handlePush(runtimeGetAck(next));
+
+        assert.equal(changes.length, 2);
+        assert.deepEqual(changes[1], { runtime: next });
+        assert.deepEqual(trait.getRuntime(), next);
+    });
+
+    it('clears Runtime ssid when a later GETACK omits it', () => {
+        const { trait, changes } = createHarness();
+        trait.handlePush(runtimeGetAck({ signal: 50, ssid: 'home' }));
+        trait.handlePush(runtimeGetAck({ signal: 50 }));
+
+        const runtime = trait.getRuntime();
+        assert.equal(changes.length, 2);
+        assert.deepEqual(runtime, { signal: 50 });
+        assert.equal('ssid' in (runtime ?? {}), false);
     });
 
 });

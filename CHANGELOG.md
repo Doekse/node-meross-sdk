@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Runtime Wi-Fi signal % on `system.getRuntime()` (`SystemRuntimeState` on the public barrel). Debug `rssi` / `network.signal` are unchanged.
 - Optional `SessionOptions.logger` and `SessionOptions.logLevel` (`'error' | 'debug' | 'trace'`) for MQTT / LAN / cloud traffic (`LogRecord` / `LogLevel` on the public barrel). Default floor is `debug` (one-line summaries, no bodies); set `logLevel: 'trace'` for `data`. The SDK never reads env. Cloud records redact `password` / `token` / `key` / `mfaCode`. Session events stay on the EventEmitter.
 
 ### Changed

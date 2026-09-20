@@ -3,7 +3,12 @@ import { describe, it, type TestContext } from 'node:test';
 
 import { DeviceRuntime, type DeviceRuntimeOptions } from '../../src/device/runtime';
 import { Endpoint, type Protocol } from '../../src/endpoint';
-import { encodeMessage, type MerossMessage, type MerossPayload } from '../../src/protocol';
+import {
+    SYSTEM_RUNTIME_NAMESPACE,
+    encodeMessage,
+    type MerossMessage,
+    type MerossPayload
+} from '../../src/protocol';
 import { SystemTrait } from '../../src/traits/system';
 import type { GetCommand } from '../../src/transport/router';
 
@@ -38,6 +43,17 @@ function systemAllGetAck(payload?: MerossPayload, uuid = UUID): MerossMessage {
                 digest: {}
             }
         }
+    });
+}
+
+function runtimeGetAck(runtime: Record<string, unknown>): MerossMessage {
+    return encodeMessage({
+        namespace: SYSTEM_RUNTIME_NAMESPACE,
+        method: 'GETACK',
+        key: KEY,
+        from: `/appliance/${UUID}/publish`,
+        uuid: UUID,
+        payload: { runtime }
     });
 }
 
@@ -263,6 +279,25 @@ describe('DeviceRuntime', () => {
         assert.equal(warnings.length, 0);
         runtime.handlePush(bad);
         assertSystemAllWarning(warnings);
+    });
+
+    it('routes System.Runtime GETACK through SystemDescriptor.push to getRuntime', () => {
+        const { runtime, endpoint } = createSystemRuntime();
+        runtime.handlePush(runtimeGetAck({
+            signal: 50,
+            netType: 2,
+            iotStatus: 2,
+            ssid: 'test'
+        }));
+
+        const snapshot = endpoint.system?.getRuntime();
+        assert.deepEqual(snapshot, {
+            signal: 50,
+            netType: 2,
+            ssid: 'test'
+        });
+        assert.equal('iotStatus' in (snapshot ?? {}), false);
+        runtime.stop();
     });
 
     it('applies packed All GETACK to availability from handlePush', async (t: TestContext) => {
