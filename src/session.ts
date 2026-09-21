@@ -136,8 +136,16 @@ export class Session extends EventEmitter<SessionEvents> {
     /** Monotonic so devices enrolled by a later sync keep spreading their ticks. */
     private startedDevices = 0;
     private router: TransportRouter | undefined;
-    /** In-flight {@link Session.sync}, shared by overlapping callers. */
+    /**
+     * In-flight {@link Session.sync} drain. Overlapping callers replace
+     * {@link pendingSyncOptions} with their options and await this promise.
+     */
     private syncing: Promise<void> | undefined;
+    /**
+     * Latest overlapping `sync` options. One slot so concurrent callers cannot
+     * start a second enroll pass; never a session-wide filtered mode.
+     */
+    private pendingSyncOptions: SyncOptions | undefined;
     /** Session-owned LAN AES memo; fingerprint misses when key or MAC changes. */
     private readonly lanEncryptionKeys = new LanEncryptionKeys();
 
@@ -194,15 +202,21 @@ export class Session extends EventEmitter<SessionEvents> {
      * Opens MQTT and LAN, then enrolls devices into {@link Inventory}.
      * Transports stay internal; hosts only see inventory after this.
      * A failed attempt clears the router so a later call can retry.
+     *
+     * When already connected, a bare call is a no-op; passing `uuids`
+     * (including `[]`) re-runs {@link sync} so hosts can tighten the set.
      */
-    async connect(): Promise<void> {
+    async connect(options: SyncOptions = {}): Promise<void> {
         if (this.router) {
+            if ('uuids' in options) {
+                await this.sync(options);
+            }
             return;
         }
         this.router = this.createRouter();
         try {
             await this.router.connect();
-            await this.sync();
+            await this.sync(options);
         } catch (error) {
             await this.teardownRouter();
             throw error;
@@ -247,38 +261,74 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Reconciles inventory with the cloud account: devices that left are dropped,
-     * new online devices are enrolled, and known devices are re-read so a firmware
-     * update that changed abilities takes effect. Unreachable devices are skipped
-     * so one timeout cannot block the rest; each skip is reported on `warning`.
+     * Reconciles inventory with the cloud account: devices that left (or are
+     * outside an explicit `uuids` allowlist) are dropped, new online devices
+     * are enrolled, and known devices are re-read so a firmware update that
+     * changed abilities takes effect. Unreachable devices are skipped so one
+     * timeout cannot block the rest; each skip is reported on `warning`.
      *
-     * Overlapping callers join the run already in flight rather than starting a
-     * second one, because two passes would interleave device removal with
-     * endpoint materialization and could drop a device the other just enrolled.
+     * Omit `uuids` to enroll every online cloud device. Pass `uuids: []` to
+     * enroll nothing. Overlapping callers share the drain already in flight
+     * and leave one follow-up with the latest options so two enroll passes
+     * never run at once.
      */
-    async sync(): Promise<void> {
+    async sync(options: SyncOptions = {}): Promise<void> {
         if (!this.router) {
             throw new MerossError('Session is not connected', 'NOT_CONNECTED');
         }
-        this.syncing ??= this.runSync().finally(() => {
+        if (this.syncing) {
+            this.pendingSyncOptions = options;
+            return this.syncing;
+        }
+        this.pendingSyncOptions = undefined;
+        this.syncing = this.drainSync(options).finally(() => {
             this.syncing = undefined;
+            this.pendingSyncOptions = undefined;
         });
         return this.syncing;
     }
 
-    private async runSync(): Promise<void> {
+    /**
+     * Overlapping callers must not start a second enroll pass; this loop
+     * applies the latest follow-up only after the active run.
+     */
+    private async drainSync(current: SyncOptions): Promise<void> {
+        for (;;) {
+            await this.runSync(current);
+            const followUp = this.pendingSyncOptions;
+            if (followUp === undefined) {
+                return;
+            }
+            this.pendingSyncOptions = undefined;
+            current = followUp;
+        }
+    }
+
+    /**
+     * Account (and allowlisted) devices stay in the graph even when offline;
+     * Ability / System.All only run for online rows.
+     */
+    private async runSync(options: SyncOptions): Promise<void> {
         const cloudDevices = await this.cloud.listDevices();
-        const listed = new Set(cloudDevices.map((cloudDevice) => cloudDevice.uuid));
+        const allowlist = 'uuids' in options ? new Set(options.uuids ?? []) : undefined;
+        const keepUuids = new Set<string>();
+        const wanted: CloudDevice[] = [];
+        for (const cloudDevice of cloudDevices) {
+            if (allowlist !== undefined && !allowlist.has(cloudDevice.uuid)) {
+                continue;
+            }
+            keepUuids.add(cloudDevice.uuid);
+            if (cloudDevice.onlineStatus === 1) {
+                wanted.push(cloudDevice);
+            }
+        }
         for (const uuid of this.graph.uuids()) {
-            if (!listed.has(uuid)) {
+            if (!keepUuids.has(uuid)) {
                 this.stopDevice(uuid);
                 this.graph.remove(uuid);
             }
         }
-
-        // Offline devices answer neither Ability nor System.All; a later sync picks them up.
-        const online = cloudDevices.filter((cloudDevice) => cloudDevice.onlineStatus === 1);
-        this.materializeEndpoints(await this.enrollAll(online));
+        this.materializeEndpoints(await this.enrollAll(wanted));
     }
 
     /**

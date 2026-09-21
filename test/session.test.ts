@@ -885,16 +885,17 @@ describe('Session.sync', () => {
         await session.disconnect();
     });
 
-    it('joins overlapping callers to the run already in flight', async () => {
+    it('queues overlapping callers onto one drain with a latest follow-up', async () => {
         const { session, calls } = await loginConnected();
         const listedAfterConnect = calls.filter((call) => call.url.endsWith('/v1/Device/devList')).length;
 
         await Promise.all([session.sync(), session.sync()]);
 
-        // A second pass would re-list and could drop a device the first just enrolled.
+        // Concurrent runSync would interleave removal with enrollment.
+        // The second caller fills the follow-up slot, so the drain lists twice.
         assert.equal(
             calls.filter((call) => call.url.endsWith('/v1/Device/devList')).length,
-            listedAfterConnect + 1
+            listedAfterConnect + 2
         );
         assert.deepEqual(
             session.inventory.endpoints().map((row) => row.id),
