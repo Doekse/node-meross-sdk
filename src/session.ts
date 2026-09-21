@@ -74,6 +74,27 @@ export interface SessionOptions {
     logLevel?: LogLevel;
 }
 
+/**
+ * Allowlist for {@link Session.connect} / {@link Session.sync}.
+ * Physical uuids only — not inventory ids (`{uuid}:0`).
+ */
+export interface SyncOptions {
+    /** Omitted or `undefined` enrolls the whole online account; `[]` enrolls nothing. */
+    uuids?: readonly string[];
+}
+
+/**
+ * Physical devices on the account, not enrolled {@link Inventory} rows.
+ * `name`/`model` match InventoryRow; identity is `uuid` (inventory `id` is `{uuid}:0`).
+ */
+export type DeviceList = readonly {
+    uuid: string;
+    name: string;
+    model: string;
+    onlineStatus: number;
+    channels: readonly unknown[];
+}[];
+
 interface SessionEvents {
     connection: [connected: boolean];
     ratelimit: [uuid: string, dropped: number];
@@ -116,8 +137,23 @@ export class Session extends EventEmitter<SessionEvents> {
     /** Monotonic so devices enrolled by a later sync keep spreading their ticks. */
     private startedDevices = 0;
     private router: TransportRouter | undefined;
-    /** In-flight {@link Session.sync}, shared by overlapping callers. */
+    /**
+     * Handshake of the {@link Session.connect} that opened {@link router}.
+     * `router` is assigned before it settles, so a concurrent connect must
+     * await this rather than read a set `router` as "already connected" and
+     * enroll over a broker that is not up yet.
+     */
+    private connecting: Promise<void> | undefined;
+    /**
+     * In-flight {@link Session.sync} drain. Overlapping callers replace
+     * {@link pendingSyncOptions} with their options and await this promise.
+     */
     private syncing: Promise<void> | undefined;
+    /**
+     * Latest overlapping `sync` options. One slot so concurrent callers cannot
+     * start a second enroll pass; never a session-wide filtered mode.
+     */
+    private pendingSyncOptions: SyncOptions | undefined;
     /** Session-owned LAN AES memo; fingerprint misses when key or MAC changes. */
     private readonly lanEncryptionKeys = new LanEncryptionKeys();
 
@@ -174,15 +210,27 @@ export class Session extends EventEmitter<SessionEvents> {
      * Opens MQTT and LAN, then enrolls devices into {@link Inventory}.
      * Transports stay internal; hosts only see inventory after this.
      * A failed attempt clears the router so a later call can retry.
+     *
+     * Once the transports are open, a bare call is a no-op; passing `uuids`
+     * (including `[]`, but not `undefined`) re-runs {@link sync} so hosts can
+     * tighten the set.
      */
-    async connect(): Promise<void> {
+    async connect(options: SyncOptions = {}): Promise<void> {
         if (this.router) {
+            // Settled once connected, so this only waits for a first connect
+            // that is still mid-handshake.
+            await this.connecting;
+            if (options.uuids !== undefined) {
+                await this.sync(options);
+            }
             return;
         }
-        this.router = this.createRouter();
+        const router = this.createRouter();
+        this.router = router;
+        this.connecting = router.connect();
         try {
-            await this.router.connect();
-            await this.sync();
+            await this.connecting;
+            await this.sync(options);
         } catch (error) {
             await this.teardownRouter();
             throw error;
@@ -212,38 +260,93 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Reconciles inventory with the cloud account: devices that left are dropped,
-     * new online devices are enrolled, and known devices are re-read so a firmware
-     * update that changed abilities takes effect. Unreachable devices are skipped
-     * so one timeout cannot block the rest; each skip is reported on `warning`.
-     *
-     * Overlapping callers join the run already in flight rather than starting a
-     * second one, because two passes would interleave device removal with
-     * endpoint materialization and could drop a device the other just enrolled.
+     * HTTP `devList` only — no MQTT, Ability, or inventory mutation.
+     * Hosts use this for pairing UIs; {@link inventory} is the enrolled set.
      */
-    async sync(): Promise<void> {
+    async listDevices(): Promise<DeviceList> {
+        const cloudDevices = await this.cloud.listDevices();
+        return cloudDevices.map((cloudDevice) => ({
+            uuid: cloudDevice.uuid,
+            name: cloudDevice.devName,
+            model: cloudDevice.deviceType,
+            onlineStatus: cloudDevice.onlineStatus,
+            channels: [...cloudDevice.channels]
+        }));
+    }
+
+    /**
+     * Reconciles inventory with the cloud account: devices that left (or are
+     * outside an explicit `uuids` allowlist) are dropped, new online devices
+     * are enrolled, and known devices are re-read so a firmware update that
+     * changed abilities takes effect. Unreachable devices are skipped so one
+     * timeout cannot block the rest; each skip is reported on `warning`.
+     *
+     * Omit `uuids`, or pass it as `undefined`, to enroll every online cloud
+     * device. Pass `uuids: []` to enroll nothing. Overlapping callers share the
+     * drain already in flight and leave one follow-up with the latest options
+     * so two enroll passes never run at once.
+     */
+    async sync(options: SyncOptions = {}): Promise<void> {
         if (!this.router) {
             throw new MerossError('Session is not connected', 'NOT_CONNECTED');
         }
-        this.syncing ??= this.runSync().finally(() => {
-            this.syncing = undefined;
-        });
+        if (this.syncing) {
+            this.pendingSyncOptions = options;
+            return this.syncing;
+        }
+        this.syncing = this.drainSync(options);
         return this.syncing;
     }
 
-    private async runSync(): Promise<void> {
+    /**
+     * Overlapping callers must not start a second enroll pass; this loop
+     * applies the latest follow-up only after the active run. Both slots are
+     * cleared inside the drain rather than from a `.finally()` on it, so a
+     * caller cannot join a drain that has already stopped reading follow-ups.
+     */
+    private async drainSync(current: SyncOptions): Promise<void> {
+        this.pendingSyncOptions = undefined;
+        try {
+            for (;;) {
+                await this.runSync(current);
+                const followUp = this.pendingSyncOptions;
+                if (followUp === undefined) {
+                    return;
+                }
+                this.pendingSyncOptions = undefined;
+                current = followUp;
+            }
+        } finally {
+            this.syncing = undefined;
+            this.pendingSyncOptions = undefined;
+        }
+    }
+
+    /**
+     * Account (and allowlisted) devices stay in the graph even when offline;
+     * Ability / System.All only run for online rows.
+     */
+    private async runSync(options: SyncOptions): Promise<void> {
         const cloudDevices = await this.cloud.listDevices();
-        const listed = new Set(cloudDevices.map((cloudDevice) => cloudDevice.uuid));
+        const allowlist = options.uuids === undefined ? undefined : new Set(options.uuids);
+        const keepUuids = new Set<string>();
+        const wanted: CloudDevice[] = [];
+        for (const cloudDevice of cloudDevices) {
+            if (allowlist !== undefined && !allowlist.has(cloudDevice.uuid)) {
+                continue;
+            }
+            keepUuids.add(cloudDevice.uuid);
+            if (cloudDevice.onlineStatus === 1) {
+                wanted.push(cloudDevice);
+            }
+        }
         for (const uuid of this.graph.uuids()) {
-            if (!listed.has(uuid)) {
+            if (!keepUuids.has(uuid)) {
                 this.stopDevice(uuid);
                 this.graph.remove(uuid);
             }
         }
-
-        // Offline devices answer neither Ability nor System.All; a later sync picks them up.
-        const online = cloudDevices.filter((cloudDevice) => cloudDevice.onlineStatus === 1);
-        this.materializeEndpoints(await this.enrollAll(online));
+        this.materializeEndpoints(await this.enrollAll(wanted));
     }
 
     /**
@@ -324,6 +427,7 @@ export class Session extends EventEmitter<SessionEvents> {
     private async teardownRouter(): Promise<void> {
         const router = this.router;
         this.router = undefined;
+        this.connecting = undefined;
         await router?.disconnect();
     }
 

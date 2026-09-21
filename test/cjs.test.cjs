@@ -14,6 +14,7 @@ describe('CJS public surface', () => {
         assert.equal(typeof sdk.Session.prototype.disconnect, 'function');
         assert.equal(typeof sdk.Session.prototype.endpoint, 'function');
         assert.equal(typeof sdk.Session.prototype.getToken, 'function');
+        assert.equal(typeof sdk.Session.prototype.listDevices, 'function');
         assert.equal(typeof sdk.Session.prototype.sync, 'function');
         assert.equal(typeof sdk.Endpoint, 'function');
         assert.equal(typeof sdk.Inventory, 'function');
@@ -39,6 +40,7 @@ describe('CJS public surface', () => {
         assert.equal(sdk.EcdheHandshake, undefined);
         assert.equal(sdk.deriveEncryptionKey, undefined);
         assert.equal(sdk.CloudClient, undefined);
+        assert.equal(sdk.CloudDevice, undefined);
         assert.equal(sdk.MqttTransport, undefined);
         assert.equal(sdk.connectMqtt, undefined);
         assert.equal(sdk.defaultConnect, undefined);
