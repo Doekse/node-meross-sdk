@@ -79,6 +79,7 @@ export interface SessionOptions {
  * Physical uuids only — not inventory ids (`{uuid}:0`).
  */
 export interface SyncOptions {
+    /** Omitted or `undefined` enrolls the whole online account; `[]` enrolls nothing. */
     uuids?: readonly string[];
 }
 
@@ -136,6 +137,13 @@ export class Session extends EventEmitter<SessionEvents> {
     /** Monotonic so devices enrolled by a later sync keep spreading their ticks. */
     private startedDevices = 0;
     private router: TransportRouter | undefined;
+    /**
+     * Handshake of the {@link Session.connect} that opened {@link router}.
+     * `router` is assigned before it settles, so a concurrent connect must
+     * await this rather than read a set `router` as "already connected" and
+     * enroll over a broker that is not up yet.
+     */
+    private connecting: Promise<void> | undefined;
     /**
      * In-flight {@link Session.sync} drain. Overlapping callers replace
      * {@link pendingSyncOptions} with their options and await this promise.
@@ -203,19 +211,25 @@ export class Session extends EventEmitter<SessionEvents> {
      * Transports stay internal; hosts only see inventory after this.
      * A failed attempt clears the router so a later call can retry.
      *
-     * When already connected, a bare call is a no-op; passing `uuids`
-     * (including `[]`) re-runs {@link sync} so hosts can tighten the set.
+     * Once the transports are open, a bare call is a no-op; passing `uuids`
+     * (including `[]`, but not `undefined`) re-runs {@link sync} so hosts can
+     * tighten the set.
      */
     async connect(options: SyncOptions = {}): Promise<void> {
         if (this.router) {
-            if ('uuids' in options) {
+            // Settled once connected, so this only waits for a first connect
+            // that is still mid-handshake.
+            await this.connecting;
+            if (options.uuids !== undefined) {
                 await this.sync(options);
             }
             return;
         }
-        this.router = this.createRouter();
+        const router = this.createRouter();
+        this.router = router;
+        this.connecting = router.connect();
         try {
-            await this.router.connect();
+            await this.connecting;
             await this.sync(options);
         } catch (error) {
             await this.teardownRouter();
@@ -267,10 +281,10 @@ export class Session extends EventEmitter<SessionEvents> {
      * changed abilities takes effect. Unreachable devices are skipped so one
      * timeout cannot block the rest; each skip is reported on `warning`.
      *
-     * Omit `uuids` to enroll every online cloud device. Pass `uuids: []` to
-     * enroll nothing. Overlapping callers share the drain already in flight
-     * and leave one follow-up with the latest options so two enroll passes
-     * never run at once.
+     * Omit `uuids`, or pass it as `undefined`, to enroll every online cloud
+     * device. Pass `uuids: []` to enroll nothing. Overlapping callers share the
+     * drain already in flight and leave one follow-up with the latest options
+     * so two enroll passes never run at once.
      */
     async sync(options: SyncOptions = {}): Promise<void> {
         if (!this.router) {
@@ -280,27 +294,31 @@ export class Session extends EventEmitter<SessionEvents> {
             this.pendingSyncOptions = options;
             return this.syncing;
         }
-        this.pendingSyncOptions = undefined;
-        this.syncing = this.drainSync(options).finally(() => {
-            this.syncing = undefined;
-            this.pendingSyncOptions = undefined;
-        });
+        this.syncing = this.drainSync(options);
         return this.syncing;
     }
 
     /**
      * Overlapping callers must not start a second enroll pass; this loop
-     * applies the latest follow-up only after the active run.
+     * applies the latest follow-up only after the active run. Both slots are
+     * cleared inside the drain rather than from a `.finally()` on it, so a
+     * caller cannot join a drain that has already stopped reading follow-ups.
      */
     private async drainSync(current: SyncOptions): Promise<void> {
-        for (;;) {
-            await this.runSync(current);
-            const followUp = this.pendingSyncOptions;
-            if (followUp === undefined) {
-                return;
+        this.pendingSyncOptions = undefined;
+        try {
+            for (;;) {
+                await this.runSync(current);
+                const followUp = this.pendingSyncOptions;
+                if (followUp === undefined) {
+                    return;
+                }
+                this.pendingSyncOptions = undefined;
+                current = followUp;
             }
+        } finally {
+            this.syncing = undefined;
             this.pendingSyncOptions = undefined;
-            current = followUp;
         }
     }
 
@@ -310,7 +328,7 @@ export class Session extends EventEmitter<SessionEvents> {
      */
     private async runSync(options: SyncOptions): Promise<void> {
         const cloudDevices = await this.cloud.listDevices();
-        const allowlist = 'uuids' in options ? new Set(options.uuids ?? []) : undefined;
+        const allowlist = options.uuids === undefined ? undefined : new Set(options.uuids);
         const keepUuids = new Set<string>();
         const wanted: CloudDevice[] = [];
         for (const cloudDevice of cloudDevices) {
@@ -409,6 +427,7 @@ export class Session extends EventEmitter<SessionEvents> {
     private async teardownRouter(): Promise<void> {
         const router = this.router;
         this.router = undefined;
+        this.connecting = undefined;
         await router?.disconnect();
     }
 

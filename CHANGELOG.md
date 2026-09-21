@@ -11,8 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Runtime Wi-Fi signal % on `system.getRuntime()` (`SystemRuntimeState` on the public barrel). Debug `rssi` / `network.signal` are unchanged.
 - Optional `SessionOptions.logger` and `SessionOptions.logLevel` (`'error' | 'debug' | 'trace'`) for MQTT / LAN / cloud traffic (`LogRecord` / `LogLevel` on the public barrel). Default floor is `debug` (one-line summaries, no bodies); set `logLevel: 'trace'` for `data`. The SDK never reads env. Cloud records redact `password` / `token` / `key` / `mfaCode`. Session events stay on the EventEmitter.
+- `Session.listDevices()` returns the account's physical devices over HTTP `devList` only — no MQTT, no Ability / System.All, no `inventory` mutation (`DeviceList` on the public barrel). Pairing UIs use this; runtime still uses inventory after `connect` / `sync`.
 
 ### Changed
+
+- `connect()` and `sync()` accept `SyncOptions` (`SyncOptions` on the public barrel) so a host enrolls only the uuids it passes. Omitted or `undefined` `uuids` still enrolls every online cloud device, `[]` enrolls nothing, and devices outside the list are stopped and dropped. Physical uuids only, not inventory ids; there is no session-wide filtered mode, so hosts must pass the full list every time. An already-connected `connect({ uuids })` re-runs `sync`; a bare one is still a no-op.
+- A `connect()` that arrives while another is still opening transports joins that attempt instead of enrolling over a router that is assigned but not yet connected, which previously failed every device with `MQTT_NOT_CONNECTED` and reported each as a session `warning`.
 
 - MQTT loads mqtt.js only inside `MqttTransport` on a real broker connect, and opens the socket with Node TLS instead of `mqtt.connect()`, so unused `ws` / `socks` stay unloaded. Injected `SessionOptions.mqttConnect` is unchanged. No host-visible API or behavior change.
 - MQTT inbound frames convert to UTF-8 only when a logger needs the body (`trace` traffic or a malformed-payload error). Decode reuses that string when it already ran. No host-visible API or behavior change.

@@ -1113,6 +1113,71 @@ describe('Session SyncOptions allowlist', () => {
         await session.disconnect();
     });
 
+    it('treats uuids undefined as omitted, not as an empty allowlist', async () => {
+        const { session, calls } = await loginConnected({
+            devices: [DEVICE_ROW, LAMP_ROW],
+            connect: { uuids: undefined }
+        });
+        assert.equal(session.inventory.endpoints().length, 2);
+        const listedAfterConnect = cloudCallCount(calls, '/v1/Device/devList');
+
+        // A host holding `string[] | undefined` must not empty its own account.
+        await session.sync({ uuids: undefined });
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id).sort(),
+            [`${LAMP_UUID}:0`, `${UUID}:0`].sort()
+        );
+
+        await session.connect({ uuids: undefined });
+        assert.equal(
+            cloudCallCount(calls, '/v1/Device/devList'),
+            listedAfterConnect + 1
+        );
+        assert.equal(session.inventory.endpoints().length, 2);
+        await session.disconnect();
+    });
+
+    it('a connect during the handshake joins it instead of enrolling over a half-open broker', async () => {
+        const { fetchImpl } = createCloudFetch([DEVICE_ROW, LAMP_ROW]);
+        let openBroker!: () => void;
+        const handshake = new Promise<void>((resolve) => {
+            openBroker = resolve;
+        });
+        const clientRef: { current?: EnrollingMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: () => {
+                    const client = new EnrollingMqttClient();
+                    clientRef.current = client;
+                    void handshake.then(() => client.emit('connect'));
+                    return client;
+                }
+            }
+        );
+        const warnings: Error[] = [];
+        session.on('warning', (error) => warnings.push(error));
+
+        const opening = session.connect();
+        await Promise.resolve();
+        const joining = session.connect({ uuids: [UUID] });
+        openBroker();
+        await Promise.all([opening, joining]);
+        await waitMacrotask();
+
+        assert.deepEqual(warnings, []);
+        // Joining the handshake puts the later options in the follow-up slot.
+        // Racing ahead of it instead lets the opener's bare sync land last and
+        // re-enroll the whole account.
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            [`${UUID}:0`]
+        );
+        assert.ok(abilityAllGets(clientRef.current!, UUID).length >= 2);
+        await session.disconnect();
+    });
+
     it('bare sync after an allowlisted sync enrolls the full online account again', async () => {
         const { session } = await loginConnected({
             devices: [DEVICE_ROW, LAMP_ROW],

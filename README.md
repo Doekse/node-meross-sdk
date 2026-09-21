@@ -162,21 +162,23 @@ for (const row of account) {
 
 `connect()` opens transports and enrolls devices into inventory.
 
-`sync()` reconciles again. Devices that left, or that fall outside an explicit allowlist, are dropped. Devices that came online are added. Known devices are re-read so a firmware update that changed abilities takes effect. Offline or unreachable devices are skipped so one timeout cannot block the rest, and each skip is reported on the session `warning` event. A stale token still rejects `sync()` itself.
+`sync()` reconciles again. Devices that left, or that fall outside an explicit allowlist, are dropped. Devices that came online are added. Known devices are re-read so a firmware update that changed abilities takes effect. Offline devices (`onlineStatus !== 1`) are skipped silently; a device that is online but unreachable is skipped so one timeout cannot block the rest, and that skip is reported on the session `warning` event. A stale token still rejects `sync()` itself.
 
 Both accept optional `SyncOptions`:
 
 | `uuids` | Effect |
 | --- | --- |
-| omitted | Enroll every online cloud device (default for scripts). |
+| omitted or `undefined` | Enroll every online cloud device (default for scripts). |
 | `[]` | `connect` opens transports; `sync` reconciles. Enroll nothing, and stop anything not in the set. |
 | `[A, …]` | Enroll only those physical uuids (still skip `onlineStatus !== 1`). |
+
+`undefined` is the same as omitting the key, so a host holding `string[] | undefined` cannot empty its account by passing it through.
 
 Pass physical uuids only — not inventory ids (`{uuid}:0`). Hub children are not independently allowlisted: including the hub uuid enrolls the parent and its digest children as usual.
 
 Hosts that track a paired set must pass the **full** physical-uuid list on every `connect` / `sync`. There is no session-wide filtered mode, so a later bare `sync()` enrolls the whole account again.
 
-Already-connected bare `connect()` stays a no-op. `connect({ uuids })`, including `[]`, re-runs `sync` so a host can tighten the set. Overlapping `sync()` calls share one drain and keep a single latest follow-up, so two enroll passes never run at once.
+Already-connected bare `connect()` stays a no-op. `connect({ uuids })`, including `[]`, re-runs `sync` so a host can tighten the set. A `connect()` that arrives while another is still opening transports joins that attempt instead of enrolling over a broker that is not up yet. Overlapping `sync()` calls share one drain and keep a single latest follow-up, so two enroll passes never run at once.
 
 ```javascript
 await session.connect({ uuids: pairedUuids });
@@ -332,8 +334,8 @@ Catch by class. Each error has a string `code`. Trait commands such as `setOn`, 
 | `TransportError` | MQTT/LAN connect or publish failure after failover (`MQTT_RATE_LIMITED`, …)                                                             |
 | `ProtocolError`  | Malformed envelope, `SIGNATURE_ERROR`, or a LAN body that is not a pending reply                                                          |
 | `MerossError`    | `NOT_CONNECTED`, `ENDPOINT_NOT_FOUND`, `TIMER_NOT_FOUND`, `TRIGGER_NOT_FOUND`, `NAMESPACE_NOT_ADVERTISED`, and other operational failures |
-| `AuthError`      | Login, `sync()`, or `reauthenticate()` — bad credentials, MFA, or an incomplete / expired token                                           |
-| `CloudError`     | Login, `sync()`, or `reauthenticate()` — cloud HTTP failure, region redirect exhaustion, or a non-auth `apiStatus`                        |
+| `AuthError`      | Login, `listDevices()`, `sync()`, or `reauthenticate()` — bad credentials, MFA, or an incomplete / expired token                          |
+| `CloudError`     | Login, `listDevices()`, `sync()`, or `reauthenticate()` — cloud HTTP failure, region redirect exhaustion, or a non-auth `apiStatus`       |
 
 
 ```javascript
