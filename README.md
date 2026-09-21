@@ -116,6 +116,7 @@ import { Session } from 'node-meross-sdk';
 | Piece         | Role                                                                                                                                 |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | **Session**   | Cloud credentials, live inventory, and connect/disconnect. Persist `[TokenData](#reuse-a-token)` and rebuild with `Session.restore`. |
+| **DeviceList** | Account rows from HTTP `devList` via `listDevices()` (`uuid`, `name`, `model`, `onlineStatus`, `channels`). Not enrolled; no MQTT. |
 | **Inventory** | User-visible rows after enrollment (`id`, `name`, `model`, `classHint`, `traits`, optional `parentId`). Live availability is on Endpoint. |
 | **Endpoint**  | One device you would show a user. Traits live here. Channel and subdevice id are bound at enrollment; they are not method arguments. |
 | **Trait**     | Capability on that endpoint (`switch`, `light`, `energy`, ...). Absent traits are `undefined`; check before calling.                   |
@@ -146,12 +147,40 @@ await restored.connect();
 
 
 
-### Refresh inventory
+### List cloud devices without enrolling
 
-`connect()` lists the cloud account and enrolls reachable devices. `sync()` reconciles that list again: devices that left the account are dropped, devices that came online are added, and known devices are re-read so a firmware update that changed abilities takes effect. Offline or unreachable devices are skipped so one timeout cannot block the rest, and each skip is reported on the session `warning` event. A stale token still rejects `sync()` itself. Overlapping `sync()` calls share the run already in flight rather than starting a second pass.
+`listDevices()` is HTTP `devList` only. Each `DeviceList` row has a physical `uuid`, plus `name` and `model` (the same field names as inventory), `onlineStatus`, and `channels`. It does not open MQTT, run Ability / System.All, or mutate `session.inventory`. Pairing UIs use this; runtime uses inventory after `connect` / `sync`.
 
 ```javascript
-await session.sync();
+const account = await session.listDevices();
+for (const row of account) {
+  console.log(row.uuid, row.name, row.model, row.onlineStatus);
+}
+```
+
+### Refresh inventory
+
+`connect()` opens transports and enrolls devices into inventory.
+
+`sync()` reconciles again. Devices that left, or that fall outside an explicit allowlist, are dropped. Devices that came online are added. Known devices are re-read so a firmware update that changed abilities takes effect. Offline or unreachable devices are skipped so one timeout cannot block the rest, and each skip is reported on the session `warning` event. A stale token still rejects `sync()` itself.
+
+Both accept optional `SyncOptions`:
+
+| `uuids` | Effect |
+| --- | --- |
+| omitted | Enroll every online cloud device (default for scripts). |
+| `[]` | `connect` opens transports; `sync` reconciles. Enroll nothing, and stop anything not in the set. |
+| `[A, …]` | Enroll only those physical uuids (still skip `onlineStatus !== 1`). |
+
+Pass physical uuids only — not inventory ids (`{uuid}:0`). Hub children are not independently allowlisted: including the hub uuid enrolls the parent and its digest children as usual.
+
+Hosts that track a paired set must pass the **full** physical-uuid list on every `connect` / `sync`. There is no session-wide filtered mode, so a later bare `sync()` enrolls the whole account again.
+
+Already-connected bare `connect()` stays a no-op. `connect({ uuids })`, including `[]`, re-runs `sync` so a host can tighten the set. Overlapping `sync()` calls share one drain and keep a single latest follow-up, so two enroll passes never run at once.
+
+```javascript
+await session.connect({ uuids: pairedUuids });
+await session.sync({ uuids: pairedUuids });
 ```
 
 A re-read reuses the existing `Endpoint` when the device reports the same abilities and channels, so listeners survive. Only a changed shape replaces it, which shows up as a new object from `session.endpoint(id)`.
