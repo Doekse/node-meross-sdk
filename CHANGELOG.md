@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Packed `Control.Multiple` System.All GETACK now reaches DeviceAvailability (`innerIp`, `clearMqtt` on status !== 1, hub digest children). Inbound Multiple is not System.All; poller onAck already delivered the unpacked payload to SystemTrait.
 - Cloud and injected LAN `fetch` cancel or read the response body before throwing on non-200 HTTP status so connections return to the pool. Same errors and status handling; no host-visible API change.
 - MQTT `disconnect` and a failed first handshake no longer hang if mqtt.js never invokes `end()`. The client is still ended; a late callback is ignored. No host-visible API change.
+- Idle LAN keep-alives drop when a device is forgotten or the next POST uses a new host, without a process-wide idle timeout or aborting in-flight POSTs. No host-visible API change.
 
 ## [0.2.0-alpha] - 2026-09-17
 

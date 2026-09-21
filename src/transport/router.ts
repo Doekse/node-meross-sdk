@@ -81,12 +81,14 @@ export class TransportRouter {
     }
 
     /**
-     * Device left or is being rebuilt. HTTP-down and MQTT per-uuid state
-     * from the previous runtime must not leak into a later enrollment.
+     * Device left or is being rebuilt. HTTP-down, MQTT per-uuid state, and
+     * idle LAN keep-alives from the previous runtime must not leak into a
+     * later enrollment.
      */
     forget(uuid: string): void {
         this.httpDown.delete(uuid);
         this.mqtt.forget(uuid);
+        this.lan.forget(uuid);
     }
 
     /**

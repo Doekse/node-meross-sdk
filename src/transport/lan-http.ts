@@ -65,6 +65,8 @@ export class LanHttpTransport {
     private readonly agent?: http.Agent;
     /** Tail of each uuid's POST chain, not a backlog: one entry per device. */
     private readonly queues = new Map<string, Promise<void>>();
+    /** Last POST host per uuid, so {@link forget} and a later IP can drop unused keep-alives. */
+    private readonly lastIp = new Map<string, string>();
 
     constructor(options: LanHttpTransportOptions) {
         this.key = options.key;
@@ -87,7 +89,28 @@ export class LanHttpTransport {
      * instances are a no-op.
      */
     disconnect(): void {
+        this.lastIp.clear();
         this.agent?.destroy();
+    }
+
+    /**
+     * Device left or is being rebuilt. Idle keep-alives for its last host go
+     * with it; in-flight POSTs and the per-uuid queue stay.
+     */
+    forget(uuid: string): void {
+        const ip = this.lastIp.get(uuid);
+        this.lastIp.delete(uuid);
+        if (!this.agent || !ip) {
+            return;
+        }
+        const { hostname, port } = new URL(`http://${ip}/config`);
+        const idle = this.agent.freeSockets[`${hostname}:${port || '80'}:`];
+        if (!idle) {
+            return;
+        }
+        for (const socket of idle) {
+            socket.destroy();
+        }
     }
 
     async request(options: LanHttpRequestOptions): Promise<MerossMessage> {
@@ -135,6 +158,11 @@ export class LanHttpTransport {
         }, DEFAULT_LAN_TIMEOUT_MS);
         const reply = this.dispatcher.pending.register(messageId, DEFAULT_LAN_TIMEOUT_MS);
         const target = `http://${options.ip}/config`;
+        const previous = this.lastIp.get(options.uuid);
+        if (previous && previous !== options.ip) {
+            this.forget(options.uuid);
+        }
+        this.lastIp.set(options.uuid, options.ip);
 
         const plaintext = JSON.stringify(message);
         emitTraffic(this.logger, this.logLevel, {

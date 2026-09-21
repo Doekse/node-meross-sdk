@@ -561,6 +561,50 @@ describe('LanHttpTransport', () => {
         }
     });
 
+    it('drops idle keep-alive sockets for a forgotten uuid', async () => {
+        let connections = 0;
+        const server = createHttpServer((req, res) => {
+            const chunks: Buffer[] = [];
+            req.on('data', (chunk: Buffer) => {
+                chunks.push(chunk);
+            });
+            req.on('end', () => {
+                const sent = decodeMessage(Buffer.concat(chunks).toString(), KEY);
+                const body = JSON.stringify(ackFor(sent, 'GETACK'));
+                res.writeHead(200, {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(body)
+                });
+                res.end(body);
+            });
+        });
+        server.on('connection', () => {
+            connections++;
+        });
+        await new Promise<void>((resolve) => {
+            server.listen(0, '127.0.0.1', resolve);
+        });
+        const transport = new LanHttpTransport({ key: KEY, from: FROM });
+        const request = {
+            uuid: UUID,
+            ip: `127.0.0.1:${(server.address() as AddressInfo).port}`,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        };
+
+        try {
+            await transport.request(request);
+            assert.equal(connections, 1);
+
+            transport.forget(UUID);
+            await transport.request(request);
+            assert.equal(connections, 2);
+        } finally {
+            transport.disconnect();
+            server.close();
+        }
+    });
+
     it('decrypts an encrypted GETACK on the default HTTP client', async () => {
         const server = createHttpServer((req, res) => {
             const chunks: Buffer[] = [];
