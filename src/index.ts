@@ -12,7 +12,7 @@ export {
     ProtocolError
 } from './errors';
 export { Session } from './session';
-export type { LoginOptions, TokenData, SessionOptions } from './session';
+export type { LoginOptions, TokenData, SessionOptions, SyncOptions, DeviceList } from './session';
 export type {
     LogRecord,
     LogLevel,

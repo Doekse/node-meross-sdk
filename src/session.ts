@@ -74,6 +74,26 @@ export interface SessionOptions {
     logLevel?: LogLevel;
 }
 
+/**
+ * Allowlist for {@link Session.connect} / {@link Session.sync}.
+ * Physical uuids only — not inventory ids (`{uuid}:0`).
+ */
+export interface SyncOptions {
+    uuids?: readonly string[];
+}
+
+/**
+ * Physical devices on the account, not enrolled {@link Inventory} rows.
+ * `name`/`model` match InventoryRow; identity is `uuid` (inventory `id` is `{uuid}:0`).
+ */
+export type DeviceList = readonly {
+    uuid: string;
+    name: string;
+    model: string;
+    onlineStatus: number;
+    channels: readonly unknown[];
+}[];
+
 interface SessionEvents {
     connection: [connected: boolean];
     ratelimit: [uuid: string, dropped: number];
@@ -209,6 +229,21 @@ export class Session extends EventEmitter<SessionEvents> {
         this.router = fresh;
         await stale.disconnect();
         return this.getToken();
+    }
+
+    /**
+     * HTTP `devList` only — no MQTT, Ability, or inventory mutation.
+     * Hosts use this for pairing UIs; {@link inventory} is the enrolled set.
+     */
+    async listDevices(): Promise<DeviceList> {
+        const cloudDevices = await this.cloud.listDevices();
+        return cloudDevices.map((cloudDevice) => ({
+            uuid: cloudDevice.uuid,
+            name: cloudDevice.devName,
+            model: cloudDevice.deviceType,
+            onlineStatus: cloudDevice.onlineStatus,
+            channels: [...cloudDevice.channels]
+        }));
     }
 
     /**
