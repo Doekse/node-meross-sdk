@@ -235,10 +235,20 @@ export class CloudClient {
             clearTimeout(timeoutId);
         }
 
-        if (response.status === 401) {
-            throw new AuthError('Unauthorized', 'TOKEN_EXPIRED');
-        }
         if (response.status !== 200) {
+            // Undici holds the socket until the body is consumed or cancelled.
+            try {
+                if (response.body) {
+                    await response.body.cancel();
+                } else {
+                    await response.arrayBuffer();
+                }
+            } catch {
+                // cancel/arrayBuffer throw when the connection is already closed.
+            }
+            if (response.status === 401) {
+                throw new AuthError('Unauthorized', 'TOKEN_EXPIRED');
+            }
             throw new CloudError(`HTTP ${response.status}: ${response.statusText}`, 'HTTP_ERROR', {
                 httpStatus: response.status
             });

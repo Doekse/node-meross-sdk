@@ -191,6 +191,16 @@ export class LanHttpTransport {
                 signal
             });
             if (response.status !== 200) {
+                // Undici holds the socket until the body is consumed or cancelled.
+                try {
+                    if (response.body) {
+                        await response.body.cancel();
+                    } else {
+                        await response.arrayBuffer();
+                    }
+                } catch {
+                    // cancel/arrayBuffer throw when the connection is already closed.
+                }
                 throw new TransportError(
                     `LAN HTTP ${response.status}: ${response.statusText}`,
                     'LAN_HTTP_ERROR'
