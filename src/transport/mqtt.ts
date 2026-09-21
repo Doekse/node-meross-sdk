@@ -19,6 +19,13 @@ const MQTT_PORT = 443;
 const CONNECT_TIMEOUT_MS = 30_000;
 
 /**
+ * Bound for mqtt.js `end()` so {@link MqttTransport.disconnect} and a failed
+ * first handshake cannot hang Session if the callback never fires.
+ * A timely mqtt.js callback still wins; a late one is ignored.
+ */
+const END_TIMEOUT_MS = 5_000;
+
+/**
  * Passed to mqtt.js so a dropped socket is retried on the same client.
  */
 export const MQTT_RECONNECT_PERIOD_MS = 1_000;
@@ -185,7 +192,26 @@ export class MqttTransport {
         if (!client) {
             return;
         }
-        await new Promise<void>((resolve) => client.end(true, resolve));
+        await new Promise<void>((resolve) => {
+            let settled = false;
+            const finish = (): void => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                clearTimeout(timer);
+                resolve();
+            };
+            // Do not unref: Homey (and similar hosts) can drop unref'd timers while
+            // the app process stays alive for other reasons, which would hang Session.
+            const timer = setTimeout(finish, END_TIMEOUT_MS);
+            try {
+                client.end(true, finish);
+            } catch {
+                // mqtt.js `end()` can throw; still settle so this await cannot reject.
+                finish();
+            }
+        });
     }
 
     async request(options: MqttRequestOptions): Promise<MerossMessage> {
@@ -326,7 +352,26 @@ export class MqttTransport {
             this.applyConnected(false);
             if (this.client === client) {
                 this.client = undefined;
-                await new Promise<void>((resolve) => client.end(true, resolve));
+                await new Promise<void>((resolve) => {
+                    let settled = false;
+                    const finish = (): void => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        clearTimeout(timer);
+                        resolve();
+                    };
+                    // Do not unref: Homey (and similar hosts) can drop unref'd timers while
+                    // the app process stays alive for other reasons, which would hang Session.
+                    const timer = setTimeout(finish, END_TIMEOUT_MS);
+                    try {
+                        client.end(true, finish);
+                    } catch {
+                        // mqtt.js `end()` can throw; still settle so this await cannot reject.
+                        finish();
+                    }
+                });
             }
             throw error;
         }

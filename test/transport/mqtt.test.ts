@@ -57,6 +57,12 @@ function createTransport(overrides: Partial<MqttTransportOptions> & { client?: F
     };
 }
 
+/** Drain nested microtasks so a timeout is armed before fake time advances. */
+async function flushMicrotasks(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
+}
+
 function ackFor(sent: MerossMessage, method: 'GETACK' | 'SETACK'): MerossMessage {
     return encodeMessage({
         namespace: sent.header.namespace,
@@ -126,6 +132,95 @@ describe('MqttTransport', () => {
             pending,
             (err: unknown) => err instanceof TransportError && err.code === 'MQTT_CONNECT_TIMEOUT'
         );
+    });
+
+    it('does not hang a failed handshake when mqtt.js never calls end', async (t) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        const client = new FakeMqttClient();
+        client.end = (_force, _callback) => {
+            client.ended = true;
+            client.emit('close');
+        };
+        const transport = new MqttTransport({
+            userId: USER_ID,
+            key: KEY,
+            mqttDomain: DOMAIN,
+            connect: () => client
+        });
+        const pending = transport.connect();
+        t.mock.timers.tick(30_000);
+        await flushMicrotasks();
+        assert.equal(client.ended, true);
+
+        t.mock.timers.tick(5_000);
+        await assert.rejects(
+            pending,
+            (err: unknown) => err instanceof TransportError && err.code === 'MQTT_CONNECT_TIMEOUT'
+        );
+    });
+
+    it('does not hang disconnect when mqtt.js never calls end', async (t) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        const client = new FakeMqttClient();
+        client.end = (_force, _callback) => {
+            client.ended = true;
+            client.emit('close');
+        };
+        const { transport } = createTransport({ client });
+        await transport.connect();
+
+        let settled = false;
+        const pending = transport.disconnect().then(() => {
+            settled = true;
+        });
+        await flushMicrotasks();
+        assert.equal(client.ended, true);
+        assert.equal(settled, false);
+
+        t.mock.timers.tick(4_999);
+        await flushMicrotasks();
+        assert.equal(settled, false);
+
+        t.mock.timers.tick(1);
+        await pending;
+        assert.equal(settled, true);
+    });
+
+    it('ignores a late end callback after disconnect has already settled', async (t) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        const client = new FakeMqttClient();
+        let endCallback: (() => void) | undefined;
+        client.end = (_force, callback) => {
+            client.ended = true;
+            client.emit('close');
+            endCallback = callback;
+        };
+        const { transport } = createTransport({ client });
+        await transport.connect();
+
+        const pending = transport.disconnect();
+        await flushMicrotasks();
+        t.mock.timers.tick(5_000);
+        await pending;
+        endCallback?.();
+    });
+
+    it('finishes disconnect as soon as mqtt.js calls end', async () => {
+        const client = new FakeMqttClient();
+        let endCallback: (() => void) | undefined;
+        client.end = (_force, callback) => {
+            client.ended = true;
+            client.emit('close');
+            endCallback = callback;
+        };
+        const { transport } = createTransport({ client });
+        await transport.connect();
+
+        const pending = transport.disconnect();
+        await flushMicrotasks();
+        endCallback?.();
+        await pending;
+        assert.equal(client.ended, true);
     });
 
     it('stays pending through a broker error until connect', async () => {

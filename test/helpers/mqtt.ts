@@ -48,6 +48,10 @@ export class FakeMqttClient extends EventEmitter implements MqttBrokerClient {
         }
     }
 
+    /**
+     * Always follows the mqtt.js callback contract so hung-end tests can
+     * replace this on the instance instead of adding fake knobs.
+     */
     end(_force: boolean, callback: () => void): void {
         this.ended = true;
         this.emit('close');
