@@ -19,6 +19,7 @@ import {
     LIGHT_NAMESPACE,
     SHUTTER_POSITION_NAMESPACE,
     SHUTTER_STATE_NAMESPACE,
+    SYSTEM_RUNTIME_NAMESPACE,
     THERMOSTAT_MODE_NAMESPACE,
     THERMOSTAT_MODEB_NAMESPACE,
     THERMOSTAT_MODEC_NAMESPACE,
@@ -141,6 +142,22 @@ function pushMessage(namespace: string, payload: Record<string, unknown>): Meros
         payload
     });
 }
+
+describe('attachEndpoint system', () => {
+    it('hasRuntime follows Ability, not the system trait', () => {
+        const advertised = createHarness({
+            traits: ['system'],
+            ability: { [SYSTEM_RUNTIME_NAMESPACE]: {} }
+        });
+        const omitted = createHarness({
+            traits: ['system'],
+            ability: {}
+        });
+
+        assert.equal(advertised.endpoint.system?.hasRuntime(), true);
+        assert.equal(omitted.endpoint.system?.hasRuntime(), false);
+    });
+});
 
 describe('attachEndpoint shared request and namespaces', () => {
     it('reuses one request and Set across two channels', async () => {

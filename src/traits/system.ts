@@ -73,6 +73,11 @@ export interface SystemTraitBind {
     initialTime?: SystemTimeState;
     request: DeviceRequest;
     emitChange: (values: SystemValues) => void;
+    /**
+     * Ability listed Appliance.System.Runtime. The trait is still attached
+     * without it; hosts use this so an empty signal sensor is not created.
+     */
+    hasRuntime?: boolean;
     /** Injectable for clock-skew tests. */
     now?: () => number;
 }
@@ -131,6 +136,14 @@ export class SystemTrait {
     /** Undefined until Runtime GETACK/PUSH fills it. */
     getRuntime(): SystemRuntimeState | undefined {
         return this.last.runtime;
+    }
+
+    /**
+     * True when Ability listed Appliance.System.Runtime at attach. A later
+     * payload does not flip this; unadvertised devices never poll Runtime.
+     */
+    hasRuntime(): boolean {
+        return this.bind.hasRuntime === true;
     }
 
     /**
@@ -295,6 +308,7 @@ export const SystemDescriptor: TraitDescriptor & {
             initialFirmware: args.physical.system.firmware,
             initialHardware: args.physical.system.hardware,
             initialTime: args.physical.system.time,
+            hasRuntime: args.namespaces.has(SYSTEM_RUNTIME_NAMESPACE),
             request: args.request,
             emitChange: args.emitChange
         });

@@ -21,6 +21,7 @@ const NOW_MS = 1_676_428_800_000;
 
 function createHarness(options: {
     initialTime?: SystemTraitBind['initialTime'];
+    hasRuntime?: boolean;
 } = {}): {
     trait: SystemTrait;
     requests: MerossMessage[];
@@ -33,6 +34,7 @@ function createHarness(options: {
         initialFirmware: { version: '7.3.13' },
         initialHardware: { type: 'mss110', uuid: UUID },
         initialTime: options.initialTime,
+        hasRuntime: options.hasRuntime,
         now: () => NOW_MS,
         request,
         emitChange: (values) => {
@@ -183,6 +185,13 @@ describe('SystemTrait', () => {
 
         assert.equal(changes.length, 1);
         assert.equal(trait.getFirmware()?.version, '7.4.0');
+    });
+
+    it('hasRuntime stays false when a Runtime payload arrives unadvertised', () => {
+        const { trait } = createHarness();
+        trait.handlePush(runtimeGetAck({ signal: 50 }));
+        assert.equal(trait.hasRuntime(), false);
+        assert.equal(createHarness({ hasRuntime: true }).trait.hasRuntime(), true);
     });
 
     it('Runtime GETACK fills getRuntime and drops iotStatus', () => {

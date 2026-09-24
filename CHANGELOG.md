@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Runtime Wi-Fi signal % on `system.getRuntime()` (`SystemRuntimeState` on the public barrel). Debug `rssi` / `network.signal` are unchanged.
+- `system.hasRuntime()` is true when Ability listed `Appliance.System.Runtime`. The system trait stays attached on every channel-0 device either way.
 - Optional `SessionOptions.logger` and `SessionOptions.logLevel` (`'error' | 'debug' | 'trace'`) for MQTT / LAN / cloud traffic (`LogRecord` / `LogLevel` on the public barrel). Default floor is `debug` (one-line summaries, no bodies); set `logLevel: 'trace'` for `data`. The SDK never reads env. Cloud records redact `password` / `token` / `key` / `mfaCode`. Session events stay on the EventEmitter.
 - `Session.listDevices()` returns the account's physical devices over HTTP `devList` only — no MQTT, no Ability / System.All, no `inventory` mutation (`DeviceList` on the public barrel). Pairing UIs use this; runtime still uses inventory after `connect` / `sync`.
 
