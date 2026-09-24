@@ -245,6 +245,9 @@ function createCloudFetch(
         if (String(url).endsWith('/v1/Device/devList')) {
             return ok(devices);
         }
+        if (String(url).endsWith('/v1/Profile/logout')) {
+            return ok(null);
+        }
         // A defined body, including [], is a successful list; omit so this path returns HTTP 500.
         if (String(url).endsWith('/v1/Hub/getSubDevices') && subDevices !== undefined) {
             return ok(subDevices);
@@ -563,6 +566,20 @@ describe('Session.connect', () => {
 
         await session.disconnect();
         assert.equal(client.ended, true);
+    });
+
+    it('logout posts Profile logout, disconnects, and rejects getToken', async () => {
+        const { session, client, calls } = await loginConnected();
+
+        await session.logout();
+
+        assert.equal(client.ended, true);
+        assert.ok(calls.some((call) => call.url.endsWith('/v1/Profile/logout')));
+        assert.throws(
+            () => session.getToken(),
+            (err: unknown) => err instanceof AuthError && err.code === 'AUTHENTICATION'
+        );
+        await session.logout();
     });
 
     it('skips offline cloud devices until they answer Ability and System.All', async () => {

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Session.logout()` invalidates the Meross cloud token via `/v1/Profile/logout` after `disconnect()`. `getToken()` rejects once logged out.
 - Runtime Wi-Fi signal % on `system.getRuntime()` (`SystemRuntimeState` on the public barrel). Debug `rssi` / `network.signal` are unchanged.
 - `system.hasRuntime()` is true when Ability listed `Appliance.System.Runtime`. The system trait stays attached on every channel-0 device either way.
 - Optional `SessionOptions.logger` and `SessionOptions.logLevel` (`'error' | 'debug' | 'trace'`) for MQTT / LAN / cloud traffic (`LogRecord` / `LogLevel` on the public barrel). Default floor is `debug` (one-line summaries, no bodies); set `logLevel: 'trace'` for `data`. The SDK never reads env. Cloud records redact `password` / `token` / `key` / `mfaCode`. Session events stay on the EventEmitter.

@@ -191,6 +191,15 @@ Devices are enrolled a few at a time rather than one after another, so a large a
 
 `disconnect()` closes transports and clears inventory; the stored token remains valid for `restore`.
 
+### Log out of the cloud account
+
+Call `logout()` when removing a stored profile or replacing a token so Meross stops counting it against the account token limit. It runs `disconnect()` first, then POSTs `/v1/Profile/logout`. Afterward, `getToken()` throws and you must not persist the old token or pass it to `Session.restore`.
+
+```javascript
+await session.logout();
+// drop persisted token from disk
+```
+
 ### Recover from an expired token
 
 A long-running host will eventually see `AuthError` with code `TOKEN_EXPIRED`. `reauthenticate()` swaps in fresh credentials without discarding inventory, so every `Endpoint` and its listeners stay valid:

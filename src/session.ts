@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { CloudClient } from './cloud';
 import type { CloudClientOptions, CloudDevice, CloudSubDevice } from './cloud';
 import { Endpoint } from './endpoint';
-import { MerossError } from './errors';
+import { AuthError, MerossError } from './errors';
 import {
     ABILITY_NAMESPACE,
     DeviceGraph,
@@ -156,6 +156,8 @@ export class Session extends EventEmitter<SessionEvents> {
     private pendingSyncOptions: SyncOptions | undefined;
     /** Session-owned LAN AES memo; fingerprint misses when key or MAC changes. */
     private readonly lanEncryptionKeys = new LanEncryptionKeys();
+    /** False after {@link logout}; {@link getToken} rejects until {@link reauthenticate}. */
+    private credentialsValid = true;
 
     private constructor(
         token: TokenData,
@@ -203,6 +205,9 @@ export class Session extends EventEmitter<SessionEvents> {
      * Returns a copy so callers can persist the token without mutating session state.
      */
     getToken(): TokenData {
+        if (!this.credentialsValid) {
+            throw new AuthError('Not authenticated');
+        }
         return { ...this.token };
     }
 
@@ -247,6 +252,7 @@ export class Session extends EventEmitter<SessionEvents> {
     async reauthenticate(options: LoginOptions): Promise<TokenData> {
         const previous = this.token;
         this.token = await this.cloud.login(options);
+        this.credentialsValid = true;
         const stale = this.router;
         if (!stale || !this.brokerChanged(previous)) {
             return this.getToken();
@@ -358,6 +364,21 @@ export class Session extends EventEmitter<SessionEvents> {
         this.inventory.replace([]);
         this.lanEncryptionKeys.clear();
         await this.teardownRouter();
+    }
+
+    /**
+     * Closes transports, invalidates the cloud token, and clears local
+     * credentials. Unlike {@link disconnect}, the stored token must not be
+     * persisted or passed to {@link Session.restore} afterward. Idempotent when
+     * already logged out.
+     */
+    async logout(): Promise<void> {
+        if (!this.credentialsValid) {
+            return;
+        }
+        await this.disconnect();
+        await this.cloud.logout();
+        this.credentialsValid = false;
     }
 
     /**

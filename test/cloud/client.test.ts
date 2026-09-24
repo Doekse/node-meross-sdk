@@ -307,6 +307,41 @@ describe('CloudClient.restore and device list', () => {
         );
     });
 
+    it('logs out with an authenticated POST and clears credentials', async () => {
+        const calls: Array<{ url: string; init: RequestInit }> = [];
+        const client = CloudClient.restore(saved, {
+            now: () => NOW,
+            nonce: () => NONCE,
+            fetch: async (url, init) => {
+                calls.push({ url: String(url), init: init ?? {} });
+                return ok(null);
+            }
+        });
+
+        await client.logout();
+
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0]!.url, 'https://iotx-eu.meross.com/v1/Profile/logout');
+        const headers = calls[0]!.init.headers as Record<string, string>;
+        assert.equal(headers.Authorization, 'Basic saved-token');
+        assert.throws(
+            () => client.getToken(),
+            (err: unknown) => err instanceof AuthError && err.code === 'AUTHENTICATION'
+        );
+    });
+
+    it('rejects logout when no token is present', async () => {
+        const client = new CloudClient({
+            fetch: async () => {
+                throw new Error('fetch must not be called');
+            }
+        });
+        await assert.rejects(
+            () => client.logout(),
+            (err: unknown) => err instanceof AuthError && err.code === 'AUTHENTICATION'
+        );
+    });
+
     it('maps expired-token apiStatus from device list', async () => {
         const client = CloudClient.restore(saved, {
             fetch: async () => jsonResponse({ apiStatus: 1200 })

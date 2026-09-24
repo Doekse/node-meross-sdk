@@ -8,6 +8,7 @@ import type { LoginOptions, TokenData } from '../session';
 const SECRET = '23x17ahWarFH6w29';
 
 const LOGIN_PATH = '/v1/Auth/signIn';
+const LOGOUT_PATH = '/v1/Profile/logout';
 const DEV_LIST_PATH = '/v1/Device/devList';
 const SUBDEV_LIST_PATH = '/v1/Hub/getSubDevices';
 
@@ -178,6 +179,18 @@ export class CloudClient {
             throw new AuthError('Not authenticated');
         }
         return (await this.post(SUBDEV_LIST_PATH, { uuid: hubUuid }) ?? []) as CloudSubDevice[];
+    }
+
+    /**
+     * Invalidates the current token on Meross cloud (`/v1/Profile/logout`) and
+     * clears stored credentials on success so the token cannot be reused.
+     */
+    async logout(): Promise<void> {
+        if (!this.creds) {
+            throw new AuthError('Not authenticated');
+        }
+        await this.post(LOGOUT_PATH, {});
+        this.creds = null;
     }
 
     private async post(
