@@ -24,6 +24,10 @@ export class PendingRequests {
     /**
      * Call before the bytes go on the wire. Duplicate ids would overwrite the
      * timer handle and let the old timeout delete the new entry.
+     *
+     * Marks rejection handled immediately so disconnect can cancel during the
+     * LAN HTTP window (register before await) without an unhandledRejection;
+     * a later await still observes the same rejection.
      */
     register(messageId: string, timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS): Promise<MerossMessage> {
         if (this.entries.has(messageId)) {
@@ -33,7 +37,7 @@ export class PendingRequests {
             );
         }
 
-        return new Promise((resolve, reject) => {
+        const promise = new Promise<MerossMessage>((resolve, reject) => {
             const timer = setTimeout(() => {
                 this.entries.delete(messageId);
                 reject(new CommandError(
@@ -44,6 +48,8 @@ export class PendingRequests {
 
             this.entries.set(messageId, { resolve, reject, timer });
         });
+        promise.catch(() => {});
+        return promise;
     }
 
     /**

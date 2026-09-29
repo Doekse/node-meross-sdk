@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Disconnect no longer crashes the process when it cancels a LAN command that has been registered but not yet awaited. Callers that await the command still see `COMMAND_CANCELLED`.
 - Heartbeat System.All GETACK with a malformed `all` fails the probe (board unavailable) instead of counting as liveness. Inbound All still swallows so a bad PUSH cannot drop reachability. SystemTrait still warns on the same payload.
 - Packed `Control.Multiple` System.All GETACK now reaches DeviceAvailability (`innerIp`, `clearMqtt` on status !== 1, hub digest children). Inbound Multiple is not System.All; poller onAck already delivered the unpacked payload to SystemTrait.
 - Cloud and injected LAN `fetch` cancel or read the response body before throwing on non-200 HTTP status so connections return to the pool. Same errors and status handling; no host-visible API change.

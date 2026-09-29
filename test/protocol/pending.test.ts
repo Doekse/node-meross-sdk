@@ -124,6 +124,27 @@ describe('PendingRequests', () => {
         assert.equal(pending.settle(ack('msg-reject')), false);
     });
 
+    it('clear before the caller awaits does not raise an unhandled rejection', async () => {
+        const pending = new PendingRequests();
+        const unhandled: unknown[] = [];
+        function onUnhandled(error: unknown): void {
+            unhandled.push(error);
+        }
+        process.on('unhandledRejection', onUnhandled);
+        try {
+            const promise = pending.register('msg-early', 5_000);
+            pending.clear();
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            assert.deepEqual(unhandled, []);
+            await assert.rejects(
+                promise,
+                (err: unknown) => err instanceof CommandError && err.code === 'COMMAND_CANCELLED'
+            );
+        } finally {
+            process.off('unhandledRejection', onUnhandled);
+        }
+    });
+
     it('clear rejects outstanding requests with COMMAND_CANCELLED', async () => {
         const pending = new PendingRequests();
         const first = pending.register('msg-a', 5_000);
