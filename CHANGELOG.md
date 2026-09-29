@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-alpha] - 2026-09-29
+
 ### Added
 
 - `DeviceList` rows from `Session.listDevices()` include cloud `subType` (empty string when absent) so hosts can pick regional icons at pairing.
@@ -35,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cloud and injected LAN `fetch` cancel or read the response body before throwing on non-200 HTTP status so connections return to the pool. Same errors and status handling; no host-visible API change.
 - MQTT `disconnect` and a failed first handshake no longer hang if mqtt.js never invokes `end()`. The client is still ended; a late callback is ignored. No host-visible API change.
 - Idle LAN keep-alives drop when a device is forgotten or the next POST uses a new host, without a process-wide idle timeout or aborting in-flight POSTs. No host-visible API change.
+- Default LAN `postHttp` settles when abort closes the socket before `end` (timeout after headers), so a later POST for that uuid is not stuck behind a hung tail. Injected `lanFetch` is unchanged. No host-visible API change.
 
 ## [0.2.0-alpha] - 2026-09-17
 
@@ -99,7 +102,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Traits: switch, light, energy, cover, climate, sensor, presence, fan, spray, diffuser, sprinkler, media, alarm, dnd, system, timer, trigger.
 - TypeScript types shipped next to CommonJS `dist/` so `require()` hosts (including Homey) load without a bundler.
 
-[unreleased]: https://github.com/Doekse/node-meross-sdk/compare/v0.2.0-alpha...HEAD
+[unreleased]: https://github.com/Doekse/node-meross-sdk/compare/v0.3.0-alpha...HEAD
+[0.3.0-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.2.0-alpha...v0.3.0-alpha
 [0.2.0-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.1.1-alpha...v0.2.0-alpha
 [0.1.1-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.1.0-alpha...v0.1.1-alpha
 [0.1.0-alpha]: https://github.com/Doekse/node-meross-sdk/releases/tag/v0.1.0-alpha
