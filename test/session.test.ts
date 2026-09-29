@@ -1013,6 +1013,7 @@ describe('Session SyncOptions allowlist', () => {
                 uuid: UUID,
                 name: 'Kitchen plug',
                 model: 'mss110',
+                subType: '',
                 onlineStatus: 1,
                 channels: [{ channel: 0, devName: 'Kitchen plug' }]
             },
@@ -1020,6 +1021,7 @@ describe('Session SyncOptions allowlist', () => {
                 uuid: LAMP_UUID,
                 name: 'Lamp',
                 model: 'mss110',
+                subType: '',
                 onlineStatus: 1,
                 channels: [{ channel: 0, devName: 'Lamp' }]
             }

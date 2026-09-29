@@ -91,6 +91,8 @@ export type DeviceList = readonly {
     uuid: string;
     name: string;
     model: string;
+    /** Regional / plug-form variant from cloud `subType` (e.g. `eu`, `us`). */
+    subType: string;
     onlineStatus: number;
     channels: readonly unknown[];
 }[];
@@ -275,6 +277,7 @@ export class Session extends EventEmitter<SessionEvents> {
             uuid: cloudDevice.uuid,
             name: cloudDevice.devName,
             model: cloudDevice.deviceType,
+            subType: cloudDevice.subType ?? '',
             onlineStatus: cloudDevice.onlineStatus,
             channels: [...cloudDevice.channels]
         }));

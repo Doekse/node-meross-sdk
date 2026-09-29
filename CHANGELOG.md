@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `DeviceList` rows from `Session.listDevices()` include cloud `subType` (empty string when absent) so hosts can pick regional icons at pairing.
 - `Session.logout()` invalidates the Meross cloud token via `/v1/Profile/logout` after `disconnect()`. `getToken()` rejects once logged out.
 - Runtime Wi-Fi signal % on `system.getRuntime()` (`SystemRuntimeState` on the public barrel). Debug `rssi` / `network.signal` are unchanged.
 - `system.hasRuntime()` is true when Ability listed `Appliance.System.Runtime`. The system trait stays attached on every channel-0 device either way.
