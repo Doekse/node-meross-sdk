@@ -464,8 +464,12 @@ describe('enrollPhysicalDevice', () => {
         });
 
         const sockets = device.endpoints.filter((endpoint) => endpoint.classHint === 'socket');
-        assert.ok(sockets.length > 1);
-        for (const endpoint of sockets) {
+        const master = sockets.find((endpoint) => endpoint.channel === 0);
+        const outlets = sockets.filter((endpoint) => endpoint.channel !== 0);
+        assert.ok(master);
+        assert.equal(master?.traits.includes('standbykiller'), false);
+        assert.ok(outlets.length > 0);
+        for (const endpoint of outlets) {
             assert.ok(endpoint.traits.includes('standbykiller'), endpoint.id);
         }
     });

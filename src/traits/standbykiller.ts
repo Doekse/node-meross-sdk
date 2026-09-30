@@ -158,18 +158,22 @@ function hasStandbyKiller(ability: AbilityMap): boolean {
 
 /**
  * Per-channel StandbyKiller on socket endpoints (not hub, not climate).
+ * A strip's channel 0 switches every outlet, so the cutoff stays on each outlet.
  */
 export function enrollBoardStandbyKillerExtra(input: EnrollBoardExtraInput): TraitName[] {
-    if (!hasStandbyKiller(input.ability)) {
-        return [];
+    if (
+        hasStandbyKiller(input.ability)
+        && input.classHint === 'socket'
+    ) {
+        if (input.strip && input.channel === 0) {
+            return [];
+        }
+        if (input.traits.includes('standbykiller')) {
+            return [];
+        }
+        return ['standbykiller'];
     }
-    if (input.classHint !== 'socket') {
-        return [];
-    }
-    if (input.traits.includes('standbykiller')) {
-        return [];
-    }
-    return ['standbykiller'];
+    return [];
 }
 
 export const StandbyKillerDescriptor: TraitDescriptor & {

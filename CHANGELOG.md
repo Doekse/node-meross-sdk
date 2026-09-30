@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Strip channel 0 no longer enrolls `standbykiller`. That channel switches every outlet, so the cutoff stays on each outlet.
+
 ## [0.3.0-alpha] - 2026-09-29
 
 ### Added
