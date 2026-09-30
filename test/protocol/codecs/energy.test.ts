@@ -229,7 +229,7 @@ describe('ConsumptionH codec', () => {
         });
     });
 
-    it('decodes meross_lan-shaped channel rows into hourly samples', () => {
+    it('decodes meross_lan-shaped channel rows into total and hourly samples', () => {
         assert.deepEqual(
             decodeConsumptionHGetAck({
                 consumptionH: [{
@@ -243,11 +243,29 @@ describe('ConsumptionH codec', () => {
             }),
             [{
                 channel: 1,
+                total: 958,
                 hourly: [
                     { timestamp: 1_721_548_740, value: 0 },
                     { timestamp: 1_721_552_340, value: 12 }
                 ]
             }]
+        );
+    });
+
+    it('keeps total when data is omitted and drops a row that cannot be routed', () => {
+        assert.deepEqual(
+            decodeConsumptionHGetAck({
+                consumptionH: [
+                    { channel: 0 },
+                    { total: 10, data: [{ timestamp: 1, value: 1 }] },
+                    { channel: 1, total: 42 },
+                    { channel: 2, data: [{ timestamp: 1 }, { timestamp: 2, value: 3 }] }
+                ]
+            }),
+            [
+                { channel: 1, total: 42 },
+                { channel: 2, hourly: [{ timestamp: 2, value: 3 }] }
+            ]
         );
     });
 

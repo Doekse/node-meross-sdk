@@ -9,6 +9,7 @@ import {
     CONSUMPTIONH_NAMESPACE,
     decodeConsumptionHGetAck,
     encodeConsumptionHGet,
+    type ConsumptionHChannel,
     type ConsumptionHHour
 } from '../protocol/codecs/consumptionh';
 import {
@@ -50,6 +51,11 @@ export interface EnergyValues {
     powerFactor?: number;
     consumption?: ConsumptionXDay[];
     hourly?: ConsumptionHHour[];
+    /**
+     * ConsumptionH `total` in watt-hours. This is the energy reading
+     * meross_lan publishes for that namespace.
+     */
+    consumptionTotal?: number;
 }
 
 /**
@@ -174,7 +180,7 @@ export class EnergyTrait {
             const sample = decodeConsumptionHGetAck(message.payload)
                 .find((entry) => entry.channel === this.bind.channel);
             if (sample) {
-                this.applyHourlyConsumption(sample.hourly);
+                this.applyConsumptionH(sample);
             }
         }
     }
@@ -219,7 +225,7 @@ export class EnergyTrait {
         const sample = decodeConsumptionHGetAck(reply.payload)
             .find((entry) => entry.channel === this.bind.channel);
         if (sample) {
-            this.applyHourlyConsumption(sample.hourly);
+            this.applyConsumptionH(sample);
         }
     }
 
@@ -247,8 +253,19 @@ export class EnergyTrait {
         this.applyChange({ consumption });
     }
 
-    private applyHourlyConsumption(hourly: ConsumptionHHour[]): void {
-        this.applyChange({ hourly });
+    /**
+     * `hourly` is omitted when firmware sent no `data`, so this patch cannot
+     * replace a series with an empty one. `total` is applied on its own.
+     */
+    private applyConsumptionH(sample: ConsumptionHChannel): void {
+        const values: EnergyValues = {};
+        if (sample.hourly !== undefined) {
+            values.hourly = sample.hourly;
+        }
+        if (sample.total !== undefined) {
+            values.consumptionTotal = sample.total;
+        }
+        this.applyChange(values);
     }
 
     private applyChange(patch: EnergyValues): void {

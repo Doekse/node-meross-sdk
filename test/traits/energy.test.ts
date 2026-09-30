@@ -336,6 +336,7 @@ describe('EnergyTrait.poll', () => {
             { timestamp: 1_701_000_000, value: 12 },
             { timestamp: 1_701_003_600, value: 15 }
         ]);
+        assert.equal(snapshot.consumptionTotal, 958);
     });
 
     it('supports on-demand hourly polling for ConsumptionH-only devices', async () => {
@@ -450,7 +451,10 @@ describe('EnergyTrait.poll', () => {
             }
         });
         trait.handlePush(stalePush);
-        assert.deepEqual(changes, [{ trait: 'energy', values: { hourly: stale } }]);
+        assert.deepEqual(changes, [{
+            trait: 'energy',
+            values: { hourly: stale, consumptionTotal: 9 }
+        }]);
 
         await assert.rejects(
             () => trait.getHourlyConsumption(),
@@ -619,12 +623,56 @@ describe('EnergyTrait PUSH', () => {
         assert.deepEqual(changes, [{
             trait: 'energy',
             values: {
+                consumptionTotal: 958,
                 hourly: [
                     { timestamp: 1_701_000_000, value: 12 },
                     { timestamp: 1_701_003_600, value: 15 }
                 ]
             }
         }]);
+    });
+
+    it('stores ConsumptionH total when data is omitted and keeps the previous hourly series', () => {
+        const { endpoint, trait } = createEnergyHarness({
+            hasConsumptionX: false,
+            hasConsumptionH: true
+        });
+        const changes: unknown[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+
+        const hourly = [{ timestamp: 1_701_000_000, value: 4 }];
+        trait.handlePush(encodeMessage({
+            namespace: CONSUMPTIONH_NAMESPACE,
+            method: 'PUSH',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                consumptionH: [{
+                    channel: CHANNEL,
+                    total: 4,
+                    data: hourly
+                }]
+            }
+        }));
+        trait.handlePush(encodeMessage({
+            namespace: CONSUMPTIONH_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {
+                consumptionH: [
+                    { channel: 1 },
+                    { channel: CHANNEL, total: 20 }
+                ]
+            }
+        }));
+
+        assert.deepEqual(changes, [
+            { trait: 'energy', values: { consumptionTotal: 4, hourly } },
+            { trait: 'energy', values: { consumptionTotal: 20 } }
+        ]);
     });
 });
 
