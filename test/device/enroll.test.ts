@@ -579,11 +579,12 @@ describe('enrollPhysicalDevice', () => {
         );
     });
 
-    it('puts ElectricityX energy on strip outlets and leaves the master as a switch', () => {
+    it('leaves an ElectricityX strip master without energy when ConsumptionH is also advertised', () => {
         const strip = loadFixture('togglex-getack-all.json');
         const device = enrollPhysicalDevice({
             abilityPayload: socketAbility({
-                'Appliance.Control.ElectricityX': {}
+                'Appliance.Control.ElectricityX': {},
+                'Appliance.Control.ConsumptionH': {}
             }),
             allPayload: systemAllWithDigest({ togglex: strip.payload.togglex })
         });
