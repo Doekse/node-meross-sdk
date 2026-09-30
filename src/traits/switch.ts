@@ -189,6 +189,7 @@ export function enrollSwitchLeftover(ctx: EnrollBoardContext): void {
     }
     const masterId = `${ctx.uuid}:0`;
     const isStrip = toggles.length >= 3 && toggles.some((entry) => entry.channel === 0);
+    ctx.strip = isStrip;
     for (const entry of toggles) {
         ctx.add(
             entry.channel,

@@ -305,9 +305,8 @@ function classifyHubChild(raw: string | undefined): {
  * Extra strip sockets get parentId because firmware channel 0 is the "all
  * outlets" switch; two-gang walls keep 0 and 1 independent so neither is a
  * parent. Classic Electricity stays on the master because it reports the
- * whole board; ElectricityX/ConsumptionH also land on children because those
- * namespaces are per outlet. MSG200 ToggleX 0 is omitted because the doors
- * live on 1-n. Ability/digest gates run before each loadTrait so unused
+ * whole board. MSG200 ToggleX 0 is omitted because the doors live on 1-n.
+ * Ability/digest gates run before each loadTrait so unused
  * trait modules stay unloaded; extra helpers still apply their own
  * channel/classHint rules.
  */
@@ -336,6 +335,7 @@ function enrollBoard(
     const hasAlarm = CONTROL_ALARM_NAMESPACE in ability || CONTROL_BEEP_NAMESPACE in ability;
     const hasTimer = TIMERX_NAMESPACE in ability || CONTROL_TIMER_NAMESPACE in ability;
     const hasTrigger = TRIGGERX_NAMESPACE in ability || CONTROL_TRIGGER_NAMESPACE in ability;
+    const board = { strip: false };
     const add = (
         channel: number,
         classHint: ClassHint,
@@ -357,7 +357,8 @@ function enrollBoard(
             traits,
             extra,
             parentId,
-            ability
+            ability,
+            strip: board.strip
         };
         if (channel === 0) {
             extra.push(...loadTrait('system').enrollBoardSystemExtra(input));
@@ -414,6 +415,12 @@ function enrollBoard(
         all,
         cloud,
         taken,
+        get strip() {
+            return board.strip;
+        },
+        set strip(value: boolean) {
+            board.strip = value;
+        },
         add
     };
 

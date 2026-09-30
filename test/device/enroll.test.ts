@@ -530,7 +530,8 @@ describe('enrollPhysicalDevice', () => {
         const device = enrollPhysicalDevice({
             abilityPayload: socketAbility({
                 'Appliance.Control.Electricity': {},
-                'Appliance.Control.ConsumptionX': {}
+                'Appliance.Control.ConsumptionX': {},
+                'Appliance.Control.ConsumptionH': {}
             }),
             allPayload: systemAllWithDigest({ togglex: strip.payload.togglex }),
             cloud: {
@@ -578,7 +579,7 @@ describe('enrollPhysicalDevice', () => {
         );
     });
 
-    it('puts ElectricityX energy on every strip socket including children', () => {
+    it('puts ElectricityX energy on strip outlets and leaves the master as a switch', () => {
         const strip = loadFixture('togglex-getack-all.json');
         const device = enrollPhysicalDevice({
             abilityPayload: socketAbility({
@@ -594,7 +595,7 @@ describe('enrollPhysicalDevice', () => {
                 traits: [...endpoint.traits]
             })),
             [
-                { channel: 0, parentId: undefined, traits: ['switch', 'system', 'energy'] },
+                { channel: 0, parentId: undefined, traits: ['switch', 'system'] },
                 ...[1, 2, 3, 4].map((channel) => ({
                     channel,
                     parentId: `${UUID}:0`,

@@ -20,6 +20,10 @@ export interface EnrollBoardContext {
     readonly cloud: CloudDevice | undefined;
     /** Mutated as channels are claimed; shared across enroll extra helpers. */
     taken: Set<number>;
+    /**
+     * Energy chooses a socket inside `add()`, before any child `parentId` exists.
+     */
+    strip: boolean;
     add(
         channel: number,
         classHint: ClassHint,
@@ -40,6 +44,7 @@ export interface EnrollBoardExtraInput {
     readonly extra: readonly TraitName[];
     readonly parentId?: string;
     readonly ability: AbilityMap;
+    readonly strip: boolean;
 }
 
 /**

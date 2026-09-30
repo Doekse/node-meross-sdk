@@ -257,18 +257,22 @@ export class EnergyTrait {
 }
 
 /**
- * Classic Electricity / ConsumptionX stay on the master (whole board);
- * ElectricityX / ConsumptionH also land on strip children.
+ * A strip's channel 0 switches every outlet, so a per-outlet meter does not
+ * belong there. Firmware also copies a board meter onto every channel, so
+ * that reading stays on the master or each outlet would count it again.
  */
 export function enrollBoardEnergyExtra(input: EnrollBoardExtraInput): TraitName[] {
-    const boardEnergy = ELECTRICITY_NAMESPACE in input.ability
-        || CONSUMPTIONX_NAMESPACE in input.ability;
-    const channelEnergy = ELECTRICITYX_NAMESPACE in input.ability
-        || CONSUMPTIONH_NAMESPACE in input.ability;
-    if (channelEnergy && input.classHint === 'socket') {
+    if (
+        ELECTRICITYX_NAMESPACE in input.ability
+        && input.classHint === 'socket'
+        && !(input.strip && input.channel === 0)
+    ) {
         return ['energy'];
     }
-    if (boardEnergy && input.classHint !== 'cover' && input.parentId === undefined) {
+    const hasBoardMeter = ELECTRICITY_NAMESPACE in input.ability
+        || CONSUMPTIONX_NAMESPACE in input.ability
+        || CONSUMPTIONH_NAMESPACE in input.ability;
+    if (hasBoardMeter && input.classHint !== 'cover' && input.parentId === undefined) {
         return ['energy'];
     }
     return [];
