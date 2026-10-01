@@ -6,10 +6,12 @@ import {
     CONTROL_TRIGGER_NAMESPACE,
     DIGEST_TRIGGERX_NAMESPACE,
     TRIGGERX_NAMESPACE,
+    decodeControlTriggerGetAck,
     decodeControlTriggerPush,
     decodeDigestTriggerXGetAck,
     decodeTriggerXGetAck,
     decodeTriggerXPush,
+    encodeControlTriggerGet,
     encodeControlTriggerSet,
     encodeTriggerXDelete,
     encodeTriggerXGet,
@@ -65,7 +67,16 @@ export interface TriggerTraitBind {
  */
 export class TriggerTrait {
     private readonly bind: TriggerTraitBind;
-    private entries: TriggerEntry[] = [];
+    /**
+     * Unset until a GETACK, PUSH, or write-path GET. `[]` is a real empty
+     * list from the device, which legacy SET must not invent.
+     */
+    private entries?: TriggerEntry[];
+    /**
+     * One in-flight legacy GET, shared by overlapping writes. Cleared when it
+     * settles so a failure can be retried.
+     */
+    private legacyRead?: Promise<void>;
 
     constructor(bind: TriggerTraitBind) {
         this.bind = bind;
@@ -87,13 +98,14 @@ export class TriggerTrait {
 
     /** After digest resolve / set / PUSH. Empty until then. */
     list(): TriggerEntry[] {
-        return this.entries.map(cloneEntry);
+        return this.cached().map(cloneEntry);
     }
 
     async set(input: TriggerSetInput): Promise<TriggerEntry> {
         const entry = normalizeSet(input, this.bind.channel);
         if (this.bind.generation === 'legacy') {
-            const next = upsertLocal(this.entries, entry);
+            await this.ensureLegacyList();
+            const next = upsertLocal(this.cached(), entry);
             await this.bind.request({
                 namespace: CONTROL_TRIGGER_NAMESPACE,
                 method: 'SET',
@@ -112,7 +124,8 @@ export class TriggerTrait {
     }
 
     async setEnabled(id: string, enabled: boolean): Promise<TriggerEntry> {
-        const existing = this.entries.find((entry) => entry.id === id);
+        await this.ensureLegacyList();
+        const existing = this.cached().find((entry) => entry.id === id);
         if (!existing) {
             throw new MerossError(`Unknown trigger id: ${id}`, 'TRIGGER_NOT_FOUND');
         }
@@ -125,7 +138,8 @@ export class TriggerTrait {
      */
     async remove(id: string): Promise<void> {
         if (this.bind.generation === 'legacy') {
-            const next = this.entries.filter((entry) => entry.id !== id);
+            await this.ensureLegacyList();
+            const next = this.cached().filter((entry) => entry.id !== id);
             await this.bind.request({
                 namespace: CONTROL_TRIGGER_NAMESPACE,
                 method: 'SET',
@@ -139,7 +153,7 @@ export class TriggerTrait {
             method: 'DELETE',
             payload: encodeTriggerXDelete({ id })
         });
-        this.applyEntries(this.entries.filter((entry) => entry.id !== id));
+        this.applyEntries(this.cached().filter((entry) => entry.id !== id));
     }
 
     handlePush(message: MerossMessage): void {
@@ -161,7 +175,7 @@ export class TriggerTrait {
         if (message.header.namespace !== TRIGGERX_NAMESPACE) {
             return;
         }
-        const next = this.entries.map(cloneEntry);
+        const next = this.cached().map(cloneEntry);
         for (const entry of decodeTriggerXPush(message.payload)) {
             if (entry.channel !== this.bind.channel) {
                 continue;
@@ -200,15 +214,47 @@ export class TriggerTrait {
         }
     }
 
+    private ensureLegacyList(): Promise<void> {
+        if (this.bind.generation !== 'legacy' || this.entries !== undefined) {
+            return Promise.resolve();
+        }
+        if (this.legacyRead) {
+            return this.legacyRead;
+        }
+        const reading = this.fetchLegacyList().finally(() => {
+            this.legacyRead = undefined;
+        });
+        this.legacyRead = reading;
+        return reading;
+    }
+
+    private async fetchLegacyList(): Promise<void> {
+        const reply = await this.bind.request({
+            namespace: CONTROL_TRIGGER_NAMESPACE,
+            method: 'GET',
+            payload: encodeControlTriggerGet()
+        });
+        this.applyEntries(decodeControlTriggerGetAck(reply.payload));
+    }
+
+    private cached(): TriggerEntry[] {
+        return this.entries ?? [];
+    }
+
     private upsert(entry: TriggerEntry): void {
-        this.applyEntries(upsertLocal(this.entries, entry));
+        this.applyEntries(upsertLocal(this.cached(), entry));
     }
 
     private applyEntries(next: TriggerEntry[]): void {
-        if (sameEntries(this.entries, next)) {
+        if (this.entries !== undefined && sameEntries(this.entries, next)) {
             return;
         }
+        const firstLoad = this.entries === undefined;
         this.entries = next.map(cloneEntry);
+        // Unset and a real empty list both look like no rows in values().
+        if (firstLoad && next.length === 0) {
+            return;
+        }
         this.bind.emitChange({ entries: this.list() });
     }
 }

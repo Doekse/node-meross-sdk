@@ -1,16 +1,19 @@
 import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
 import { enrollBoardTimerTriggerExtra } from '../device/enroll-helpers';
 import type { TraitName } from '../endpoint';
-import { MerossError } from '../errors';
+import { CommandError, MerossError } from '../errors';
 import {
     CONTROL_TIMER_NAMESPACE,
     DIGEST_TIMERX_NAMESPACE,
     TIMERX_NAMESPACE,
+    decodeControlTimerGetAck,
     decodeControlTimerPush,
     decodeDigestTimerXGetAck,
     decodeTimerXGetAck,
     decodeTimerXPush,
+    encodeControlTimerGet,
     encodeControlTimerSet,
+    encodeDigestTimerXGet,
     encodeTimerXDelete,
     encodeTimerXGet,
     encodeTimerXSet,
@@ -65,7 +68,16 @@ export interface TimerTraitBind {
  */
 export class TimerTrait {
     private readonly bind: TimerTraitBind;
-    private entries: TimerEntry[] = [];
+    /**
+     * Unset until a GETACK, PUSH, or write-path GET. `[]` is a real empty
+     * list from the device, which legacy SET must not invent.
+     */
+    private entries?: TimerEntry[];
+    /**
+     * One in-flight legacy GET, shared by overlapping writes. Cleared when it
+     * settles so a failure can be retried.
+     */
+    private legacyRead?: Promise<void>;
 
     constructor(bind: TimerTraitBind) {
         this.bind = bind;
@@ -85,9 +97,32 @@ export class TimerTrait {
         return { entries };
     }
 
-    /** After digest resolve / set / PUSH. Empty until then. */
+    /** After digest resolve, poll, set, or PUSH. Empty until then. */
     list(): TimerEntry[] {
-        return this.entries.map(cloneEntry);
+        return this.cached().map(cloneEntry);
+    }
+
+    /**
+     * On-demand read of the schedule. TimerX GETs Digest.TimerX, then each id;
+     * legacy GETs Control.Timer. Rejects with `CommandError` /
+     * `TransportError` / `ProtocolError` like `set`. DevicePoller swallows the
+     * same failures on its path.
+     */
+    async poll(): Promise<TimerValues> {
+        if (this.bind.generation === 'legacy') {
+            await this.fetchLegacyList();
+        } else if (
+            this.bind.namespaces === undefined
+            || this.bind.namespaces.has(DIGEST_TIMERX_NAMESPACE)
+        ) {
+            const reply = await this.bind.request({
+                namespace: DIGEST_TIMERX_NAMESPACE,
+                method: 'GET',
+                payload: encodeDigestTimerXGet()
+            });
+            await this.resolveFromDigest(reply);
+        }
+        return this.values();
     }
 
     /**
@@ -96,7 +131,8 @@ export class TimerTrait {
     async set(input: TimerSetInput): Promise<TimerEntry> {
         const entry = normalizeSet(input, this.bind.channel);
         if (this.bind.generation === 'legacy') {
-            const next = upsertLocal(this.entries, entry);
+            await this.ensureLegacyList();
+            const next = upsertLocal(this.cached(), entry);
             await this.bind.request({
                 namespace: CONTROL_TIMER_NAMESPACE,
                 method: 'SET',
@@ -115,7 +151,8 @@ export class TimerTrait {
     }
 
     async setEnabled(id: string, enabled: boolean): Promise<TimerEntry> {
-        const existing = this.entries.find((entry) => entry.id === id);
+        await this.ensureLegacyList();
+        const existing = this.cached().find((entry) => entry.id === id);
         if (!existing) {
             throw new MerossError(`Unknown timer id: ${id}`, 'TIMER_NOT_FOUND');
         }
@@ -128,7 +165,8 @@ export class TimerTrait {
      */
     async remove(id: string): Promise<void> {
         if (this.bind.generation === 'legacy') {
-            const next = this.entries.filter((entry) => entry.id !== id);
+            await this.ensureLegacyList();
+            const next = this.cached().filter((entry) => entry.id !== id);
             await this.bind.request({
                 namespace: CONTROL_TIMER_NAMESPACE,
                 method: 'SET',
@@ -142,7 +180,7 @@ export class TimerTrait {
             method: 'DELETE',
             payload: encodeTimerXDelete({ id })
         });
-        this.applyEntries(this.entries.filter((entry) => entry.id !== id));
+        this.applyEntries(this.cached().filter((entry) => entry.id !== id));
     }
 
     handlePush(message: MerossMessage): void {
@@ -158,13 +196,15 @@ export class TimerTrait {
             return;
         }
         if (message.header.namespace === DIGEST_TIMERX_NAMESPACE) {
-            void this.resolveFromDigest(message);
+            void this.resolveFromDigest(message).catch(() => {
+                // Keep the previous list; the next digest PUSH reads again.
+            });
             return;
         }
         if (message.header.namespace !== TIMERX_NAMESPACE) {
             return;
         }
-        const next = this.entries.map(cloneEntry);
+        const next = this.cached().map(cloneEntry);
         for (const entry of decodeTimerXPush(message.payload)) {
             if (entry.channel !== this.bind.channel) {
                 continue;
@@ -179,39 +219,74 @@ export class TimerTrait {
         this.applyEntries(next);
     }
 
+    /** A non-5050 per-id failure rejects so the previous list stays. */
     private async resolveFromDigest(message: MerossMessage): Promise<void> {
+        const ids = decodeDigestTimerXGetAck(message.payload)
+            .filter((row) => row.channel === this.bind.channel)
+            .map((row) => row.id);
+        const groups = await Promise.all(ids.map((id) => this.fetchById(id)));
+        this.applyEntries(groups.flat());
+    }
+
+    private async fetchById(id: string): Promise<TimerEntry[]> {
         try {
-            const ids = decodeDigestTimerXGetAck(message.payload)
-                .filter((row) => row.channel === this.bind.channel)
-                .map((row) => row.id);
-            const groups = await Promise.all(ids.map(async (id) => {
-                try {
-                    const reply = await this.bind.request({
-                        namespace: TIMERX_NAMESPACE,
-                        method: 'GET',
-                        payload: encodeTimerXGet({ id })
-                    });
-                    return decodeTimerXGetAck(reply.payload)
-                        .filter((entry) => entry.channel === this.bind.channel);
-                } catch {
-                    return [];
-                }
-            }));
-            this.applyEntries(groups.flat());
-        } catch {
-            // Next PUSH or setter call will recover.
+            const reply = await this.bind.request({
+                namespace: TIMERX_NAMESPACE,
+                method: 'GET',
+                payload: encodeTimerXGet({ id })
+            });
+            return decodeTimerXGetAck(reply.payload)
+                .filter((entry) => entry.channel === this.bind.channel);
+        } catch (error) {
+            // 5050 means this Digest id is already gone, so omit it.
+            if (error instanceof CommandError && error.deviceCode === 5050) {
+                return [];
+            }
+            throw error;
         }
+    }
+
+    private ensureLegacyList(): Promise<void> {
+        if (this.bind.generation !== 'legacy' || this.entries !== undefined) {
+            return Promise.resolve();
+        }
+        if (this.legacyRead) {
+            return this.legacyRead;
+        }
+        const reading = this.fetchLegacyList().finally(() => {
+            this.legacyRead = undefined;
+        });
+        this.legacyRead = reading;
+        return reading;
+    }
+
+    private async fetchLegacyList(): Promise<void> {
+        const reply = await this.bind.request({
+            namespace: CONTROL_TIMER_NAMESPACE,
+            method: 'GET',
+            payload: encodeControlTimerGet()
+        });
+        this.applyEntries(decodeControlTimerGetAck(reply.payload));
+    }
+
+    private cached(): TimerEntry[] {
+        return this.entries ?? [];
     }
 
     private upsert(entry: TimerEntry): void {
-        this.applyEntries(upsertLocal(this.entries, entry));
+        this.applyEntries(upsertLocal(this.cached(), entry));
     }
 
     private applyEntries(next: TimerEntry[]): void {
-        if (sameEntries(this.entries, next)) {
+        if (this.entries !== undefined && sameEntries(this.entries, next)) {
             return;
         }
+        const firstLoad = this.entries === undefined;
         this.entries = next.map(cloneEntry);
+        // Unset and a real empty list both look like no rows in values().
+        if (firstLoad && next.length === 0) {
+            return;
+        }
         this.bind.emitChange({ entries: this.list() });
     }
 }

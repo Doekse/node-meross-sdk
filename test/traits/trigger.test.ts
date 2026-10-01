@@ -372,5 +372,63 @@ describe('TriggerTrait legacy Control.Trigger', () => {
             ['newtrig1']
         );
     });
+
+    it('trusts an empty GETACK and does not read again', async () => {
+        const { trait, changes, requests } = createHarness({ generation: 'legacy' });
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_TRIGGER_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { trigger: [] }
+        }));
+        assert.equal(changes.length, 0);
+        assert.deepEqual(trait.list(), []);
+
+        await trait.set({
+            id: 'newtrig1',
+            alias: 'auto off',
+            rule: { duration: 900, week: 255 },
+            createTime: 1673168351
+        });
+
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(
+            (requests[0]?.payload.trigger as Array<{ id: string }>).map((entry) => entry.id),
+            ['newtrig1']
+        );
+    });
+
+    it('reads the device list before the first full-list SET', async () => {
+        const { trait, requests } = createHarness({
+            generation: 'legacy',
+            getAck: { trigger: [LEGACY_WIRE] }
+        });
+
+        await trait.set({
+            id: 'newtrig1',
+            alias: 'auto off',
+            rule: { duration: 900, week: 255 },
+            createTime: 1673168351
+        });
+
+        assert.equal(requests[0]?.header.method, 'GET');
+        assert.equal(requests[1]?.header.method, 'SET');
+        const setList = requests[1]?.payload.trigger as Array<{ id: string }>;
+        assert.equal(setList.length, 2);
+        assert.ok(setList.some((entry) => entry.id === LEGACY_WIRE.id));
+        assert.ok(setList.some((entry) => entry.id === 'newtrig1'));
+
+        requests.length = 0;
+        await trait.remove(LEGACY_WIRE.id);
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(
+            (requests[0]?.payload.trigger as Array<{ id: string }>).map((entry) => entry.id),
+            ['newtrig1']
+        );
+    });
 });
 

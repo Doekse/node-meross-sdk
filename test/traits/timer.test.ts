@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
-import { MerossError } from '../../src/errors';
+import { CommandError, MerossError } from '../../src/errors';
 import {
     CONTROL_TIMER_NAMESPACE,
     DIGEST_TIMERX_NAMESPACE,
@@ -205,6 +205,19 @@ describe('TimerTrait', () => {
         assert.equal(trait1.list()[0]?.id, 'timer-ch1');
     });
 
+    it('poll loads Digest.TimerX then each id into the list', async () => {
+        const { trait, requests } = createHarness();
+
+        const listed = await trait.poll();
+
+        assert.equal(requests[0]?.header.namespace, DIGEST_TIMERX_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'GET');
+        assert.equal(requests[1]?.header.namespace, TIMERX_NAMESPACE);
+        assert.deepEqual(requests[1]?.payload, { timerx: { id: WIRE_ENTRY.id } });
+        assert.deepEqual(listed, { entries: [HOST_ENTRY] });
+        assert.deepEqual(trait.list(), [HOST_ENTRY]);
+    });
+
     it('set SETs a toggle-shaped timerx object and updates the list', async () => {
         const { trait, requests, changes } = createHarness({ getAck: { timerx: [] } });
         const entry = await trait.set({
@@ -252,6 +265,50 @@ describe('TimerTrait', () => {
             () => trait.setEnabled('missing', true),
             (error: unknown) => error instanceof MerossError && error.code === 'TIMER_NOT_FOUND'
         );
+    });
+
+    it('a failed per-id read does not replace the list with empty', async () => {
+        let reads = 0;
+        const { requests, request } = createRequestRecorder({
+            uuid: UUID,
+            key: KEY,
+            ack: (requestOptions, sent) => {
+                if (requestOptions.namespace === DIGEST_TIMERX_NAMESPACE) {
+                    return traitAck(sent, {
+                        key: KEY,
+                        method: 'GETACK',
+                        payload: {
+                            digest: [{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]
+                        }
+                    });
+                }
+                reads += 1;
+                if (reads > 1) {
+                    throw new CommandError('read failed', 'COMMAND_TIMEOUT');
+                }
+                return traitAck(sent, {
+                    key: KEY,
+                    method: 'GETACK',
+                    payload: { timerx: WIRE_ENTRY }
+                });
+            }
+        });
+        const trait = new TimerTrait({
+            channel: CHANNEL,
+            generation: 'x',
+            namespaces: new Set([TIMERX_NAMESPACE, DIGEST_TIMERX_NAMESPACE]),
+            request,
+            emitChange: () => {}
+        });
+        trait.handlePush(digestGetAck([{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]));
+        await flush();
+        assert.equal(trait.list()[0]?.id, WIRE_ENTRY.id);
+
+        requests.length = 0;
+        trait.handlePush(digestGetAck([{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]));
+        await flush();
+        assert.equal(trait.list()[0]?.id, WIRE_ENTRY.id);
+        assert.equal(requests[0]?.header.namespace, TIMERX_NAMESPACE);
     });
 
     it('remove DELETEs by id and drops the local row without waiting for PUSH', async () => {
@@ -387,6 +444,68 @@ describe('TimerTrait legacy Control.Timer', () => {
             ['newtimer1']
         );
         assert.deepEqual(trait.list().map((entry) => entry.id), ['newtimer1']);
+    });
+
+    it('reads the device list before the first full-list SET', async () => {
+        const { trait, requests } = createHarness({
+            generation: 'legacy',
+            getAck: { timer: [LEGACY_WIRE] }
+        });
+
+        await trait.set({
+            id: 'newtimer1',
+            alias: 'Fan off',
+            time: 720,
+            week: 255,
+            on: false,
+            createTime: 1673168351
+        });
+
+        assert.equal(requests[0]?.header.method, 'GET');
+        assert.equal(requests[1]?.header.method, 'SET');
+        const setList = requests[1]?.payload.timer as Array<{ id: string }>;
+        assert.equal(setList.length, 2);
+        assert.ok(setList.some((entry) => entry.id === LEGACY_WIRE.id));
+        assert.ok(setList.some((entry) => entry.id === 'newtimer1'));
+
+        requests.length = 0;
+        await trait.remove(LEGACY_WIRE.id);
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(
+            (requests[0]?.payload.timer as Array<{ id: string }>).map((entry) => entry.id),
+            ['newtimer1']
+        );
+    });
+
+    it('trusts an empty GETACK and does not read again', async () => {
+        const { trait, changes, requests } = createHarness({ generation: 'legacy' });
+        trait.handlePush(encodeMessage({
+            namespace: CONTROL_TIMER_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { timer: [] }
+        }));
+        assert.equal(changes.length, 0);
+        assert.deepEqual(trait.list(), []);
+
+        await trait.set({
+            id: 'newtimer1',
+            alias: 'Fan off',
+            time: 720,
+            week: 255,
+            on: false,
+            createTime: 1673168351
+        });
+
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.header.method, 'SET');
+        assert.deepEqual(
+            (requests[0]?.payload.timer as Array<{ id: string }>).map((entry) => entry.id),
+            ['newtimer1']
+        );
     });
 
     it('does not emit when GETACK list is unchanged', () => {

@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Legacy `Control.Timer` and `Control.Trigger` keep the schedule cache unset until a list is read. A full-list SET no longer treats "not loaded" as "no rows", which was wiping schedules already on the device.
+- `TimerTrait.poll()` reads the schedule from the device (Digest.TimerX, then each id, or legacy Control.Timer). A per-id GET that fails no longer replaces the cached list with empty.
 - Strip channel 0 no longer enrolls `standbykiller`. That channel switches every outlet, so the cutoff stays on each outlet.
 
 ## [0.3.0-alpha] - 2026-09-29
