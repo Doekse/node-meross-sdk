@@ -80,6 +80,14 @@ export class CoverTrait {
         }
     }
 
+    /**
+     * Full cache, not the last diff. A subscriber that attaches after enroll
+     * never saw the seeded fields, and an unchanged poll does not emit again.
+     */
+    values(): CoverValues {
+        return { ...this.last };
+    }
+
     private has(namespace: string): boolean {
         return this.bind.namespaces?.has(namespace) ?? false;
     }

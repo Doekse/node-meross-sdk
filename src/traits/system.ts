@@ -108,6 +108,14 @@ export class SystemTrait {
         }
     }
 
+    /**
+     * Full cache, not the last diff. A subscriber that attaches after enroll
+     * never saw the seeded fields, and an unchanged poll does not emit again.
+     */
+    values(): SystemValues {
+        return { ...this.last };
+    }
+
     /** Undefined until System.All or a Firmware GETACK/PUSH fills it. */
     getFirmware(): SystemFirmwareState | undefined {
         return this.last.firmware;

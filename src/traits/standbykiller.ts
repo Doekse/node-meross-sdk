@@ -51,6 +51,14 @@ export class StandbyKillerTrait {
         return this.namespaces.has(namespace);
     }
 
+    /**
+     * Full cache, not the last diff. A subscriber that attaches after enroll
+     * never saw the seeded fields, and an unchanged poll does not emit again.
+     */
+    values(): StandbyKillerValues {
+        return { ...this.last };
+    }
+
     /** Undefined until GETACK or PUSH fills it. */
     isEnabled(): boolean | undefined {
         return this.last.enabled;

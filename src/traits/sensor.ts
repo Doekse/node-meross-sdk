@@ -159,6 +159,14 @@ export class SensorTrait {
     }
 
     /**
+     * Full cache, not the last diff. A subscriber that attaches after enroll
+     * never saw the seeded fields, and an unchanged poll does not emit again.
+     */
+    values(): SensorValues {
+        return { ...this.last };
+    }
+
+    /**
      * No-op unless this is a tempHum child and Adjust is advertised.
      */
     async setCalibration(options: { temperature?: number; humidity?: number }): Promise<SensorValues> {

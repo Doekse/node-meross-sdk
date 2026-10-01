@@ -183,6 +183,57 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     }
 
     /**
+     * Live trait cache in the same shape as `change`.
+     * Connect emits availability and protocol before a host can subscribe, and
+     * traits emit diffs only, so a later subscriber cannot reconstruct this
+     * from events it missed. Empty caches are omitted. Copies are shallow,
+     * same as `change`.
+     */
+    snapshot(): EndpointChange[] {
+        const changes: EndpointChange[] = [];
+        this.append(changes, 'switch', this.switch);
+        this.append(changes, 'energy', this.energy);
+        this.append(changes, 'light', this.light);
+        this.append(changes, 'cover', this.cover);
+        this.append(changes, 'climate', this.climate);
+        this.append(changes, 'sensor', this.sensor);
+        this.append(changes, 'presence', this.presence);
+        this.append(changes, 'sprinkler', this.sprinkler);
+        this.append(changes, 'spray', this.spray);
+        this.append(changes, 'fan', this.fan);
+        this.append(changes, 'diffuser', this.diffuser);
+        this.append(changes, 'media', this.media);
+        this.append(changes, 'alarm', this.alarm);
+        this.append(changes, 'alert', this.alert);
+        this.append(changes, 'dnd', this.dnd);
+        this.append(changes, 'overtemp', this.overtemp);
+        this.append(changes, 'standbykiller', this.standbykiller);
+        this.append(changes, 'system', this.system);
+        this.append(changes, 'timer', this.timer);
+        this.append(changes, 'trigger', this.trigger);
+        return changes;
+    }
+
+    /**
+     * The mapped {@link EndpointChange} union cannot see that `trait` and
+     * `values()` share one `K`.
+     */
+    private append<K extends TraitName>(
+        changes: EndpointChange[],
+        trait: K,
+        instance: { values(): TraitValues[K] } | undefined
+    ): void {
+        if (instance === undefined) {
+            return;
+        }
+        const values = instance.values();
+        if (Object.keys(values).length === 0) {
+            return;
+        }
+        changes.push({ trait, values } as EndpointChange);
+    }
+
+    /**
      * Session/runtime owns which trait runs; Endpoint isolates `warning` the
      * way {@link setAvailability} isolates `availability`. Optional chaining
      * covers a listed name with no instance. Handler exceptions stay local so

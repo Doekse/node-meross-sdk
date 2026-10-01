@@ -53,6 +53,14 @@ export class AlertTrait {
         return this.namespaces.has(namespace);
     }
 
+    /**
+     * Full cache, not the last diff. A subscriber that attaches after enroll
+     * never saw the seeded fields, and an unchanged poll does not emit again.
+     */
+    values(): AlertValues {
+        return { ...this.last };
+    }
+
     /** Undefined until Config GETACK or PUSH fills it. */
     getType(): number | undefined {
         return this.last.type;

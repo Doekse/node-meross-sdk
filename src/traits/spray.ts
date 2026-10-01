@@ -43,6 +43,14 @@ export class SprayTrait {
         this.bind = bind;
     }
 
+    /**
+     * Full cache, not the last diff. A subscriber that attaches after enroll
+     * never saw the seeded fields, and an unchanged poll does not emit again.
+     */
+    values(): SprayValues {
+        return { ...this.last };
+    }
+
     /** Undefined until poller GETACK or PUSH fills it. */
     getMode(): SprayMode | undefined {
         return this.last.mode;

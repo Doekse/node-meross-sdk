@@ -73,6 +73,14 @@ export class PresenceTrait {
         return this.bind.namespaces?.has(namespace) ?? false;
     }
 
+    /**
+     * Full cache, not the last diff. A subscriber that attaches after enroll
+     * never saw the seeded fields, and an unchanged poll does not emit again.
+     */
+    values(): PresenceValues {
+        return { ...this.last };
+    }
+
     handlePush(message: MerossMessage): void {
         if (message.header.namespace === SENSOR_LATESTX_NAMESPACE) {
             for (const entry of decodeLatestXPush(message.payload)) {

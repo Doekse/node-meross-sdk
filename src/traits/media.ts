@@ -43,6 +43,14 @@ export class MediaTrait {
         this.bind = bind;
     }
 
+    /**
+     * Full cache, not the last diff. A subscriber that attaches after enroll
+     * never saw the seeded fields, and an unchanged poll does not emit again.
+     */
+    values(): MediaValues {
+        return { ...this.last };
+    }
+
     /** Firmware mute 1 is stopped/idle. Undefined until GETACK or PUSH fills it. */
     isMuted(): boolean | undefined {
         return this.last.muted;

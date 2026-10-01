@@ -253,6 +253,11 @@ endpoint.on('change', (change) => {
     // change.values.power, .current, .voltage, …
   }
 });
+
+// Same shape as `change`, for state that was seeded or polled before this listener existed.
+for (const change of endpoint.snapshot()) {
+  // change.trait / change.values
+}
 ```
 
 

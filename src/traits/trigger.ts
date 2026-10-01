@@ -71,6 +71,20 @@ export class TriggerTrait {
         this.bind = bind;
     }
 
+    /**
+     * Full cache, not the last diff. A subscriber that attaches after enroll
+     * never saw the seeded fields, and an unchanged poll does not emit again.
+     */
+    values(): TriggerValues {
+        const entries = this.list();
+        // Same `[]` before the first resolve and after a real clear, so this
+        // cannot claim the schedule is empty.
+        if (entries.length === 0) {
+            return {};
+        }
+        return { entries };
+    }
+
     /** After digest resolve / set / PUSH. Empty until then. */
     list(): TriggerEntry[] {
         return this.entries.map(cloneEntry);
