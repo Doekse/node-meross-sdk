@@ -31,7 +31,7 @@ import {
     encodeToggleXSet,
     type MerossMessage
 } from '../../src/protocol';
-import { createRequestRecorder } from '../helpers/request';
+import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
 const UUID = '2206138957096651080248e1e99705a4';
@@ -540,12 +540,19 @@ describe('attachEndpoint timer/trigger', () => {
     it('binds legacy timer when TIMERX ability is absent', async () => {
         const { endpoint, requests } = createHarness({
             traits: ['timer'],
-            ability: { [CONTROL_TIMER_NAMESPACE]: {} }
+            ability: { [CONTROL_TIMER_NAMESPACE]: {} },
+            ack: (_options, sent) => traitAck(sent, {
+                key: KEY,
+                payload: sent.header.method === 'GET' ? { timer: [] } : {}
+            })
         });
 
         await endpoint.timer!.set(TIMER_SET);
 
         assert.equal(requests[0]?.header.namespace, CONTROL_TIMER_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'GET');
+        assert.equal(requests[1]?.header.namespace, CONTROL_TIMER_NAMESPACE);
+        assert.equal(requests[1]?.header.method, 'SET');
     });
 
     it('binds TriggerX generation when TRIGGERX ability is present', async () => {
@@ -562,11 +569,18 @@ describe('attachEndpoint timer/trigger', () => {
     it('binds legacy trigger when TRIGGERX ability is absent', async () => {
         const { endpoint, requests } = createHarness({
             traits: ['trigger'],
-            ability: { [CONTROL_TRIGGER_NAMESPACE]: {} }
+            ability: { [CONTROL_TRIGGER_NAMESPACE]: {} },
+            ack: (_options, sent) => traitAck(sent, {
+                key: KEY,
+                payload: sent.header.method === 'GET' ? { trigger: [] } : {}
+            })
         });
 
         await endpoint.trigger!.set(TRIGGER_SET);
 
         assert.equal(requests[0]?.header.namespace, CONTROL_TRIGGER_NAMESPACE);
+        assert.equal(requests[0]?.header.method, 'GET');
+        assert.equal(requests[1]?.header.namespace, CONTROL_TRIGGER_NAMESPACE);
+        assert.equal(requests[1]?.header.method, 'SET');
     });
 });
