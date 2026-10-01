@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha] - 2026-10-01
+
 ### Added
 
 - `Endpoint.snapshot()` returns the live trait cache as `EndpointChange`s. A host that subscribes after `connect()` can paint current state without reading each getter. Empty caches are omitted. Copies are shallow, same as `change`.
+- `EnergyValues.consumptionTotal` is ConsumptionH `total` in watt-hours.
 
 ### Changed
 
@@ -20,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Legacy `Control.Timer` and `Control.Trigger` keep the schedule cache unset until a list is read. A full-list SET no longer treats "not loaded" as "no rows", which was wiping schedules already on the device.
 - `TimerTrait.poll()` reads the schedule from the device (Digest.TimerX, then each id, or legacy Control.Timer). A per-id GET that fails no longer replaces the cached list with empty.
 - Strip channel 0 no longer enrolls `standbykiller`. That channel switches every outlet, so the cutoff stays on each outlet.
+- ElectricityX stays on each outlet. Channel 0 of a socket strip is the all-outlets switch, so it does not enroll `energy`, and ConsumptionH cannot attach a meter there. Classic Electricity, ConsumptionX, and ConsumptionH stay on the master, so a copied board series is not counted once per outlet.
+- ConsumptionH GETACK with `channel` and `total` and no `data` array no longer throws, so the watt-hour total reaches the host. A row that cannot be routed is skipped. Omitted `data` does not clear a previous hourly series.
 
 ## [0.3.0-alpha] - 2026-09-29
 
@@ -116,7 +121,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Traits: switch, light, energy, cover, climate, sensor, presence, fan, spray, diffuser, sprinkler, media, alarm, dnd, system, timer, trigger.
 - TypeScript types shipped next to CommonJS `dist/` so `require()` hosts (including Homey) load without a bundler.
 
-[unreleased]: https://github.com/Doekse/node-meross-sdk/compare/v0.3.0-alpha...HEAD
+[unreleased]: https://github.com/Doekse/node-meross-sdk/compare/v0.4.0-alpha...HEAD
+[0.4.0-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.3.0-alpha...v0.4.0-alpha
 [0.3.0-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.2.0-alpha...v0.3.0-alpha
 [0.2.0-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.1.1-alpha...v0.2.0-alpha
 [0.1.1-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.1.0-alpha...v0.1.1-alpha
