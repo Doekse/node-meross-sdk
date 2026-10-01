@@ -422,6 +422,7 @@ describe('CloudClient logger', () => {
         assert.equal(JSON.stringify(records).includes('123456'), false);
 
         assert.equal(records[1]!.direction, 'rx');
+        assert.equal(records[1]!.message, 'HTTP 200 /v1/Auth/signIn');
         const rx = JSON.parse(records[1]!.data!) as {
             apiStatus: number;
             data: { token: string; key: string };

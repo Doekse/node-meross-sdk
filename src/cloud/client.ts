@@ -277,7 +277,7 @@ export class CloudClient {
         }
         emitTraffic(this.logger, this.logLevel, {
             channel: 'cloud',
-            message,
+            message: `HTTP ${response.status} ${path}`,
             direction: 'rx',
             target: url,
             data: () => (parsed === undefined ? text : JSON.stringify(redactSecrets(parsed)))

@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Endpoint.snapshot()` returns the live trait cache as `EndpointChange`s. A host that subscribes after `connect()` can paint current state without reading each getter. Empty caches are omitted. Copies are shallow, same as `change`.
 
+### Changed
+
+- Cloud response traffic logs `HTTP <status> <path>` instead of repeating the request line `POST <path>`.
+
 ### Fixed
 
 - Strip channel 0 no longer enrolls `standbykiller`. That channel switches every outlet, so the cutoff stays on each outlet.
