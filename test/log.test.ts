@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { emitLog, emitTraffic, isLogEnabled, redactSecrets } from '../src/log';
+import { logError, logTraffic } from '../src/log';
 import type { LogLevel, LogRecord, SessionLogger } from '../src/log';
 
 const REDACTED = '[REDACTED]';
@@ -14,95 +14,41 @@ function capture(): { seen: LogRecord[]; logger: SessionLogger } {
     return { seen, logger };
 }
 
-describe('isLogEnabled', () => {
-    const cases: Array<{ floor: LogLevel | undefined; level: LogLevel; enabled: boolean }> = [
-        { floor: 'error', level: 'error', enabled: true },
-        { floor: 'error', level: 'debug', enabled: false },
-        { floor: 'error', level: 'trace', enabled: false },
-        { floor: 'debug', level: 'error', enabled: true },
-        { floor: 'debug', level: 'debug', enabled: true },
-        { floor: 'debug', level: 'trace', enabled: false },
-        { floor: 'trace', level: 'error', enabled: true },
-        { floor: 'trace', level: 'debug', enabled: true },
-        { floor: 'trace', level: 'trace', enabled: true },
-        // Omitted floor resolves like debug — never lexicographic ('debug' < 'error').
-        { floor: undefined, level: 'error', enabled: true },
-        { floor: undefined, level: 'debug', enabled: true },
-        { floor: undefined, level: 'trace', enabled: false }
-    ];
-
-    for (const { floor, level, enabled } of cases) {
-        it(`${String(floor)} floor enables ${level}: ${enabled}`, () => {
-            assert.equal(isLogEnabled(floor, level), enabled);
-        });
-    }
-});
-
-describe('emitLog', () => {
-    it('is a no-op when the logger is omitted', () => {
-        assert.doesNotThrow(() => {
-            emitLog(undefined, {
-                level: 'debug',
-                channel: 'mqtt',
-                message: 'silent'
-            });
-        });
+function traceBody(body: unknown): unknown {
+    const { seen, logger } = capture();
+    logTraffic(logger, 'trace', {
+        channel: 'cloud',
+        direction: 'tx',
+        message: 'POST /v1/Auth/signIn',
+        body
     });
+    return JSON.parse(seen[0]!.data!);
+}
 
-    it('forwards the record to the host sink', () => {
-        const { seen, logger } = capture();
-        const record: LogRecord = {
-            level: 'debug',
-            channel: 'lan',
-            message: 'POST',
-            direction: 'tx',
-            target: 'http://192.0.2.1/config',
-            data: '{"a":1}'
-        };
-
-        emitLog(logger, record);
-
-        assert.deepEqual(seen, [record]);
-    });
-
-    it('swallows throws from the host sink', () => {
-        const logger: SessionLogger = () => {
-            throw new Error('host logger blew up');
-        };
-
-        assert.doesNotThrow(() => {
-            emitLog(logger, {
-                level: 'error',
-                channel: 'mqtt',
-                message: 'malformed payload'
-            });
-        });
-    });
-});
-
-describe('emitTraffic', () => {
+describe('logTraffic', () => {
     it('is a no-op when the logger is omitted', () => {
         let called = false;
-        emitTraffic(undefined, 'trace', {
+        logTraffic(undefined, 'trace', {
             channel: 'cloud',
-            message: 'POST',
             direction: 'tx',
-            data: () => {
+            message: 'POST',
+            body: () => {
                 called = true;
-                return '{}';
+                return {};
             }
         });
         assert.equal(called, false);
     });
 
-    it('skips data() when the floor is error', () => {
+    it('emits nothing and skips the body when the floor is error', () => {
         const { seen, logger } = capture();
         let called = false;
-        emitTraffic(logger, 'error', {
+        logTraffic(logger, 'error', {
             channel: 'mqtt',
-            message: 'MQTT publish',
             direction: 'tx',
-            data: () => {
+            method: 'GET',
+            namespace: 'Appliance.System.All',
+            body: () => {
                 called = true;
                 return '{}';
             }
@@ -111,119 +57,270 @@ describe('emitTraffic', () => {
         assert.deepEqual(seen, []);
     });
 
-    it('default floor emits debug without calling data()', () => {
-        const { seen, logger } = capture();
-        let called = false;
-        emitTraffic(logger, undefined, {
-            channel: 'lan',
-            message: 'LAN POST',
-            direction: 'tx',
-            target: 'http://192.0.2.1/config',
-            data: () => {
-                called = true;
-                return '{"secret":true}';
+    const floors: Array<{ floor: LogLevel | undefined; trace: boolean }> = [
+        { floor: 'debug', trace: false },
+        { floor: undefined, trace: false },
+        { floor: 'trace', trace: true }
+    ];
+
+    for (const { floor, trace } of floors) {
+        it(`${String(floor)} floor ${trace ? 'includes' : 'omits'} the body`, () => {
+            const { seen, logger } = capture();
+            let called = false;
+            logTraffic(logger, floor, {
+                channel: 'mqtt',
+                direction: 'tx',
+                method: 'GET',
+                namespace: 'Appliance.Control.ToggleX',
+                uuid: 'abc',
+                messageId: 'deadbeef',
+                body: () => {
+                    called = true;
+                    return '{"header":{"sign":"secret"}}';
+                }
+            });
+            assert.equal(called, trace);
+            assert.equal(seen.length, 1);
+            assert.equal(seen[0]!.level, trace ? 'trace' : 'debug');
+            assert.equal(
+                seen[0]!.message,
+                'tx(mqtt) GET Appliance.Control.ToggleX (uuid:abc messageId:deadbeef)'
+            );
+            if (trace) {
+                assert.equal(JSON.parse(seen[0]!.data!).header.sign, REDACTED);
+            } else {
+                assert.equal(seen[0]!.data, undefined);
             }
         });
-        assert.equal(called, false);
-        assert.equal(seen.length, 1);
-        assert.equal(seen[0]!.level, 'debug');
-        assert.equal(seen[0]!.data, undefined);
-        assert.equal(seen[0]!.message, 'LAN POST');
-    });
+    }
 
-    it('trace floor calls data() and emits one trace record', () => {
+    it('builds a receive line from the body and the topic', () => {
         const { seen, logger } = capture();
-        let calls = 0;
-        emitTraffic(logger, 'trace', {
-            channel: 'cloud',
-            message: 'POST /v1/Auth/signIn',
-            direction: 'rx',
-            target: 'https://iotx.meross.com/v1/Auth/signIn',
-            data: () => {
-                calls += 1;
-                return '{"ok":true}';
-            }
+        const body = JSON.stringify({
+            header: {
+                method: 'PUSH',
+                namespace: 'Appliance.Control.ToggleX',
+                messageId: 'm1',
+                from: '/appliance/from-id/publish'
+            },
+            payload: {}
         });
-        assert.equal(calls, 1);
-        assert.equal(seen.length, 1);
-        assert.equal(seen[0]!.level, 'trace');
-        assert.equal(seen[0]!.data, '{"ok":true}');
-    });
-
-    it('still emits the one-liner when data() throws', () => {
-        const { seen, logger } = capture();
-        emitTraffic(logger, 'trace', {
+        logTraffic(logger, 'debug', {
             channel: 'mqtt',
-            message: 'MQTT message',
             direction: 'rx',
-            data: () => {
+            target: '/app/1/subscribe',
+            fallback: 'MQTT message',
+            body
+        });
+        assert.equal(
+            seen[0]!.message,
+            'rx(mqtt) PUSH Appliance.Control.ToggleX (uuid:from-id messageId:m1)'
+        );
+        assert.equal(seen[0]!.data, undefined);
+    });
+
+    it('uses the topic uuid when the header has none', () => {
+        const { seen, logger } = capture();
+        logTraffic(logger, 'debug', {
+            channel: 'mqtt',
+            direction: 'rx',
+            target: '/appliance/topic-id/subscribe',
+            fallback: 'MQTT message',
+            body: JSON.stringify({
+                header: { method: 'GETACK', namespace: 'Appliance.System.All', messageId: 'm2' },
+                payload: {}
+            })
+        });
+        assert.match(seen[0]!.message, /uuid:topic-id/);
+    });
+
+    it('prefers the caller uuid over the header', () => {
+        const { seen, logger } = capture();
+        logTraffic(logger, 'debug', {
+            channel: 'lan',
+            direction: 'rx',
+            uuid: 'post-uuid',
+            fallback: 'LAN HTTP 200',
+            body: JSON.stringify({
+                header: {
+                    method: 'GETACK',
+                    namespace: 'Appliance.System.All',
+                    messageId: 'm3',
+                    uuid: 'header-uuid'
+                },
+                payload: {}
+            })
+        });
+        assert.match(seen[0]!.message, /uuid:post-uuid/);
+        assert.equal(seen[0]!.message.includes('header-uuid'), false);
+    });
+
+    it('uses the fallback when the body is not a protocol frame', () => {
+        const { seen, logger } = capture();
+        logTraffic(logger, 'debug', {
+            channel: 'mqtt',
+            direction: 'rx',
+            fallback: 'MQTT message',
+            body: '{not json'
+        });
+        assert.equal(seen[0]!.message, 'MQTT message');
+    });
+
+    it('keeps a known summary when the body throws', () => {
+        const { seen, logger } = capture();
+        logTraffic(logger, 'trace', {
+            channel: 'mqtt',
+            direction: 'tx',
+            method: 'GET',
+            namespace: 'Appliance.System.All',
+            body: () => {
                 throw new Error('stringify failed');
             }
         });
         assert.equal(seen.length, 1);
-        assert.equal(seen[0]!.level, 'trace');
         assert.equal(seen[0]!.data, undefined);
-        assert.equal(seen[0]!.message, 'MQTT message');
+        assert.match(seen[0]!.message, /^tx\(mqtt\) GET Appliance\.System\.All$/);
+    });
+
+    it('swallows throws from the host sink', () => {
+        const logger: SessionLogger = () => {
+            throw new Error('host logger blew up');
+        };
+        assert.doesNotThrow(() => {
+            logTraffic(logger, 'debug', {
+                channel: 'cloud',
+                direction: 'tx',
+                message: 'POST /v1/Device/devList'
+            });
+        });
     });
 });
 
-describe('redactSecrets', () => {
-    it('redacts password, token, key, and mfaCode at the top level', () => {
+describe('logError', () => {
+    it('is a no-op when the logger is omitted', () => {
+        let called = false;
+        logError(undefined, {
+            channel: 'mqtt',
+            message: 'Malformed MQTT payload',
+            data: () => {
+                called = true;
+                return '{not json';
+            }
+        });
+        assert.equal(called, false);
+    });
+
+    it('emits the failure and omits a non-JSON dump', () => {
+        const { seen, logger } = capture();
+        logError(logger, {
+            channel: 'mqtt',
+            message: 'message is not valid JSON',
+            target: '/app/1/subscribe',
+            data: '{"header":{"sign":"abc123","from":"/app/3401786-1/subscribe"'
+        });
+        assert.deepEqual(seen, [{
+            level: 'error',
+            channel: 'mqtt',
+            message: 'message is not valid JSON',
+            target: '/app/1/subscribe'
+        }]);
+    });
+
+    it('redacts JSON error dumps the same way as trace bodies', () => {
+        const { seen, logger } = capture();
+        logError(logger, {
+            channel: 'mqtt',
+            message: 'message signature is invalid',
+            data: JSON.stringify({
+                header: { sign: 'abc', uuid: 'device-1', method: 'GETACK' },
+                payload: { key: 'secret', devName: 'Kitchen' }
+            })
+        });
+        const data = JSON.parse(seen[0]!.data!) as {
+            header: { sign: string; uuid: string; method: string };
+            payload: { key: string; devName: string };
+        };
+        assert.equal(data.header.sign, '[REDACTED]');
+        assert.equal(data.header.uuid, '[REDACTED]');
+        assert.equal(data.header.method, 'GETACK');
+        assert.equal(data.payload.key, '[REDACTED]');
+        assert.equal(data.payload.devName, 'Kitchen');
+        assert.equal(seen[0]!.data!.includes('secret'), false);
+    });
+
+    it('still emits when the body throws', () => {
+        const { seen, logger } = capture();
+        logError(logger, {
+            channel: 'lan',
+            message: 'LAN POST failed: down',
+            data: () => {
+                throw new Error('no body');
+            }
+        });
+        assert.equal(seen[0]!.message, 'LAN POST failed: down');
+        assert.equal(seen[0]!.data, undefined);
+    });
+
+    it('swallows throws from the host sink', () => {
+        const logger: SessionLogger = () => {
+            throw new Error('host logger blew up');
+        };
+        assert.doesNotThrow(() => {
+            logError(logger, { channel: 'mqtt', message: 'socket error' });
+        });
+    });
+});
+
+describe('trace redaction', () => {
+    it('redacts credential fields and keeps device names', () => {
         assert.deepEqual(
-            redactSecrets({
+            traceBody({
                 email: 'you@example.com',
                 password: 'secret',
                 token: 'tok',
                 key: 'k',
                 mfaCode: '123456',
-                userid: '1'
+                userid: '1',
+                userId: 3401786,
+                bindId: 'bind-token',
+                devName: 'Server',
+                domain: 'iot.example.com',
+                position: { latitude: 1, longitude: 2 },
+                nested: { items: [{ password: 'p', ok: true }] }
             }),
             {
-                email: 'you@example.com',
+                email: REDACTED,
                 password: REDACTED,
                 token: REDACTED,
                 key: REDACTED,
                 mfaCode: REDACTED,
-                userid: '1'
+                userid: REDACTED,
+                userId: REDACTED,
+                bindId: REDACTED,
+                devName: 'Server',
+                domain: REDACTED,
+                position: { latitude: REDACTED, longitude: REDACTED },
+                nested: { items: [{ password: REDACTED, ok: true }] }
             }
         );
-    });
-
-    it('redacts nested objects and array entries', () => {
-        assert.deepEqual(
-            redactSecrets({
-                outer: {
-                    token: 'nested-tok',
-                    items: [{ password: 'p', ok: true }, { key: 'nested-key' }]
-                }
-            }),
-            {
-                outer: {
-                    token: REDACTED,
-                    items: [
-                        { password: REDACTED, ok: true },
-                        { key: REDACTED }
-                    ]
-                }
-            }
-        );
-    });
-
-    it('leaves primitives and non-secret fields unchanged', () => {
-        assert.equal(redactSecrets('plain'), 'plain');
-        assert.equal(redactSecrets(42), 42);
-        assert.equal(redactSecrets(null), null);
-        assert.deepEqual(redactSecrets({ domain: 'iot.example.com' }), {
-            domain: 'iot.example.com'
-        });
     });
 
     it('does not mutate the input', () => {
         const input = { token: 'live', nested: { key: 'live-key' } };
         const copy = structuredClone(input);
-
-        redactSecrets(input);
-
+        traceBody(input);
         assert.deepEqual(input, copy);
+    });
+
+    it('omits a non-JSON trace body', () => {
+        const { seen, logger } = capture();
+        logTraffic(logger, 'trace', {
+            channel: 'cloud',
+            direction: 'rx',
+            message: 'HTTP 200 /v1/Auth/signIn',
+            body: '{"token":"live-token","email":"you@example.com"'
+        });
+        assert.equal(seen[0]!.data, undefined);
+        assert.equal(seen[0]!.message, 'HTTP 200 /v1/Auth/signIn');
     });
 });

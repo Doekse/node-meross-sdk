@@ -169,15 +169,27 @@ describe('LanHttpTransport', () => {
     });
 
     it('rejects a device ERROR method as CommandError without treating it as HTTP failure', async () => {
+        const records: LogRecord[] = [];
         const { transport } = createTransport(async (_url, init) => {
             const sent = decodeMessage(String(init.body), KEY);
             return jsonResponse(ackFor(sent, 'ERROR'));
+        }, {
+            logLevel: 'error',
+            logger: (record) => {
+                records.push(record);
+            }
         });
 
         await assert.rejects(
             transport.request({ uuid: UUID, ip: IP, namespace: TOGGLEX_NAMESPACE, method: 'GET' }),
             (err: unknown) => err instanceof CommandError && err.code === 'COMMAND_FAILED'
         );
+        assert.ok(records.some((record) =>
+            record.level === 'error'
+            && record.channel === 'lan'
+            && record.message.startsWith(`Device returned error 5000 (${TOGGLEX_NAMESPACE} messageId:`)
+            && record.target === `http://${IP}/config`
+        ));
     });
 
     it('surfaces ERROR 5001 as INVALID_KEY even when signed with the device key', async () => {
@@ -250,11 +262,17 @@ describe('LanHttpTransport', () => {
 
     it('throws LAN_TIMEOUT when the POST hangs past the total budget', async (t) => {
         t.mock.timers.enable({ apis: ['setTimeout'] });
+        const records: LogRecord[] = [];
         const { transport, calls } = createTransport((_url, init) => new Promise((_resolve, reject) => {
             init.signal?.addEventListener('abort', () => {
                 reject(abortError());
             });
-        }));
+        }), {
+            logLevel: 'error',
+            logger: (record) => {
+                records.push(record);
+            }
+        });
 
         const pending = transport.request({
             uuid: UUID,
@@ -274,6 +292,12 @@ describe('LanHttpTransport', () => {
                 && err.message === `LAN HTTP timed out after ${DEFAULT_LAN_TIMEOUT_MS}ms`
         );
         assert.equal(calls.length, 1);
+        assert.ok(records.some((record) =>
+            record.level === 'error'
+            && record.channel === 'lan'
+            && record.message === `LAN HTTP timed out after ${DEFAULT_LAN_TIMEOUT_MS}ms`
+            && record.target === `http://${IP}/config`
+        ));
     });
 
     it('lets a slow wake finish inside the total budget', async (t) => {
@@ -730,7 +754,8 @@ describe('LanHttpTransport', () => {
         assert.equal(tx.data!.startsWith('{'), true);
         assert.ok(rx);
         assert.equal(rx.level, 'trace');
-        assert.equal(rx.message, 'LAN HTTP 200');
+        assert.match(rx.message, /^rx\(lan\) GETACK /);
+        assert.match(rx.message, /messageId:/);
         assert.equal(rx.data!.startsWith('{'), true);
         assert.equal(JSON.stringify(records).includes('Authorization'), false);
     });

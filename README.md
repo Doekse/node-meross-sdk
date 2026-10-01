@@ -285,7 +285,7 @@ Pass `logger` on `SessionOptions` to receive MQTT, LAN, and cloud traffic. The S
 
 | `logLevel` | Emits |
 | --- | --- |
-| `error` | Swallowed faults only (e.g. malformed MQTT, with raw `data`) |
+| `error` | Swallowed faults only (e.g. malformed MQTT). JSON `data` is redacted; other dumps are omitted |
 | `debug` (default) | Errors plus one-line traffic summaries — **no** `data` |
 | `trace` | Errors plus one traffic record per frame **with** `data` |
 

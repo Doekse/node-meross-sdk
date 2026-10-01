@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 import { AuthError, CloudError } from '../errors';
-import { emitTraffic, redactSecrets, type LogLevel, type SessionLogger } from '../log';
+import { logError, logTraffic, type LogLevel, type SessionLogger } from '../log';
 import type { LoginOptions, TokenData } from '../session';
 
 /** Well-known app secret; not an account credential. */
@@ -202,7 +202,6 @@ export class CloudClient {
         const nonce = this.nonce();
         const encoded = encodeCloudParams(params);
         const url = `https://${this.httpDomain}${path}`;
-        const message = `POST ${path}`;
         const headers: Record<string, string> = {
             Vendor: 'meross',
             AppVersion: '3.22.4',
@@ -215,12 +214,12 @@ export class CloudClient {
             headers.Authorization = `Basic ${this.creds.token}`;
         }
 
-        emitTraffic(this.logger, this.logLevel, {
+        logTraffic(this.logger, this.logLevel, {
             channel: 'cloud',
-            message,
             direction: 'tx',
             target: url,
-            data: () => JSON.stringify(redactSecrets(params))
+            message: `POST ${path}`,
+            body: params
         });
 
         const controller = new AbortController();
@@ -240,10 +239,14 @@ export class CloudClient {
             });
         } catch (error) {
             if (error instanceof Error && error.name === 'AbortError') {
-                throw new CloudError('Cloud request timed out', 'NETWORK_TIMEOUT');
+                const failure = 'Cloud request timed out';
+                logError(this.logger, { channel: 'cloud', message: failure, direction: 'rx', target: url });
+                throw new CloudError(failure, 'NETWORK_TIMEOUT');
             }
             const errorMessage = error instanceof Error ? error.message : String(error);
-            throw new CloudError(`Cloud request failed: ${errorMessage}`, 'NETWORK_ERROR');
+            const failure = `Cloud request failed: ${errorMessage}`;
+            logError(this.logger, { channel: 'cloud', message: failure, direction: 'rx', target: url });
+            throw new CloudError(failure, 'NETWORK_ERROR');
         } finally {
             clearTimeout(timeoutId);
         }
@@ -259,10 +262,12 @@ export class CloudClient {
             } catch {
                 // cancel/arrayBuffer throw when the connection is already closed.
             }
+            const failure = `HTTP ${response.status}: ${response.statusText}`;
+            logError(this.logger, { channel: 'cloud', message: failure, direction: 'rx', target: url });
             if (response.status === 401) {
                 throw new AuthError('Unauthorized', 'TOKEN_EXPIRED');
             }
-            throw new CloudError(`HTTP ${response.status}: ${response.statusText}`, 'HTTP_ERROR', {
+            throw new CloudError(failure, 'HTTP_ERROR', {
                 httpStatus: response.status
             });
         }
@@ -275,15 +280,17 @@ export class CloudClient {
         } catch {
             parsed = undefined;
         }
-        emitTraffic(this.logger, this.logLevel, {
+        logTraffic(this.logger, this.logLevel, {
             channel: 'cloud',
-            message: `HTTP ${response.status} ${path}`,
             direction: 'rx',
             target: url,
-            data: () => (parsed === undefined ? text : JSON.stringify(redactSecrets(parsed)))
+            message: `HTTP ${response.status} ${path}`,
+            body: parsed === undefined ? text : parsed
         });
         if (parsed === undefined) {
-            throw new CloudError('Cloud response is not valid JSON');
+            const failure = 'Cloud response is not valid JSON';
+            logError(this.logger, { channel: 'cloud', message: failure, direction: 'rx', target: url });
+            throw new CloudError(failure);
         }
 
         const body = parsed as { apiStatus?: number; info?: string; data?: unknown };
@@ -294,12 +301,16 @@ export class CloudClient {
         if (body.apiStatus === 1030) {
             const redirect = body.data as { domain?: string; mqttDomain?: string } | undefined;
             if (!redirect?.domain) {
-                throw new CloudError('Region redirect is missing a domain', 'BAD_DOMAIN', { apiStatus: 1030 });
+                const failure = 'Region redirect is missing a domain';
+                logError(this.logger, { channel: 'cloud', message: failure, direction: 'rx', target: url });
+                throw new CloudError(failure, 'BAD_DOMAIN', { apiStatus: 1030 });
             }
             const nextHost = host(redirect.domain);
             const nextMqtt = redirect.mqttDomain ? host(redirect.mqttDomain) : '';
             if (redirectCount >= 3) {
-                throw new CloudError('Max retries (3) exceeded for domain redirect', 'BAD_DOMAIN', {
+                const failure = 'Max retries (3) exceeded for domain redirect';
+                logError(this.logger, { channel: 'cloud', message: failure, direction: 'rx', target: url });
+                throw new CloudError(failure, 'BAD_DOMAIN', {
                     apiStatus: 1030,
                     domain: nextHost,
                     mqttDomain: nextMqtt
@@ -312,7 +323,17 @@ export class CloudClient {
             return this.post(path, params, redirectCount + 1);
         }
 
-        throw apiError(body.apiStatus, body.info);
+        const failure = apiError(body.apiStatus, body.info);
+        // Thrown message is `info` alone. The log keeps the status number.
+        logError(this.logger, {
+            channel: 'cloud',
+            message: body.info
+                ? `API ${body.apiStatus ?? 'unknown'}: ${body.info}`
+                : failure.message,
+            direction: 'rx',
+            target: url
+        });
+        throw failure;
     }
 }
 

@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { CommandError, TransportError } from '../../src/errors';
 import type { LogRecord } from '../../src/log';
 import {
+    DEFAULT_COMMAND_TIMEOUT_MS,
     ProtocolDispatcher,
     TOGGLEX_NAMESPACE,
     decodeMessage,
@@ -612,7 +613,8 @@ describe('MqttTransport', () => {
         assert.equal(tx.level, 'trace');
         assert.equal(tx.channel, 'mqtt');
         assert.equal(tx.target, `/appliance/${UUID}/subscribe`);
-        assert.equal(tx.data, client.published[0]!.payload);
+        assert.ok(tx.data);
+        assert.equal(JSON.parse(tx.data!).header.sign, '[REDACTED]');
         assert.ok(rx);
         assert.equal(rx.level, 'trace');
         assert.equal(rx.target, USER_TOPICS[0]);
@@ -641,6 +643,9 @@ describe('MqttTransport', () => {
         assert.ok(rx);
         assert.equal(rx.level, 'debug');
         assert.equal(rx.data, undefined);
+        assert.match(rx.message, /^rx\(mqtt\) PUSH /);
+        assert.match(rx.message, /messageId:/);
+        assert.match(rx.message, /uuid:/);
 
         await transport.disconnect();
     });
@@ -658,8 +663,8 @@ describe('MqttTransport', () => {
         assert.ok(records.some((record) =>
             record.level === 'error'
             && record.channel === 'mqtt'
-            && record.message === 'Malformed MQTT payload'
-            && record.data === '{not json'
+            && record.message === 'message is not valid JSON'
+            && record.data === undefined
         ));
         await transport.disconnect();
     });
@@ -678,10 +683,139 @@ describe('MqttTransport', () => {
         assert.equal(records.some((record) => record.direction === 'tx' || record.direction === 'rx'), false);
         assert.ok(records.some((record) =>
             record.level === 'error'
-            && record.message === 'Malformed MQTT payload'
-            && record.data === '{not json'
+            && record.message === 'message is not valid JSON'
+            && record.data === undefined
         ));
         await transport.disconnect();
+    });
+
+    it('logs a signature failure and redacts the frame', async () => {
+        const records: LogRecord[] = [];
+        const { transport, getClient } = createTransport({
+            logLevel: 'error',
+            logger: (record) => {
+                records.push(record);
+            }
+        });
+        await transport.connect();
+        const frame = encodeMessage({
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: { togglex: [{ channel: 0, onoff: 1 }] }
+        });
+        frame.header.sign = 'deadbeef';
+        getClient().deliver(frame);
+
+        const error = records.find((record) => record.level === 'error');
+        assert.ok(error);
+        assert.equal(error.message, 'message signature is invalid');
+        assert.equal(JSON.parse(error.data!).header.sign, '[REDACTED]');
+        assert.equal(error.data!.includes('deadbeef'), false);
+        assert.equal(error.data!.includes(UUID), false);
+        await transport.disconnect();
+    });
+
+    it('logs a device ERROR reply with the namespace and code', async () => {
+        const records: LogRecord[] = [];
+        const { transport, getClient } = createTransport({
+            logLevel: 'error',
+            logger: (record) => {
+                records.push(record);
+            }
+        });
+        await transport.connect();
+        const pending = transport.request({
+            uuid: UUID,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        const sent = decodeMessage(getClient().published[0]!.payload, KEY);
+        getClient().deliver(encodeMessage({
+            namespace: sent.header.namespace,
+            method: 'ERROR',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            messageId: sent.header.messageId,
+            timestamp: sent.header.timestamp,
+            payload: { error: { code: 5001 }, key: 'device-key' }
+        }));
+
+        await assert.rejects(
+            pending,
+            (err: unknown) => err instanceof CommandError && err.code === 'INVALID_KEY'
+        );
+        const error = records.find((record) => record.level === 'error');
+        assert.ok(error);
+        assert.equal(
+            error.message,
+            `Device rejected the key (${TOGGLEX_NAMESPACE} messageId:${sent.header.messageId})`
+        );
+        const data = JSON.parse(error.data!) as { error: { code: number }; key: string };
+        assert.equal(data.error.code, 5001);
+        assert.equal(data.key, '[REDACTED]');
+        assert.equal(error.data!.includes('device-key'), false);
+        await transport.disconnect();
+    });
+
+    it('logs a command timeout', async (t) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        const records: LogRecord[] = [];
+        const { transport } = createTransport({
+            logLevel: 'error',
+            logger: (record) => {
+                records.push(record);
+            }
+        });
+        await transport.connect();
+        const pending = transport.request({
+            uuid: UUID,
+            namespace: TOGGLEX_NAMESPACE,
+            method: 'GET'
+        });
+        await flushMicrotasks();
+        t.mock.timers.tick(DEFAULT_COMMAND_TIMEOUT_MS);
+        await flushMicrotasks();
+
+        await assert.rejects(
+            pending,
+            (err: unknown) => err instanceof CommandError && err.code === 'COMMAND_TIMEOUT'
+        );
+        assert.ok(records.some((record) =>
+            record.level === 'error'
+            && record.channel === 'mqtt'
+            && record.message === `Command timed out after ${DEFAULT_COMMAND_TIMEOUT_MS}ms`
+            && record.target === `/appliance/${UUID}/subscribe`
+        ));
+        await transport.disconnect();
+    });
+
+    it('logs a connect timeout', async (t) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        const records: LogRecord[] = [];
+        const transport = new MqttTransport({
+            userId: USER_ID,
+            key: KEY,
+            mqttDomain: DOMAIN,
+            logger: (record) => {
+                records.push(record);
+            },
+            connect: () => new FakeMqttClient()
+        });
+        const pending = transport.connect();
+        t.mock.timers.tick(30_000);
+        await assert.rejects(
+            pending,
+            (err: unknown) => err instanceof TransportError && err.code === 'MQTT_CONNECT_TIMEOUT'
+        );
+        assert.ok(records.some((record) =>
+            record.level === 'error'
+            && record.channel === 'mqtt'
+            && record.message === 'MQTT connection timed out after 30000ms'
+            && record.target === `${DOMAIN}:443`
+        ));
     });
 
     it('logs mqtt.js errors without throwing', async () => {

@@ -414,7 +414,7 @@ describe('CloudClient logger', () => {
             password: string;
             mfaCode: string;
         };
-        assert.equal(tx.email, EMAIL);
+        assert.equal(tx.email, '[REDACTED]');
         assert.equal(tx.password, '[REDACTED]');
         assert.equal(tx.mfaCode, '[REDACTED]');
         assert.equal(JSON.stringify(records).includes('Authorization'), false);
@@ -430,6 +430,51 @@ describe('CloudClient logger', () => {
         assert.equal(rx.apiStatus, 0);
         assert.equal(rx.data.token, '[REDACTED]');
         assert.equal(rx.data.key, '[REDACTED]');
+    });
+
+    it('logs an apiStatus failure with the status and info', async () => {
+        const records: LogRecord[] = [];
+        await assert.rejects(
+            () => CloudClient.login(
+                { email: EMAIL, password: PASSWORD },
+                {
+                    logLevel: 'error',
+                    logger: (record) => {
+                        records.push(record);
+                    },
+                    fetch: async () => jsonResponse({ apiStatus: 1004, info: 'wrong password' })
+                }
+            ),
+            (err: unknown) => err instanceof AuthError && err.code === 'AUTHENTICATION' && err.apiStatus === 1004
+        );
+        assert.deepEqual(records, [{
+            level: 'error',
+            channel: 'cloud',
+            message: 'API 1004: wrong password',
+            direction: 'rx',
+            target: SIGN_IN
+        }]);
+    });
+
+    it('logs a region redirect that has no domain', async () => {
+        const records: LogRecord[] = [];
+        await assert.rejects(
+            () => CloudClient.login(
+                { email: EMAIL, password: PASSWORD },
+                {
+                    logger: (record) => {
+                        records.push(record);
+                    },
+                    fetch: async () => jsonResponse({ apiStatus: 1030, data: {} })
+                }
+            ),
+            (err: unknown) => err instanceof CloudError && err.code === 'BAD_DOMAIN'
+        );
+        assert.ok(records.some((record) =>
+            record.level === 'error'
+            && record.message === 'Region redirect is missing a domain'
+            && record.target === SIGN_IN
+        ));
     });
 
     it('does not fail the request when the logger throws', async () => {

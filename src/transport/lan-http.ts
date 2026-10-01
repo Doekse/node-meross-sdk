@@ -1,13 +1,19 @@
 import http from 'node:http';
 
 import { ProtocolError, TransportError } from '../errors';
-import { emitTraffic, type LogLevel, type SessionLogger } from '../log';
+import { logError, logTraffic, type LogLevel, type SessionLogger } from '../log';
 import { ProtocolDispatcher } from '../protocol/dispatcher';
 import {
     decryptPayload,
     encryptPayload
 } from '../protocol/encryption';
-import { decodeMessage, encodeMessage, type MerossMessage, type MerossPayload } from '../protocol/message';
+import {
+    decodeMessage,
+    deviceErrorMessage,
+    encodeMessage,
+    type MerossMessage,
+    type MerossPayload
+} from '../protocol/message';
 import { DEFAULT_COMMAND_TIMEOUT_MS } from '../protocol/pending';
 
 /**
@@ -149,15 +155,24 @@ export class LanHttpTransport {
         });
         const messageId = message.header.messageId;
         const controller = new AbortController();
+        const target = `http://${options.ip}/config`;
         const timer = setTimeout(() => {
-            this.dispatcher.pending.reject(messageId, new TransportError(
-                `LAN HTTP timed out after ${DEFAULT_LAN_TIMEOUT_MS}ms`,
+            const failure = `LAN HTTP timed out after ${DEFAULT_LAN_TIMEOUT_MS}ms`;
+            const rejected = this.dispatcher.pending.reject(messageId, new TransportError(
+                failure,
                 'LAN_TIMEOUT'
             ));
+            if (rejected) {
+                logError(this.logger, {
+                    channel: 'lan',
+                    message: failure,
+                    direction: 'rx',
+                    target
+                });
+            }
             controller.abort();
         }, DEFAULT_LAN_TIMEOUT_MS);
         const reply = this.dispatcher.pending.register(messageId, DEFAULT_LAN_TIMEOUT_MS);
-        const target = `http://${options.ip}/config`;
         const previous = this.lastIp.get(options.uuid);
         if (previous && previous !== options.ip) {
             this.forget(options.uuid);
@@ -165,12 +180,15 @@ export class LanHttpTransport {
         this.lastIp.set(options.uuid, options.ip);
 
         const plaintext = JSON.stringify(message);
-        emitTraffic(this.logger, this.logLevel, {
+        logTraffic(this.logger, this.logLevel, {
             channel: 'lan',
-            message: `LAN POST ${options.method} ${options.namespace}`,
             direction: 'tx',
             target,
-            data: () => plaintext
+            method: options.method,
+            namespace: options.namespace,
+            uuid: options.uuid,
+            messageId,
+            body: plaintext
         });
         const body = options.encryptionKey
             ? encryptPayload(plaintext, options.encryptionKey)
@@ -180,15 +198,7 @@ export class LanHttpTransport {
             await this.attempt(options, body, controller.signal, target);
         } catch (error) {
             if (!(error instanceof Error && error.name === 'AbortError')) {
-                this.dispatcher.pending.reject(
-                    messageId,
-                    error instanceof ProtocolError || error instanceof TransportError
-                        ? error
-                        : new TransportError(
-                            error instanceof Error ? error.message : String(error),
-                            'LAN_UNREACHABLE'
-                        )
-                );
+                this.rejectFailedPost(messageId, target, error);
             }
         } finally {
             clearTimeout(timer);
@@ -229,10 +239,14 @@ export class LanHttpTransport {
                 } catch {
                     // cancel/arrayBuffer throw when the connection is already closed.
                 }
-                throw new TransportError(
-                    `LAN HTTP ${response.status}: ${response.statusText}`,
-                    'LAN_HTTP_ERROR'
-                );
+                const failure = `LAN HTTP ${response.status}: ${response.statusText}`;
+                logError(this.logger, {
+                    channel: 'lan',
+                    message: failure,
+                    direction: 'rx',
+                    target
+                });
+                throw new TransportError(failure, 'LAN_HTTP_ERROR');
             }
             this.onMessage(options, target, await response.text());
             return;
@@ -240,17 +254,42 @@ export class LanHttpTransport {
 
         const response = await postHttp(target, body, contentType, signal, this.agent);
         if (response.status !== 200) {
-            throw new TransportError(
-                `LAN HTTP ${response.status}: ${response.statusText}`,
-                'LAN_HTTP_ERROR'
-            );
+            const failure = `LAN HTTP ${response.status}: ${response.statusText}`;
+            logError(this.logger, {
+                channel: 'lan',
+                message: failure,
+                direction: 'rx',
+                target
+            });
+            throw new TransportError(failure, 'LAN_HTTP_ERROR');
         }
         this.onMessage(options, target, response.body);
     }
 
     /**
-     * UTF-8 waits until decrypt or a logger needs the body. Decode reuses that
-     * string when it already ran, same as MQTT inbound.
+     * HTTP status errors are already logged where they are thrown. Other
+     * failures are logged here before pending is rejected.
+     */
+    private rejectFailedPost(messageId: string, target: string, error: unknown): void {
+        const isHttpStatus = error instanceof TransportError && error.code === 'LAN_HTTP_ERROR';
+        const detail = error instanceof Error ? error.message : String(error);
+        if (!isHttpStatus) {
+            logError(this.logger, {
+                channel: 'lan',
+                message: `LAN POST failed: ${detail}`,
+                direction: 'tx',
+                target
+            });
+        }
+        const cause = error instanceof ProtocolError || error instanceof TransportError
+            ? error
+            : new TransportError(detail, 'LAN_UNREACHABLE');
+        this.dispatcher.pending.reject(messageId, cause);
+    }
+
+    /**
+     * Decode reuses the UTF-8 string when decrypt already produced it. The
+     * traffic log reads that same string for its summary.
      */
     private onMessage(
         options: LanHttpRequestOptions,
@@ -266,15 +305,25 @@ export class LanHttpTransport {
             ? decryptPayload(asText(), options.encryptionKey)
             : undefined;
 
-        emitTraffic(this.logger, this.logLevel, {
+        logTraffic(this.logger, this.logLevel, {
             channel: 'lan',
-            message: 'LAN HTTP 200',
             direction: 'rx',
             target,
-            data: () => plaintext ?? asText()
+            uuid: options.uuid,
+            fallback: 'LAN HTTP 200',
+            body: plaintext ?? asText()
         });
 
         const decoded = decodeMessage(plaintext ?? text ?? wire, this.key);
+        if (decoded.header.method === 'ERROR') {
+            logError(this.logger, {
+                channel: 'lan',
+                message: deviceErrorMessage(decoded),
+                direction: 'rx',
+                target,
+                data: () => JSON.stringify(decoded.payload)
+            });
+        }
         // Envelope often cannot identify the device; this POST's uuid can.
         if (this.dispatcher.handle(decoded, options.uuid) !== 'reply') {
             throw new ProtocolError('LAN HTTP response did not match a pending request');

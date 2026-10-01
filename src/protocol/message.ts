@@ -139,3 +139,17 @@ export function deviceErrorCode(message: MerossMessage): number | undefined {
     const rawCode = (message.payload as { error?: { code?: unknown } }).error?.code;
     return typeof rawCode === 'number' ? rawCode : undefined;
 }
+
+/**
+ * Failure sentence for a firmware ERROR reply. The payload stays off this
+ * string so a logger can attach it separately and redact it.
+ */
+export function deviceErrorMessage(message: MerossMessage): string {
+    const code = deviceErrorCode(message);
+    const where = `${message.header.namespace} messageId:${message.header.messageId}`;
+    if (code === 5001) {
+        return `Device rejected the key (${where})`;
+    }
+    const codeText = code === undefined ? '' : ` ${code}`;
+    return `Device returned error${codeText} (${where})`;
+}

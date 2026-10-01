@@ -2,6 +2,9 @@
  * Opt-in host sink for transport traffic the SDK cannot expose via wrappable
  * fetch/mqtt hooks — LAN uses node:http, and cloud sign-in runs before Session
  * exists. Homey (or any host) owns DEBUG gating; this module never reads env.
+ *
+ * Callers use {@link logTraffic} and {@link logError}. Summary text, header
+ * peeks, and redaction stay here so a transport does not assemble a line.
  */
 
 export type LogLevel = 'error' | 'debug' | 'trace';
@@ -29,8 +32,40 @@ export interface LogRecord {
     data?: string;
 }
 
-/** Host callback; {@link emitLog} is a no-op when this is omitted. */
+/** Host callback; logging is a no-op when this is omitted. */
 export type SessionLogger = (record: LogRecord) => void;
+
+/**
+ * One exchange. MQTT and LAN summaries are built from `method`/`namespace`
+ * or, on receive, from the JSON body. Cloud passes `message` itself.
+ * `body` is read only when the summary or a trace dump needs it.
+ */
+export interface TrafficEvent {
+    channel: LogChannel;
+    direction: LogDirection;
+    target?: string;
+    message?: string;
+    /** Used when a protocol body has no header. */
+    fallback?: string;
+    method?: string;
+    namespace?: string;
+    uuid?: string;
+    messageId?: string;
+    body?: unknown | (() => unknown);
+}
+
+/**
+ * A failure line. Emitted whenever a logger is set, including at floor `error`.
+ * JSON `data` is redacted like a trace body. Text that is not JSON is omitted
+ * so a truncated frame is not logged raw.
+ */
+export interface ErrorEvent {
+    channel: LogChannel;
+    message: string;
+    direction?: LogDirection;
+    target?: string;
+    data?: string | (() => string);
+}
 
 /** Numeric ranks so floor checks never string-compare (`'debug' < 'error'`). */
 const LOG_LEVEL_RANK: Record<LogLevel, number> = {
@@ -39,25 +74,127 @@ const LOG_LEVEL_RANK: Record<LogLevel, number> = {
     trace: 2
 };
 
-const SECRET_KEYS = new Set(['password', 'token', 'key', 'mfaCode']);
+/**
+ * Lowercase names. Firmware uses `userId` where cloud uses `userid`, so
+ * matching compares with `toLowerCase()`.
+ */
+const REDACT_KEYS = new Set([
+    'password',
+    'token',
+    'key',
+    'mfacode',
+    'uuid',
+    'sign',
+    'from',
+    'innerip',
+    'server',
+    'port',
+    'secondserver',
+    'secondport',
+    'activeserver',
+    'mainserver',
+    'mainport',
+    'macaddress',
+    'wifimac',
+    'ssid',
+    'gatewaymac',
+    'userid',
+    'bindid',
+    'email',
+    'sn',
+    'setupid',
+    'setupcode',
+    'domain',
+    'mqttdomain',
+    'cluster',
+    'reserveddomain',
+    'params',
+    'authorization',
+    'latitude',
+    'longitude'
+]);
 const REDACTED = '[REDACTED]';
+
+const MQTT_APPLIANCE_TOPIC = /^\/appliance\/([^/]+)\/(?:subscribe|publish)$/;
+const FROM_UUID = /^\/appliance\/([^/]+)\//;
+
+interface HeaderPeek {
+    method: string;
+    namespace: string;
+    messageId: string;
+    uuid?: string;
+}
+
+/**
+ * Debug one-liner, plus a redacted body when the floor is `trace`.
+ * Omitted `logLevel` matches an explicit `debug` floor.
+ */
+export function logTraffic(
+    logger: SessionLogger | undefined,
+    logLevel: LogLevel | undefined,
+    event: TrafficEvent
+): void {
+    if (!logger || !enabled(logLevel, 'debug')) {
+        return;
+    }
+
+    const protocol = event.channel === 'mqtt' || event.channel === 'lan';
+    const method = event.method;
+    const namespace = event.namespace;
+    const known = protocol && method !== undefined && namespace !== undefined;
+    const trace = enabled(logLevel, 'trace');
+    const body = (protocol && !known) || trace ? readLazy(event.body) : undefined;
+
+    let message: string;
+    if (known) {
+        message = protocolLine(event.direction, event.channel, method, namespace, event);
+    } else if (protocol) {
+        message = lineFromBody(event, body);
+    } else {
+        message = event.message ?? event.fallback ?? '';
+    }
+
+    const data = trace && body !== undefined ? redactBody(body) : undefined;
+    emit(logger, {
+        level: trace ? 'trace' : 'debug',
+        channel: event.channel,
+        message,
+        direction: event.direction,
+        ...(event.target !== undefined ? { target: event.target } : {}),
+        ...(data !== undefined ? { data } : {})
+    });
+}
+
+/**
+ * Failure line. The host floor does not apply: an error is the reason a
+ * request is about to throw. JSON `data` is redacted like a trace body.
+ */
+export function logError(logger: SessionLogger | undefined, event: ErrorEvent): void {
+    if (!logger) {
+        return;
+    }
+    const raw = readLazy(event.data);
+    const data = raw === undefined ? undefined : redactBody(raw);
+    emit(logger, {
+        level: 'error',
+        channel: event.channel,
+        message: event.message,
+        ...(event.direction !== undefined ? { direction: event.direction } : {}),
+        ...(event.target !== undefined ? { target: event.target } : {}),
+        ...(data !== undefined ? { data } : {})
+    });
+}
 
 /**
  * Whether `level` should emit when the host floor is `floor`.
- * Omitted floor resolves to `debug` — the same default {@link emitTraffic} uses.
+ * Omitted floor resolves to `debug`.
  */
-export function isLogEnabled(floor: LogLevel | undefined, level: LogLevel): boolean {
+function enabled(floor: LogLevel | undefined, level: LogLevel): boolean {
     const resolved = floor ?? 'debug';
     return LOG_LEVEL_RANK[level] <= LOG_LEVEL_RANK[resolved];
 }
 
-/**
- * Invokes the host sink without letting a throwing callback fail the request.
- */
-export function emitLog(logger: SessionLogger | undefined, record: LogRecord): void {
-    if (!logger) {
-        return;
-    }
+function emit(logger: SessionLogger, record: LogRecord): void {
     try {
         logger(record);
     } catch {
@@ -66,67 +203,117 @@ export function emitLog(logger: SessionLogger | undefined, record: LogRecord): v
 }
 
 /**
- * Traffic fields plus a lazy body. `data` runs only when the floor is `trace`.
+ * Evaluates a lazy body or error payload. A throw becomes `undefined` so the
+ * line still emits.
  */
-interface TrafficInput {
-    channel: LogChannel;
-    message: string;
-    direction: LogDirection;
-    target?: string;
-    data: () => string;
+function readLazy<T>(value: T | (() => T) | undefined): T | undefined {
+    try {
+        if (typeof value === 'function') {
+            return (value as () => T)();
+        }
+        return value;
+    } catch {
+        return undefined;
+    }
 }
 
-/**
- * One traffic line: summary at `debug`, or the same line at `trace` with
- * `data` when the floor allows. Lazy `data` avoids stringify/redact when
- * bodies are filtered out. Unfiltered {@link emitLog} stays for errors.
- * Omitted `logLevel` uses the {@link isLogEnabled} default (`debug`).
- */
-export function emitTraffic(
-    logger: SessionLogger | undefined,
-    logLevel: LogLevel | undefined,
-    record: TrafficInput
-): void {
-    if (!logger) {
-        return;
+function protocolLine(
+    direction: LogDirection,
+    channel: LogChannel,
+    method: string,
+    namespace: string,
+    ids: { uuid?: string; messageId?: string }
+): string {
+    const parts: string[] = [];
+    if (ids.uuid) {
+        parts.push(`uuid:${ids.uuid}`);
     }
-    if (!isLogEnabled(logLevel, 'debug')) {
-        return;
+    if (ids.messageId) {
+        parts.push(`messageId:${ids.messageId}`);
     }
-    const traceEnabled = isLogEnabled(logLevel, 'trace');
-    let data: string | undefined;
-    if (traceEnabled) {
-        try {
-            data = record.data();
-        } catch {
-            // Same I/O isolation as emitLog: a bad body must not drop the line.
-        }
+    const suffix = parts.length > 0 ? ` (${parts.join(' ')})` : '';
+    return `${direction}(${channel}) ${method} ${namespace}${suffix}`;
+}
+
+function lineFromBody(event: TrafficEvent, body: unknown): string {
+    const peek = typeof body === 'string' ? peekHeader(body) : undefined;
+    if (!peek) {
+        return event.fallback ?? event.message ?? '';
     }
-    const level: LogLevel = traceEnabled ? 'trace' : 'debug';
-    emitLog(logger, {
-        level,
-        channel: record.channel,
-        message: record.message,
-        direction: record.direction,
-        target: record.target,
-        ...(data !== undefined ? { data } : {})
+    let uuid = event.uuid ?? peek.uuid;
+    if (uuid === undefined && event.channel === 'mqtt' && event.target) {
+        uuid = uuidFromTopic(event.target);
+    }
+    return protocolLine(event.direction, event.channel, peek.method, peek.namespace, {
+        uuid,
+        messageId: peek.messageId
     });
 }
 
+function peekHeader(text: string): HeaderPeek | undefined {
+    let raw: unknown;
+    try {
+        raw = JSON.parse(text);
+    } catch {
+        return undefined;
+    }
+    if (typeof raw !== 'object' || raw === null) {
+        return undefined;
+    }
+    const header = (raw as { header?: unknown }).header;
+    if (typeof header !== 'object' || header === null) {
+        return undefined;
+    }
+    const fields = header as Record<string, unknown>;
+    const method = readString(fields, 'method');
+    const namespace = readString(fields, 'namespace');
+    const messageId = readString(fields, 'messageId');
+    if (method === undefined || namespace === undefined || messageId === undefined) {
+        return undefined;
+    }
+    const from = readString(fields, 'from') ?? '';
+    return {
+        method,
+        namespace,
+        messageId,
+        uuid: readString(fields, 'uuid') ?? FROM_UUID.exec(from)?.[1]
+    };
+}
+
+function readString(record: Record<string, unknown>, key: string): string | undefined {
+    const value = record[key];
+    return typeof value === 'string' ? value : undefined;
+}
+
+function uuidFromTopic(topic: string): string | undefined {
+    return MQTT_APPLIANCE_TOPIC.exec(topic)?.[1];
+}
+
+function redactBody(body: unknown): string | undefined {
+    try {
+        const value = typeof body === 'string' ? JSON.parse(body) : body;
+        return JSON.stringify(redact(value));
+    } catch {
+        // A truncated frame is header-first and still holds sign, from, and uuid.
+        // Structured redact never sees it, so the dump is omitted.
+        return undefined;
+    }
+}
+
 /**
- * Replaces cloud credential fields so debug dumps stay useful without
- * leaking secrets. Returns a new structure; the input is never mutated.
+ * Replaces credential, network, and location fields. Key match ignores case.
+ * Returns a new structure; the input is never mutated.
  */
-export function redactSecrets(value: unknown): unknown {
+function redact(value: unknown): unknown {
     if (value === null || typeof value !== 'object') {
         return value;
     }
     if (Array.isArray(value)) {
-        return value.map(redactSecrets);
+        return value.map(redact);
     }
     const copy: Record<string, unknown> = {};
     for (const [key, nested] of Object.entries(value)) {
-        copy[key] = SECRET_KEYS.has(key) ? REDACTED : redactSecrets(nested);
+        copy[key] = REDACT_KEYS.has(key.toLowerCase()) ? REDACTED : redact(nested);
     }
     return copy;
 }

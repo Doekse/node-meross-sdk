@@ -3,10 +3,16 @@ import { createRequire } from 'node:module';
 import { isIP } from 'node:net';
 import { connect, type ConnectionOptions, type TLSSocket } from 'node:tls';
 
-import { TransportError } from '../errors';
-import { emitLog, emitTraffic, type LogLevel, type SessionLogger } from '../log';
+import { CommandError, ProtocolError, TransportError } from '../errors';
+import { logError, logTraffic, type LogLevel, type SessionLogger } from '../log';
 import { ProtocolDispatcher } from '../protocol/dispatcher';
-import { decodeMessage, encodeMessage, type MerossMessage, type MerossPayload } from '../protocol/message';
+import {
+    decodeMessage,
+    deviceErrorMessage,
+    encodeMessage,
+    type MerossMessage,
+    type MerossPayload
+} from '../protocol/message';
 import { PublishRateLimiter, type PublishPriority } from './rate-limit';
 
 /** Cloud brokers listen on 443; older firmware used 2001. */
@@ -238,12 +244,15 @@ export class MqttTransport {
         const messageId = message.header.messageId;
         const topic = `/appliance/${options.uuid}/subscribe`;
         const payload = JSON.stringify(message);
-        emitTraffic(this.logger, this.logLevel, {
+        logTraffic(this.logger, this.logLevel, {
             channel: 'mqtt',
-            message: `MQTT publish ${options.method} ${options.namespace}`,
             direction: 'tx',
             target: topic,
-            data: () => payload
+            method: options.method,
+            namespace: options.namespace,
+            uuid: options.uuid,
+            messageId,
+            body: payload
         });
         const reply = this.dispatcher.pending.register(messageId);
         this.inflight.add(messageId);
@@ -261,6 +270,16 @@ export class MqttTransport {
         );
         try {
             return await reply;
+        } catch (error) {
+            if (error instanceof CommandError && error.code === 'COMMAND_TIMEOUT') {
+                logError(this.logger, {
+                    channel: 'mqtt',
+                    message: error.message,
+                    direction: 'rx',
+                    target: topic
+                });
+            }
+            throw error;
         } finally {
             this.inflight.delete(messageId);
         }
@@ -302,8 +321,7 @@ export class MqttTransport {
         // mqtt.js treats an unhandled `error` as a throw; TLS can fail before
         // `connect`/`message` listeners are attached.
         client.on('error', (error) => {
-            emitLog(this.logger, {
-                level: 'error',
+            logError(this.logger, {
                 channel: 'mqtt',
                 message: error.message
             });
@@ -325,10 +343,14 @@ export class MqttTransport {
             await new Promise<void>((resolve, reject) => {
                 let settled = false;
                 const timer = setTimeout(() => {
-                    finish(new TransportError(
-                        `MQTT connection timed out after ${CONNECT_TIMEOUT_MS}ms`,
-                        'MQTT_CONNECT_TIMEOUT'
-                    ));
+                    const failure = `MQTT connection timed out after ${CONNECT_TIMEOUT_MS}ms`;
+                    const port = portStr ? Number(portStr) : MQTT_PORT;
+                    logError(this.logger, {
+                        channel: 'mqtt',
+                        message: failure,
+                        target: `${host}:${port}`
+                    });
+                    finish(new TransportError(failure, 'MQTT_CONNECT_TIMEOUT'));
                 }, CONNECT_TIMEOUT_MS);
                 const finish = (error?: Error): void => {
                     if (settled) {
@@ -382,8 +404,8 @@ export class MqttTransport {
      * The catch exists because a thrown handler would take down the mqtt.js
      * socket; unsigned payloads are expected on a shared broker topic.
      *
-     * UTF-8 conversion waits until a logger needs the body (trace traffic or
-     * an error dump). Decode reuses that string when it already ran.
+     * The summary reads the body only when a logger will print it. Decode
+     * reuses that string when it already ran.
      */
     private onMessage(topic: string, payload: Buffer): void {
         let text: string | undefined;
@@ -391,22 +413,34 @@ export class MqttTransport {
             text ??= payload.toString('utf8');
             return text;
         };
-        emitTraffic(this.logger, this.logLevel, {
+        logTraffic(this.logger, this.logLevel, {
             channel: 'mqtt',
-            message: 'MQTT message',
             direction: 'rx',
             target: topic,
-            data: asText
+            fallback: 'MQTT message',
+            body: asText
         });
         try {
-            this.dispatcher.handle(decodeMessage(text ?? payload, this.key));
-        } catch {
-            emitLog(this.logger, {
-                level: 'error',
+            const decoded = decodeMessage(text ?? payload, this.key);
+            if (decoded.header.method === 'ERROR') {
+                logError(this.logger, {
+                    channel: 'mqtt',
+                    message: deviceErrorMessage(decoded),
+                    direction: 'rx',
+                    target: topic,
+                    data: () => JSON.stringify(decoded.payload)
+                });
+            }
+            this.dispatcher.handle(decoded);
+        } catch (error) {
+            const failure = error instanceof ProtocolError
+                ? error.message
+                : 'Malformed MQTT payload';
+            logError(this.logger, {
                 channel: 'mqtt',
-                message: 'Malformed MQTT payload',
+                message: failure,
                 target: topic,
-                ...(this.logger ? { data: asText() } : {})
+                data: asText
             });
         }
     }
