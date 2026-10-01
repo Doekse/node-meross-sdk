@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0-alpha] - 2026-10-01
+
 ### Changed
 
 - MQTT/LAN debug traffic uses compact one-liners (`tx(mqtt) GET … (uuid:… messageId:…)`). Trace bodies and error dumps redact wire and cloud sensitive fields (`sign`, `uuid`, `innerIp`, `userId`, `bindId`, `latitude`, `longitude`, …) with a case-insensitive key match. Device names stay. A dump that is not valid JSON is omitted, so a truncated frame is not logged raw. Cloud and LAN HTTP failures, device `ERROR` replies, command and connect timeouts, and cloud `apiStatus` failures emit an `error` log line before throwing. An MQTT frame that fails decode logs the protocol error (`message is not valid JSON`, `message signature is invalid`).
@@ -125,7 +127,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Traits: switch, light, energy, cover, climate, sensor, presence, fan, spray, diffuser, sprinkler, media, alarm, dnd, system, timer, trigger.
 - TypeScript types shipped next to CommonJS `dist/` so `require()` hosts (including Homey) load without a bundler.
 
-[unreleased]: https://github.com/Doekse/node-meross-sdk/compare/v0.4.0-alpha...HEAD
+[unreleased]: https://github.com/Doekse/node-meross-sdk/compare/v0.5.0-alpha...HEAD
+[0.5.0-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.4.0-alpha...v0.5.0-alpha
 [0.4.0-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.3.0-alpha...v0.4.0-alpha
 [0.3.0-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.2.0-alpha...v0.3.0-alpha
 [0.2.0-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.1.1-alpha...v0.2.0-alpha
