@@ -1,4 +1,4 @@
-import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
 import type { TraitName } from '../endpoint';
 import { MerossError } from '../errors';
 import type { AbilityMap } from '../protocol/codecs/ability';
@@ -12,10 +12,10 @@ import {
     encodeAlertConfigSet
 } from '../protocol/codecs/alertconfig';
 import type { MerossMessage } from '../protocol/message';
-import { channelList, SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
+import { AlertCatalog } from './alert.catalog';
 
 export interface AlertValues {
     type?: number;
@@ -184,19 +184,9 @@ export function enrollBoardAlertExtra(input: EnrollBoardExtraInput): TraitName[]
     return ['alert'];
 }
 
-export const AlertDescriptor: TraitDescriptor & {
-    readonly name: 'alert';
-    attach(args: TraitAttachArgs<AlertValues>): AlertTrait;
-} = {
-    name: 'alert',
-    push: [CONTROL_ALERT_CONFIG_NAMESPACE, CONTROL_ALERT_REPORT_NAMESPACE],
-    poll: {
-        [CONTROL_ALERT_CONFIG_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: channelList('config', 'alert')
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<AlertValues>): AlertTrait {
+export const descriptor: TraitDescriptor<'alert', AlertTrait> = {
+    ...AlertCatalog,
+    attach(args: TraitAttachContext<'alert'>): AlertTrait {
         return new AlertTrait({
             channel: args.channel,
             namespaces: args.namespaces,

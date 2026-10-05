@@ -1,4 +1,4 @@
-import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardContext, TraitAttachContext } from '../device/enroll-context';
 import { enrollDigest } from '../device/enroll-helpers';
 import {
     LIGHT_CAPACITY_EFFECT,
@@ -21,14 +21,10 @@ import {
 } from '../protocol/codecs/togglex';
 import type { MerossMessage } from '../protocol/message';
 import { TOGGLE_NAMESPACE, TOGGLEX_NAMESPACE } from '../protocol/namespaces';
-import {
-    DEFAULT,
-    SMART_CONFIG,
-    type PollSpec
-} from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
+import { LightCatalog } from './light.catalog';
 
 export interface LightRgb {
     r: number;
@@ -325,26 +321,9 @@ export function enrollLight(ctx: EnrollBoardContext): void {
     enrollDigest(ctx, ctx.all.digest.light, LIGHT_NAMESPACE, 'light', 'light');
 }
 
-export const LightDescriptor: TraitDescriptor & {
-    readonly name: 'light';
-    attach(args: TraitAttachArgs<LightValues>): LightTrait;
-} = {
-    name: 'light',
-    push: [
-        TOGGLEX_NAMESPACE,
-        TOGGLE_NAMESPACE,
-        LIGHT_NAMESPACE,
-        LIGHT_EFFECT_NAMESPACE
-    ],
-    poll: {
-        [LIGHT_NAMESPACE]: DEFAULT,
-        [LIGHT_EFFECT_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: { list: 'effect' },
-            base: 1_850
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<LightValues>): LightTrait {
+export const descriptor: TraitDescriptor<'light', LightTrait> = {
+    ...LightCatalog,
+    attach(args: TraitAttachContext<'light'>): LightTrait {
         const capacity = args.physical.ability[LIGHT_NAMESPACE]?.capacity;
         // ToggleX wins when both Toggle and ToggleX are advertised.
         const hasToggleX = TOGGLEX_NAMESPACE in args.physical.ability;

@@ -1,8 +1,8 @@
 /**
- * Poll layer: the namespace catalog, job scheduling, and the packing engine.
- * Device (identity/enrollment) is a consumer of this, not the other way
- * around. {@link PollTarget} is the scheduling surface; poll does not import
- * device types.
+ * Poll layer: job scheduling and the packing engine. Trait catalogs own
+ * poll rows; this module concatenates them. Device (identity/enrollment)
+ * is a consumer of this, not the other way around. {@link PollTarget} is
+ * the scheduling surface; poll does not import device types.
  */
 export {
     DEFAULT_POLL_INTERVAL_MS,

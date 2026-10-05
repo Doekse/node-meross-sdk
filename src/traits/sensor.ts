@@ -1,5 +1,4 @@
-import type { TraitAttachArgs } from '../device/enroll-context';
-import { SENSOR_HUB_CHILD } from '../device/hub-child';
+import type { TraitAttachContext } from '../device/enroll-context';
 import {
     decodeHubExceptionPush,
     decodeHubSubDeviceVersionPush
@@ -44,21 +43,11 @@ import {
     HUB_EXCEPTION_NAMESPACE,
     HUB_SUBDEVICE_VERSION_NAMESPACE
 } from '../protocol/namespaces';
-import {
-    DEFAULT,
-    SMART_ALL,
-    SMART_BATTERY,
-    SMART_CLOUDMQTT,
-    SMART_CONFIG,
-    channelList,
-    idList,
-    subIdList,
-    type PollSpec
-} from '../poll/spec';
 import type { DeviceRequest } from '../request';
-import type { HubChildRule, TraitDescriptor } from './descriptor';
 import { applyPatch } from './patch';
 import { SENSOR_FAMILY_MAP, type SensorFamily } from './sensor-family';
+import type { TraitDescriptor } from './descriptor';
+import { SensorCatalog } from './sensor.catalog';
 
 export { SENSOR_FAMILY_MAP, type SensorFamily };
 
@@ -541,90 +530,9 @@ function smokeConfigPatch(entry: { dndEnabled?: boolean; detectEnabled?: boolean
     return patch;
 }
 
-export const SensorDescriptor: TraitDescriptor & {
-    readonly name: 'sensor';
-    readonly hubChild: HubChildRule;
-    attach(args: TraitAttachArgs<SensorValues>): SensorTrait | undefined;
-} = {
-    name: 'sensor',
-    hubChild: SENSOR_HUB_CHILD,
-    push: [
-        HUB_SENSOR_TEMPHUM_NAMESPACE,
-        HUB_SENSOR_DOORWINDOW_NAMESPACE,
-        HUB_SENSOR_WATERLEAK_NAMESPACE,
-        HUB_SENSOR_MOTION_NAMESPACE,
-        HUB_SENSOR_SMOKE_NAMESPACE,
-        SMOKE_CONFIG_NAMESPACE,
-        HUB_BATTERY_NAMESPACE,
-        HUB_EXCEPTION_NAMESPACE,
-        HUB_SUBDEVICE_VERSION_NAMESPACE,
-        HUB_SENSOR_ADJUST_NAMESPACE,
-        HUB_SENSOR_ALERT_NAMESPACE,
-        HUB_SENSOR_ALL_NAMESPACE,
-        SENSOR_LATESTX_NAMESPACE,
-        CONFIG_SENSOR_ASSOCIATION_NAMESPACE
-    ],
-    poll: {
-        /**
-         * Shared with climate board SET/PUSH; keep unfiltered
-         * `channelList('config')` so MTS300 GETs are not dropped.
-         */
-        [CONFIG_SENSOR_ASSOCIATION_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: channelList('config'),
-            item: 30
-        },
-        [HUB_SENSOR_ALL_NAMESPACE]: {
-            ...SMART_ALL,
-            payload: idList('all', 'sensor')
-        },
-        [HUB_SENSOR_TEMPHUM_NAMESPACE]: {
-            ...DEFAULT,
-            skipIf: HUB_SENSOR_ALL_NAMESPACE,
-            payload: idList('tempHum', 'sensor')
-        },
-        [HUB_SENSOR_DOORWINDOW_NAMESPACE]: {
-            ...DEFAULT,
-            skipIf: HUB_SENSOR_ALL_NAMESPACE,
-            payload: idList('doorWindow', 'sensor')
-        },
-        [HUB_SENSOR_WATERLEAK_NAMESPACE]: {
-            ...DEFAULT,
-            skipIf: HUB_SENSOR_ALL_NAMESPACE,
-            payload: idList('waterLeak', 'sensor')
-        },
-        [HUB_SENSOR_MOTION_NAMESPACE]: {
-            ...DEFAULT,
-            skipIf: HUB_SENSOR_ALL_NAMESPACE,
-            payload: idList('motion', 'sensor')
-        },
-        [HUB_SENSOR_SMOKE_NAMESPACE]: {
-            ...DEFAULT,
-            skipIf: HUB_SENSOR_ALL_NAMESPACE,
-            payload: idList('smokeAlarm', 'sensor')
-        },
-        /**
-         * Shared with sprinkler handlePush; keep unfiltered
-         * `idList('battery')` so mixed children stay in the GET.
-         */
-        [HUB_BATTERY_NAMESPACE]: {
-            ...SMART_BATTERY,
-            payload: idList('battery')
-        },
-        [HUB_SENSOR_ADJUST_NAMESPACE]: {
-            ...SMART_CLOUDMQTT,
-            payload: idList('adjust', 'sensor')
-        },
-        [HUB_SENSOR_ALERT_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: idList('alert', 'sensor')
-        },
-        [SMOKE_CONFIG_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: subIdList('config', 'sensor')
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<SensorValues>): SensorTrait | undefined {
+export const descriptor: TraitDescriptor<'sensor', SensorTrait> = {
+    ...SensorCatalog,
+    attach(args: TraitAttachContext<'sensor'>): SensorTrait | undefined {
         if (!args.graphEndpoint.subDeviceId) {
             return undefined;
         }

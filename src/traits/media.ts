@@ -1,4 +1,4 @@
-import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
 import { enrollBoardExtra, enrollStandalone } from '../device/enroll-helpers';
 import type { TraitName } from '../endpoint';
 import {
@@ -9,10 +9,10 @@ import {
     type Mp3State
 } from '../protocol/codecs/mp3';
 import type { MerossMessage } from '../protocol/message';
-import { DEFAULT, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
+import { MediaCatalog } from './media.catalog';
 
 export interface MediaValues {
     muted?: boolean;
@@ -154,20 +154,9 @@ export function enrollMediaStandalone(ctx: EnrollBoardContext): void {
     enrollStandalone(ctx, hasMedia(ctx.ability), 'speaker', 'media');
 }
 
-export const MediaDescriptor: TraitDescriptor & {
-    readonly name: 'media';
-    attach(args: TraitAttachArgs<MediaValues>): MediaTrait;
-} = {
-    name: 'media',
-    push: [MP3_NAMESPACE],
-    poll: {
-        [MP3_NAMESPACE]: {
-            ...DEFAULT,
-            payload: { dict: 'mp3' },
-            base: 380
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<MediaValues>): MediaTrait {
+export const descriptor: TraitDescriptor<'media', MediaTrait> = {
+    ...MediaCatalog,
+    attach(args: TraitAttachContext<'media'>): MediaTrait {
         return new MediaTrait({
             channel: args.channel,
             request: args.request,

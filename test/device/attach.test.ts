@@ -12,6 +12,7 @@ import {
     CONFIG_OVERTEMP_NAMESPACE,
     CONFIG_STANDBY_KILLER_NAMESPACE,
     DND_MODE_NAMESPACE,
+    ELECTRICITY_NAMESPACE,
     FAN_NAMESPACE,
     GARAGE_STATE_NAMESPACE,
     HUB_SENSOR_ALL_NAMESPACE,
@@ -211,6 +212,37 @@ describe('attachEndpoint shared request and namespaces', () => {
 });
 
 describe('attachEndpoint switch', () => {
+    it('constructs only listed traits even when Ability advertises others', () => {
+        const { endpoint } = createHarness({
+            traits: ['switch'],
+            ability: {
+                [TOGGLEX_NAMESPACE]: {},
+                [ELECTRICITY_NAMESPACE]: {},
+                [THERMOSTAT_MODEC_NAMESPACE]: {}
+            }
+        });
+
+        assert.ok(endpoint.switch);
+        assert.equal(endpoint.energy, undefined);
+        assert.equal(endpoint.climate, undefined);
+        assert.equal(endpoint.light, undefined);
+        assert.equal(endpoint.system, undefined);
+    });
+
+    it('constructs every listed trait', () => {
+        const { endpoint } = createHarness({
+            traits: ['switch', 'energy'],
+            ability: {
+                [TOGGLEX_NAMESPACE]: {},
+                [ELECTRICITY_NAMESPACE]: {}
+            }
+        });
+
+        assert.ok(endpoint.switch);
+        assert.ok(endpoint.energy);
+        assert.equal(endpoint.climate, undefined);
+    });
+
     it('binds classic Toggle when Toggle is present and ToggleX is absent', async () => {
         const { endpoint, requests } = createHarness({
             traits: ['switch'],

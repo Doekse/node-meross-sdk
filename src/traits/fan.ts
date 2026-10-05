@@ -1,4 +1,4 @@
-import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardContext, TraitAttachContext } from '../device/enroll-context';
 import { enrollDigest } from '../device/enroll-helpers';
 import {
     FAN_BTN_CONFIG_NAMESPACE,
@@ -21,16 +21,10 @@ import {
 } from '../protocol/codecs/togglex';
 import type { MerossMessage } from '../protocol/message';
 import { TOGGLE_NAMESPACE, TOGGLEX_NAMESPACE } from '../protocol/namespaces';
-import {
-    channelList,
-    DEFAULT,
-    SMART_CLOUDMQTT,
-    SMART_CONFIG,
-    type PollSpec
-} from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
+import { FanCatalog } from './fan.catalog';
 
 export interface FanValues {
     on?: boolean;
@@ -281,35 +275,9 @@ export function enrollFan(ctx: EnrollBoardContext): void {
     enrollDigest(ctx, ctx.all.digest.fan, FAN_NAMESPACE, 'fan', 'fan');
 }
 
-export const FanDescriptor: TraitDescriptor & {
-    readonly name: 'fan';
-    attach(args: TraitAttachArgs<FanValues>): FanTrait;
-} = {
-    name: 'fan',
-    push: [
-        TOGGLEX_NAMESPACE,
-        TOGGLE_NAMESPACE,
-        FAN_NAMESPACE,
-        FAN_CONFIG_NAMESPACE,
-        FILTER_MAINTENANCE_NAMESPACE
-    ],
-    poll: {
-        [FAN_NAMESPACE]: {
-            ...DEFAULT,
-            payload: channelList('fan', 'fan'),
-            item: 20
-        },
-        [FAN_CONFIG_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: channelList('config', 'fan')
-        },
-        [FILTER_MAINTENANCE_NAMESPACE]: {
-            ...SMART_CLOUDMQTT,
-            method: 'PUSH',
-            item: 35
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<FanValues>): FanTrait {
+export const descriptor: TraitDescriptor<'fan', FanTrait> = {
+    ...FanCatalog,
+    attach(args: TraitAttachContext<'fan'>): FanTrait {
         // ToggleX wins when both Toggle and ToggleX are advertised.
         const hasToggleX = TOGGLEX_NAMESPACE in args.physical.ability;
         return new FanTrait({

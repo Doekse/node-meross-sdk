@@ -113,6 +113,26 @@ function endpoints(rows: PollTarget[]): PollTarget[] {
 }
 
 describe('buildPollJobs', () => {
+    it('orders packed GETs by PollSpec.order, not catalog insertion', () => {
+        const jobs = buildPollJobs(
+            ability(
+                SYSTEM_ALL_NAMESPACE,
+                TOGGLEX_NAMESPACE,
+                DND_MODE_NAMESPACE,
+                ELECTRICITY_NAMESPACE,
+                CONSUMPTIONX_NAMESPACE
+            ),
+            endpoints([{ channel: CHANNEL, traits: ['switch', 'energy', 'dnd', 'system'] }])
+        );
+        assert.deepEqual(namespaces(jobs), [
+            SYSTEM_ALL_NAMESPACE,
+            TOGGLEX_NAMESPACE,
+            DND_MODE_NAMESPACE,
+            ELECTRICITY_NAMESPACE,
+            CONSUMPTIONX_NAMESPACE
+        ]);
+    });
+
     it('registers Electricity as smart fast', () => {
         const jobs = buildPollJobs(
             ability(ELECTRICITY_NAMESPACE),

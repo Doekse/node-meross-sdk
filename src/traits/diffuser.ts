@@ -1,4 +1,4 @@
-import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardContext, TraitAttachContext } from '../device/enroll-context';
 import {
     DIFFUSER_LIGHT_NAMESPACE,
     DIFFUSER_SENSOR_NAMESPACE,
@@ -13,15 +13,11 @@ import {
     type DiffuserSprayMode
 } from '../protocol/codecs/diffuser';
 import type { MerossMessage } from '../protocol/message';
-import {
-    DEFAULT,
-    SMART_SLOW,
-    type PollSpec
-} from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
-import type { TraitDescriptor } from './descriptor';
 import type { LightRgb } from './light';
+import type { TraitDescriptor } from './descriptor';
+import { DiffuserCatalog } from './diffuser.catalog';
 
 export type { DiffuserLightMode, DiffuserSprayMode };
 
@@ -251,22 +247,9 @@ export function enrollDiffuser(ctx: EnrollBoardContext): void {
     }
 }
 
-export const DiffuserDescriptor: TraitDescriptor & {
-    readonly name: 'diffuser';
-    attach(args: TraitAttachArgs<DiffuserValues>): DiffuserTrait;
-} = {
-    name: 'diffuser',
-    push: [
-        DIFFUSER_LIGHT_NAMESPACE,
-        DIFFUSER_SPRAY_NAMESPACE,
-        DIFFUSER_SENSOR_NAMESPACE
-    ],
-    poll: {
-        [DIFFUSER_LIGHT_NAMESPACE]: DEFAULT,
-        [DIFFUSER_SPRAY_NAMESPACE]: DEFAULT,
-        [DIFFUSER_SENSOR_NAMESPACE]: { ...SMART_SLOW, item: 100 }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<DiffuserValues>): DiffuserTrait {
+export const descriptor: TraitDescriptor<'diffuser', DiffuserTrait> = {
+    ...DiffuserCatalog,
+    attach(args: TraitAttachContext<'diffuser'>): DiffuserTrait {
         return new DiffuserTrait({
             channel: args.channel,
             namespaces: args.namespaces,

@@ -1,4 +1,4 @@
-import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
 import {
     enrollBoardExtra,
     enrollHubExtra,
@@ -14,10 +14,10 @@ import {
     encodeDndSet
 } from '../protocol/codecs/dnd';
 import type { MerossMessage } from '../protocol/message';
-import { SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
+import { DndCatalog } from './dnd.catalog';
 
 export interface DndValues {
     /** Status LED on. Undefined until poller GETACK or PUSH. */
@@ -114,20 +114,9 @@ export function enrollHubDndExtra(ability: AbilityMap): TraitName[] {
     return enrollHubExtra(hasDnd(ability), 'dnd');
 }
 
-export const DndDescriptor: TraitDescriptor & {
-    readonly name: 'dnd';
-    attach(args: TraitAttachArgs<DndValues>): DndTrait;
-} = {
-    name: 'dnd',
-    push: [DND_MODE_NAMESPACE],
-    poll: {
-        [DND_MODE_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: { dict: 'DNDMode' },
-            base: 320
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<DndValues>): DndTrait {
+export const descriptor: TraitDescriptor<'dnd', DndTrait> = {
+    ...DndCatalog,
+    attach(args: TraitAttachContext<'dnd'>): DndTrait {
         return new DndTrait({
             request: args.request,
             emitChange: args.emitChange

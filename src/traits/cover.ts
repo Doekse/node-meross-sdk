@@ -1,4 +1,4 @@
-import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardContext, TraitAttachContext } from '../device/enroll-context';
 import {
     GARAGE_CONFIG_NAMESPACE,
     GARAGE_MULTIPLE_CONFIG_NAMESPACE,
@@ -27,16 +27,10 @@ import {
     type ShutterConfigSetOptions
 } from '../protocol/codecs/cover';
 import type { MerossMessage } from '../protocol/message';
-import { TOGGLEX_ALL_CHANNELS } from '../protocol/namespaces';
-import {
-    channelList,
-    DEFAULT,
-    SMART_CONFIG,
-    type PollSpec
-} from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
+import { CoverCatalog } from './cover.catalog';
 
 export interface CoverValues {
     open?: boolean;
@@ -405,36 +399,9 @@ export function enrollCover(ctx: EnrollBoardContext): void {
     }
 }
 
-export const CoverDescriptor: TraitDescriptor & {
-    readonly name: 'cover';
-    attach(args: TraitAttachArgs<CoverValues>): CoverTrait;
-} = {
-    name: 'cover',
-    push: [
-        GARAGE_STATE_NAMESPACE,
-        GARAGE_MULTIPLE_CONFIG_NAMESPACE,
-        GARAGE_CONFIG_NAMESPACE,
-        SHUTTER_POSITION_NAMESPACE,
-        SHUTTER_STATE_NAMESPACE,
-        SHUTTER_CONFIG_NAMESPACE
-    ],
-    poll: {
-        [GARAGE_STATE_NAMESPACE]: {
-            ...DEFAULT,
-            payload: { dict: 'state', channel: TOGGLEX_ALL_CHANNELS }
-        },
-        [GARAGE_CONFIG_NAMESPACE]: { ...SMART_CONFIG, base: 410 },
-        [GARAGE_MULTIPLE_CONFIG_NAMESPACE]: { ...SMART_CONFIG, item: 140 },
-        [SHUTTER_POSITION_NAMESPACE]: { ...DEFAULT, item: 50 },
-        [SHUTTER_STATE_NAMESPACE]: { ...DEFAULT, item: 40 },
-        [SHUTTER_CONFIG_NAMESPACE]: { ...SMART_CONFIG, item: 70 },
-        [SHUTTER_ADJUST_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: channelList('adjust', 'cover'),
-            item: 35
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<CoverValues>): CoverTrait {
+export const descriptor: TraitDescriptor<'cover', CoverTrait> = {
+    ...CoverCatalog,
+    attach(args: TraitAttachContext<'cover'>): CoverTrait {
         // Position/Config can exist without a shutter; State is the discriminator.
         const kind: 'garage' | 'shutter' = SHUTTER_STATE_NAMESPACE in args.physical.ability
             ? 'shutter'

@@ -72,10 +72,16 @@ export type PayloadSpec =
     };
 
 /**
- * Per-namespace GET schedule and packing estimate. Trait descriptors own a
- * subset of keys; {@link buildPollJobs} concatenates them into one table.
+ * Per-namespace GET schedule and packing estimate. Trait catalogs own a
+ * subset of keys; {@link buildPollJobs} concatenates them and sorts by
+ * {@link order} (packed GET order).
  */
 export interface PollSpec extends PollPeriods {
+    /**
+     * Packed GET order across every trait. Unique among advertised jobs;
+     * lower runs first.
+     */
+    readonly order: number;
     readonly skipIf?: string;
     readonly payload?: PayloadSpec;
     readonly method?: 'GET' | 'PUSH';

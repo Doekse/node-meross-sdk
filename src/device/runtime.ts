@@ -2,7 +2,7 @@ import type { Endpoint, TraitName } from '../endpoint';
 import { DevicePoller, type PollJob } from '../poll';
 import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
 import type { MerossMessage } from '../protocol/message';
-import { loadTraitDescriptor } from '../traits/load';
+import { TRAIT_CATALOGS } from '../traits/catalog';
 import type { GetCommand } from '../transport/router';
 import { DeviceAvailability, type DeviceAvailabilityOptions } from './availability';
 
@@ -50,10 +50,10 @@ export class DeviceRuntime {
     private readonly availability: DeviceAvailability;
     private readonly poller: DevicePoller;
     /**
-     * Namespace → (endpoint, trait) lists. Built once from
-     * {@link loadTraitDescriptor} `push` so each frame is an O(1) lookup
-     * instead of walking every trait on every endpoint. Shared namespaces
-     * (ToggleX on switch+light+fan) stay lists, not 1:1.
+     * Namespace → (endpoint, trait) lists. Built once from catalog `push`
+     * so each frame is an O(1) lookup instead of walking every trait on
+     * every endpoint. Shared namespaces (ToggleX on switch+light+fan) stay
+     * lists, not 1:1.
      */
     private readonly handlers = new Map<string, { endpoint: Endpoint; trait: TraitName }[]>();
 
@@ -67,7 +67,7 @@ export class DeviceRuntime {
                 if (endpoint[name] === undefined) {
                     continue;
                 }
-                for (const namespace of loadTraitDescriptor(name).push) {
+                for (const namespace of TRAIT_CATALOGS[name].push) {
                     const list = this.handlers.get(namespace) ?? [];
                     list.push({ endpoint, trait: name });
                     this.handlers.set(namespace, list);

@@ -45,7 +45,7 @@ interface HubChildTraitRule {
 
 /**
  * Local climate → sensor → sprinkler order. Must not be derived from
- * TRAIT_DESCRIPTORS — enroll must not iterate that catalog.
+ * TRAIT_CATALOGS — enroll must not iterate that catalog.
  */
 export const HUB_CHILD_RULES: readonly HubChildTraitRule[] = [
     { name: 'climate', hubChild: CLIMATE_HUB_CHILD },

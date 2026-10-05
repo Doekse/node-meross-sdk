@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * Proves the public CJS entry does not load climate/sensor modules.
- * Runs in a child `node -e` process so sibling `--test` files cannot
- * poison `require.cache`.
+ * Proves the public CJS entry and poll/catalog tables do not load
+ * climate/sensor class modules. Runs in a child `node -e` process so
+ * sibling `--test` files cannot poison `require.cache`.
  */
 
 const assert = require('node:assert/strict');
@@ -44,6 +44,32 @@ describe('public entry load', () => {
         const suffixes = JSON.stringify(HEAVY_MODULES);
         const source = `
 require('.');
+const path = require('node:path');
+const suffixes = ${suffixes};
+function cached(suffix) {
+    const needle = path.sep + suffix.split('/').join(path.sep);
+    return Object.keys(require.cache).some((key) => key.endsWith(needle));
+}
+const hits = suffixes.filter(cached);
+if (hits.length > 0) {
+    console.error('unexpected cached modules: ' + hits.join(', '));
+    process.exit(1);
+}
+`;
+        const result = runChild(source);
+        assert.equal(result.status, 0, result.stderr || result.stdout);
+    });
+
+    it('TRAIT_CATALOGS and buildPollJobs do not load climate or sensor class modules', () => {
+        const suffixes = JSON.stringify(HEAVY_MODULES);
+        const source = `
+const { buildPollJobs } = require('./dist/poll/jobs.js');
+require('./dist/traits/catalog.js');
+buildPollJobs({
+    'Appliance.Control.ToggleX': {},
+    'Appliance.Control.Thermostat.ModeC': {},
+    'Appliance.Hub.Sensor.All': {}
+}, []);
 const path = require('node:path');
 const suffixes = ${suffixes};
 function cached(suffix) {

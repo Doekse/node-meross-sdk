@@ -63,32 +63,125 @@ export type EndpointChange = {
     [K in TraitName]: { trait: K; values: TraitValues[K] }
 }[TraitName];
 
+/**
+ * A generic `{ trait: K, values }` is not a member of {@link EndpointChange}.
+ * Indexing this map keeps each arm on a literal trait name, which is.
+ */
+const reportChangeByTrait: {
+    [K in TraitName]: (
+        emit: (change: EndpointChange) => void,
+        values: TraitValues[K]
+    ) => void
+} = {
+    switch(emit, values) {
+        emit({ trait: 'switch', values });
+    },
+    energy(emit, values) {
+        emit({ trait: 'energy', values });
+    },
+    light(emit, values) {
+        emit({ trait: 'light', values });
+    },
+    climate(emit, values) {
+        emit({ trait: 'climate', values });
+    },
+    cover(emit, values) {
+        emit({ trait: 'cover', values });
+    },
+    sensor(emit, values) {
+        emit({ trait: 'sensor', values });
+    },
+    presence(emit, values) {
+        emit({ trait: 'presence', values });
+    },
+    sprinkler(emit, values) {
+        emit({ trait: 'sprinkler', values });
+    },
+    spray(emit, values) {
+        emit({ trait: 'spray', values });
+    },
+    fan(emit, values) {
+        emit({ trait: 'fan', values });
+    },
+    diffuser(emit, values) {
+        emit({ trait: 'diffuser', values });
+    },
+    media(emit, values) {
+        emit({ trait: 'media', values });
+    },
+    alarm(emit, values) {
+        emit({ trait: 'alarm', values });
+    },
+    alert(emit, values) {
+        emit({ trait: 'alert', values });
+    },
+    dnd(emit, values) {
+        emit({ trait: 'dnd', values });
+    },
+    overtemp(emit, values) {
+        emit({ trait: 'overtemp', values });
+    },
+    standbykiller(emit, values) {
+        emit({ trait: 'standbykiller', values });
+    },
+    system(emit, values) {
+        emit({ trait: 'system', values });
+    },
+    timer(emit, values) {
+        emit({ trait: 'timer', values });
+    },
+    trigger(emit, values) {
+        emit({ trait: 'trigger', values });
+    }
+};
+
+/**
+ * Hands one trait's values to `emit` as a `change` event.
+ * Callers copy first when the trait still holds the object.
+ *
+ * @internal
+ */
+export function reportChange<K extends TraitName>(
+    emit: (change: EndpointChange) => void,
+    trait: K,
+    values: TraitValues[K]
+): void {
+    reportChangeByTrait[trait](emit, values);
+}
+
+/**
+ * Constructed instance for each {@link TraitName}. Attach stores these
+ * through the map; the class below still exposes one field per trait.
+ */
+export interface TraitInstances {
+    switch: SwitchTrait;
+    energy: EnergyTrait;
+    light: LightTrait;
+    climate: ClimateTrait;
+    cover: CoverTrait;
+    sensor: SensorTrait;
+    presence: PresenceTrait;
+    sprinkler: SprinklerTrait;
+    spray: SprayTrait;
+    fan: FanTrait;
+    diffuser: DiffuserTrait;
+    media: MediaTrait;
+    alarm: AlarmTrait;
+    alert: AlertTrait;
+    dnd: DndTrait;
+    overtemp: OverTempTrait;
+    standbykiller: StandbyKillerTrait;
+    system: SystemTrait;
+    timer: TimerTrait;
+    trigger: TriggerTrait;
+}
+
 /** LAN HTTP or cloud MQTT. Hosts display this; they cannot pick which path a request uses. */
 export type Protocol = 'http' | 'mqtt';
 
-export interface EndpointOptions {
+export interface EndpointOptions extends Partial<TraitInstances> {
     id: string;
     traits?: readonly TraitName[];
-    switch?: SwitchTrait;
-    energy?: EnergyTrait;
-    light?: LightTrait;
-    cover?: CoverTrait;
-    climate?: ClimateTrait;
-    sensor?: SensorTrait;
-    presence?: PresenceTrait;
-    sprinkler?: SprinklerTrait;
-    spray?: SprayTrait;
-    fan?: FanTrait;
-    diffuser?: DiffuserTrait;
-    media?: MediaTrait;
-    alarm?: AlarmTrait;
-    alert?: AlertTrait;
-    dnd?: DndTrait;
-    overtemp?: OverTempTrait;
-    standbykiller?: StandbyKillerTrait;
-    system?: SystemTrait;
-    timer?: TimerTrait;
-    trigger?: TriggerTrait;
     initialOnline?: boolean;
 }
 
@@ -214,10 +307,6 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         return changes;
     }
 
-    /**
-     * The mapped {@link EndpointChange} union cannot see that `trait` and
-     * `values()` share one `K`.
-     */
     private append<K extends TraitName>(
         changes: EndpointChange[],
         trait: K,
@@ -230,7 +319,9 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
         if (Object.keys(values).length === 0) {
             return;
         }
-        changes.push({ trait, values } as EndpointChange);
+        reportChange((change) => {
+            changes.push(change);
+        }, trait, values);
     }
 
     /**

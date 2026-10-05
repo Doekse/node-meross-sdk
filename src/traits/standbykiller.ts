@@ -1,4 +1,4 @@
-import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
 import type { TraitName } from '../endpoint';
 import { MerossError } from '../errors';
 import type { AbilityMap } from '../protocol/codecs/ability';
@@ -10,10 +10,10 @@ import {
     encodeStandbyKillerSet
 } from '../protocol/codecs/standbykiller';
 import type { MerossMessage } from '../protocol/message';
-import { channelList, SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
+import { StandbyKillerCatalog } from './standbykiller.catalog';
 
 export interface StandbyKillerValues {
     enabled?: boolean;
@@ -184,19 +184,9 @@ export function enrollBoardStandbyKillerExtra(input: EnrollBoardExtraInput): Tra
     return [];
 }
 
-export const StandbyKillerDescriptor: TraitDescriptor & {
-    readonly name: 'standbykiller';
-    attach(args: TraitAttachArgs<StandbyKillerValues>): StandbyKillerTrait;
-} = {
-    name: 'standbykiller',
-    push: [CONFIG_STANDBY_KILLER_NAMESPACE],
-    poll: {
-        [CONFIG_STANDBY_KILLER_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: channelList('config', 'standbykiller')
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<StandbyKillerValues>): StandbyKillerTrait {
+export const descriptor: TraitDescriptor<'standbykiller', StandbyKillerTrait> = {
+    ...StandbyKillerCatalog,
+    attach(args: TraitAttachContext<'standbykiller'>): StandbyKillerTrait {
         return new StandbyKillerTrait({
             channel: args.channel,
             namespaces: args.namespaces,

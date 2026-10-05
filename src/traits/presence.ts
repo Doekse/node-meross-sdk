@@ -1,4 +1,4 @@
-import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardContext, TraitAttachContext } from '../device/enroll-context';
 import {
     PRESENCE_CONFIG_NAMESPACE,
     PRESENCE_STUDY_NAMESPACE,
@@ -15,15 +15,10 @@ import {
     decodeLatestXPush
 } from '../protocol/codecs/sensor';
 import type { MerossMessage } from '../protocol/message';
-import {
-    channelList,
-    SMART_CONFIG,
-    SMART_FAST_MQTT,
-    type PollSpec
-} from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
+import { PresenceCatalog } from './presence.catalog';
 
 export interface PresenceValues {
     /** true when firmware reports present (wire 2). */
@@ -197,34 +192,9 @@ export function enrollPresence(ctx: EnrollBoardContext): void {
     }
 }
 
-export const PresenceDescriptor: TraitDescriptor & {
-    readonly name: 'presence';
-    attach(args: TraitAttachArgs<PresenceValues>): PresenceTrait;
-} = {
-    name: 'presence',
-    push: [SENSOR_LATESTX_NAMESPACE, PRESENCE_CONFIG_NAMESPACE],
-    poll: {
-        [PRESENCE_CONFIG_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: channelList('config', 'presence'),
-            item: 260
-        },
-        /**
-         * Shared with sensor tempHum handlePush; keep `by: 'either'` + data /
-         * dataId so hub children stay in the GET. preferTrait stays in jobs.
-         */
-        [SENSOR_LATESTX_NAMESPACE]: {
-            ...SMART_FAST_MQTT,
-            payload: {
-                list: 'latest',
-                by: 'either',
-                data: ['presence', 'light'],
-                dataId: ['light', 'temp', 'humi']
-            },
-            item: 220
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<PresenceValues>): PresenceTrait {
+export const descriptor: TraitDescriptor<'presence', PresenceTrait> = {
+    ...PresenceCatalog,
+    attach(args: TraitAttachContext<'presence'>): PresenceTrait {
         return new PresenceTrait({
             channel: args.channel,
             namespaces: args.namespaces,

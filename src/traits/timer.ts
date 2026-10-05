@@ -1,4 +1,4 @@
-import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
 import { enrollBoardTimerTriggerExtra } from '../device/enroll-helpers';
 import type { TraitName } from '../endpoint';
 import { CommandError, MerossError } from '../errors';
@@ -20,9 +20,9 @@ import {
     type TimerXEntry
 } from '../protocol/codecs/timerx';
 import type { MerossMessage } from '../protocol/message';
-import { ONCE, SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import type { TraitDescriptor } from './descriptor';
+import { TimerCatalog } from './timer.catalog';
 
 export type TimerEntry = TimerXEntry;
 
@@ -347,21 +347,9 @@ export function enrollBoardTimerExtra(input: EnrollBoardExtraInput): TraitName[]
     return enrollBoardTimerTriggerExtra(input, hasTimer(input.ability), 'timer');
 }
 
-export const TimerDescriptor: TraitDescriptor & {
-    readonly name: 'timer';
-    attach(args: TraitAttachArgs<TimerValues>): TimerTrait;
-} = {
-    name: 'timer',
-    push: [CONTROL_TIMER_NAMESPACE, DIGEST_TIMERX_NAMESPACE, TIMERX_NAMESPACE],
-    poll: {
-        [DIGEST_TIMERX_NAMESPACE]: ONCE,
-        [CONTROL_TIMER_NAMESPACE]: {
-            ...SMART_CONFIG,
-            skipIf: TIMERX_NAMESPACE,
-            payload: { list: 'timer' }
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<TimerValues>): TimerTrait {
+export const descriptor: TraitDescriptor<'timer', TimerTrait> = {
+    ...TimerCatalog,
+    attach(args: TraitAttachContext<'timer'>): TimerTrait {
         const generation: TimerGeneration = TIMERX_NAMESPACE in args.physical.ability
             ? 'x'
             : 'legacy';

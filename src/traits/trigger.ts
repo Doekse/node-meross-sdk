@@ -1,4 +1,4 @@
-import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
 import { enrollBoardTimerTriggerExtra } from '../device/enroll-helpers';
 import type { TraitName } from '../endpoint';
 import { MerossError } from '../errors';
@@ -20,9 +20,9 @@ import {
     type TriggerXRule
 } from '../protocol/codecs/triggerx';
 import type { MerossMessage } from '../protocol/message';
-import { ONCE, SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import type { TraitDescriptor } from './descriptor';
+import { TriggerCatalog } from './trigger.catalog';
 
 export type TriggerEntry = TriggerXEntry;
 export type TriggerRule = TriggerXRule;
@@ -316,21 +316,9 @@ export function enrollBoardTriggerExtra(input: EnrollBoardExtraInput): TraitName
     return enrollBoardTimerTriggerExtra(input, hasTrigger(input.ability), 'trigger');
 }
 
-export const TriggerDescriptor: TraitDescriptor & {
-    readonly name: 'trigger';
-    attach(args: TraitAttachArgs<TriggerValues>): TriggerTrait;
-} = {
-    name: 'trigger',
-    push: [CONTROL_TRIGGER_NAMESPACE, DIGEST_TRIGGERX_NAMESPACE, TRIGGERX_NAMESPACE],
-    poll: {
-        [DIGEST_TRIGGERX_NAMESPACE]: ONCE,
-        [CONTROL_TRIGGER_NAMESPACE]: {
-            ...SMART_CONFIG,
-            skipIf: TRIGGERX_NAMESPACE,
-            payload: { dict: 'trigger' }
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<TriggerValues>): TriggerTrait {
+export const descriptor: TraitDescriptor<'trigger', TriggerTrait> = {
+    ...TriggerCatalog,
+    attach(args: TraitAttachContext<'trigger'>): TriggerTrait {
         const generation: TriggerGeneration = TRIGGERX_NAMESPACE in args.physical.ability
             ? 'x'
             : 'legacy';

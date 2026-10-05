@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Session.connect()` opens transports only and takes no options. Membership is `enroll` / `unenroll`. `Session.sync()` and `SyncOptions` are removed. After `logout()`, `connect()` rejects with `AuthError` (same as `getToken()`).
 
+### Changed
+
+- Poll/PUSH catalogs live in `src/traits/*.catalog.ts`. `buildPollJobs` and DeviceRuntime iterate `TRAIT_CATALOGS`; trait class modules stay lazy. Packed GET order is `PollSpec.order`.
+
 ### Added
 
 - `Session.enroll(uuids?)` and `Session.unenroll(uuid)` for additive membership. `enroll` is idempotent per uuid (an already-enrolled or in-flight uuid does not list the account or contact the device again), concurrent callers share one in-flight `devList` and one Ability / System.All pass per uuid, and passes are bounded by `ENROLL_CONCURRENCY` across calls. Omit `uuids` to enroll every online device not yet enrolled; pass `[]` to enroll nothing. Offline rows and uuids absent from the account are skipped silently; a reachable device that fails is reported on `warning`. `unenroll` awaits an in-flight enroll for that uuid first, then stops its runtime and drops its rows. `disconnect` waits for in-flight enrolls so none can start a poller after teardown.

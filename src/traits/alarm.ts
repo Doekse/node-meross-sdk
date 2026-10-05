@@ -1,4 +1,4 @@
-import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
 import {
     enrollBoardExtra,
     enrollHubExtra,
@@ -18,10 +18,10 @@ import {
     type BeepChannelState
 } from '../protocol/codecs/alarm';
 import type { MerossMessage } from '../protocol/message';
-import { channelList, DEFAULT, SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
+import { AlarmCatalog } from './alarm.catalog';
 
 export interface AlarmValues {
     on?: boolean;
@@ -207,23 +207,9 @@ export function enrollHubAlarmExtra(ability: AbilityMap): TraitName[] {
     return enrollHubExtra(hasAlarm(ability), 'alarm');
 }
 
-export const AlarmDescriptor: TraitDescriptor & {
-    readonly name: 'alarm';
-    attach(args: TraitAttachArgs<AlarmValues>): AlarmTrait;
-} = {
-    name: 'alarm',
-    push: [CONTROL_ALARM_NAMESPACE, CONTROL_BEEP_NAMESPACE],
-    poll: {
-        [CONTROL_ALARM_NAMESPACE]: {
-            ...DEFAULT,
-            payload: channelList('alarm', 'alarm')
-        },
-        [CONTROL_BEEP_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: channelList('alarm', 'alarm')
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<AlarmValues>): AlarmTrait {
+export const descriptor: TraitDescriptor<'alarm', AlarmTrait> = {
+    ...AlarmCatalog,
+    attach(args: TraitAttachContext<'alarm'>): AlarmTrait {
         return new AlarmTrait({
             channel: args.channel,
             namespaces: args.namespaces,

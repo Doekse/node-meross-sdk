@@ -1,4 +1,4 @@
-import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
 import type { TraitName } from '../endpoint';
 import {
     CONSUMPTION_CONFIG_NAMESPACE,
@@ -14,7 +14,6 @@ import {
 } from '../protocol/codecs/consumptionh';
 import {
     CONSUMPTIONX_NAMESPACE,
-    consumptionXDays,
     decodeConsumptionXGetAck,
     encodeConsumptionXDelete,
     encodeConsumptionXGet,
@@ -22,7 +21,6 @@ import {
 } from '../protocol/codecs/consumptionx';
 import {
     ELECTRICITY_NAMESPACE,
-    ELECTRICITYX_ALL_CHANNELS,
     ELECTRICITYX_NAMESPACE,
     decodeElectricityGetAck,
     decodeElectricityXGetAck,
@@ -32,16 +30,10 @@ import {
     type ElectricitySample
 } from '../protocol/codecs/electricity';
 import type { MerossMessage } from '../protocol/message';
-import {
-    channelList,
-    pollSpecSize,
-    SMART_ENERGY,
-    SMART_FAST,
-    type PollSpec
-} from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
+import { EnergyCatalog } from './energy.catalog';
 
 export interface EnergyValues {
     power?: number;
@@ -307,50 +299,9 @@ export function enrollBoardEnergyExtra(input: EnrollBoardExtraInput): TraitName[
     return [];
 }
 
-/** Shared with calibrate so packing cannot drift from the POLL row. */
-const CONSUMPTIONX_SIZE = { base: 320, item: 53 } as const;
-
-export const EnergyDescriptor: TraitDescriptor & {
-    readonly name: 'energy';
-    attach(args: TraitAttachArgs<EnergyValues>): EnergyTrait;
-} = {
-    name: 'energy',
-    push: [
-        ELECTRICITY_NAMESPACE,
-        ELECTRICITYX_NAMESPACE,
-        CONSUMPTIONX_NAMESPACE,
-        CONSUMPTIONH_NAMESPACE
-    ],
-    poll: {
-        [ELECTRICITY_NAMESPACE]: {
-            ...SMART_FAST,
-            payload: { dict: 'electricity', channel: 0 },
-            base: 430
-        },
-        [ELECTRICITYX_NAMESPACE]: {
-            ...SMART_FAST,
-            payload: { dict: 'electricity', channel: ELECTRICITYX_ALL_CHANNELS },
-            item: 100
-        },
-        [CONSUMPTIONX_NAMESPACE]: {
-            ...SMART_ENERGY,
-            ...CONSUMPTIONX_SIZE,
-            calibrate: (payload) => {
-                const days = consumptionXDays(payload);
-                if (days === undefined) {
-                    return undefined;
-                }
-                return pollSpecSize(CONSUMPTIONX_SIZE, days.length);
-            }
-        },
-        [CONSUMPTIONH_NAMESPACE]: {
-            ...SMART_ENERGY,
-            payload: channelList('consumptionH', 'energy'),
-            base: 320,
-            item: 1_900
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<EnergyValues>): EnergyTrait {
+export const descriptor: TraitDescriptor<'energy', EnergyTrait> = {
+    ...EnergyCatalog,
+    attach(args: TraitAttachContext<'energy'>): EnergyTrait {
         const hasElectricity = ELECTRICITY_NAMESPACE in args.physical.ability;
         return new EnergyTrait({
             channel: args.channel,

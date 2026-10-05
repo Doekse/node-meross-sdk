@@ -1,4 +1,4 @@
-import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
 import {
     enrollBoardExtra,
     enrollHubExtra,
@@ -17,10 +17,10 @@ import {
     encodeConfigOverTempSet
 } from '../protocol/codecs/overtemp';
 import type { MerossMessage } from '../protocol/message';
-import { SMART_CONFIG, type PollSpec } from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
+import { OverTempCatalog } from './overtemp.catalog';
 
 export interface OverTempValues {
     enabled?: boolean;
@@ -177,20 +177,9 @@ export function enrollHubOverTempExtra(ability: AbilityMap): TraitName[] {
     return enrollHubExtra(hasOverTemp(ability), 'overtemp');
 }
 
-export const OverTempDescriptor: TraitDescriptor & {
-    readonly name: 'overtemp';
-    attach(args: TraitAttachArgs<OverTempValues>): OverTempTrait;
-} = {
-    name: 'overtemp',
-    push: [CONFIG_OVERTEMP_NAMESPACE, CONTROL_OVERTEMP_NAMESPACE],
-    poll: {
-        [CONFIG_OVERTEMP_NAMESPACE]: {
-            ...SMART_CONFIG,
-            payload: { dict: 'overTemp' },
-            base: 340
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<OverTempValues>): OverTempTrait {
+export const descriptor: TraitDescriptor<'overtemp', OverTempTrait> = {
+    ...OverTempCatalog,
+    attach(args: TraitAttachContext<'overtemp'>): OverTempTrait {
         return new OverTempTrait({
             namespaces: args.namespaces,
             request: args.request,

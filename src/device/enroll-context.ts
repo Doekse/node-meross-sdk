@@ -1,5 +1,5 @@
 import type { CloudDevice } from '../cloud';
-import type { TraitName } from '../endpoint';
+import type { TraitName, TraitValues } from '../endpoint';
 import type { ClassHint } from '../inventory';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import type { SystemAll } from '../protocol/codecs/system-all';
@@ -48,14 +48,14 @@ export interface EnrollBoardExtraInput {
 }
 
 /**
- * Common attach arguments. Concrete descriptors narrow `V` to their values
- * snapshot; emit stays typed per trait in attach.ts.
+ * Shared attach inputs. `emitChange` is already bound to `K`, so a trait
+ * passes values and does not build the `change` union itself.
  */
-export interface TraitAttachArgs<V> {
+export interface TraitAttachContext<K extends TraitName> {
     readonly graphEndpoint: GraphEndpoint;
     readonly physical: PhysicalDevice;
     readonly request: DeviceRequest;
     readonly channel: number;
     readonly namespaces: ReadonlySet<string>;
-    readonly emitChange: (values: V) => void;
+    readonly emitChange: (values: TraitValues[K]) => void;
 }

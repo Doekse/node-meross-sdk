@@ -1,4 +1,4 @@
-import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardContext, TraitAttachContext } from '../device/enroll-context';
 import { enrollDigest } from '../device/enroll-helpers';
 import {
     SPRAY_NAMESPACE,
@@ -7,13 +7,10 @@ import {
     type SprayMode
 } from '../protocol/codecs/spray';
 import type { MerossMessage } from '../protocol/message';
-import {
-    DEFAULT,
-    type PollSpec
-} from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
+import { SprayCatalog } from './spray.catalog';
 
 export type { SprayMode };
 
@@ -90,19 +87,9 @@ export function enrollSpray(ctx: EnrollBoardContext): void {
     enrollDigest(ctx, ctx.all.digest.spray, SPRAY_NAMESPACE, 'humidifier', 'spray');
 }
 
-export const SprayDescriptor: TraitDescriptor & {
-    readonly name: 'spray';
-    attach(args: TraitAttachArgs<SprayValues>): SprayTrait;
-} = {
-    name: 'spray',
-    push: [SPRAY_NAMESPACE],
-    poll: {
-        [SPRAY_NAMESPACE]: {
-            ...DEFAULT,
-            payload: { dict: 'spray' }
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<SprayValues>): SprayTrait {
+export const descriptor: TraitDescriptor<'spray', SprayTrait> = {
+    ...SprayCatalog,
+    attach(args: TraitAttachContext<'spray'>): SprayTrait {
         return new SprayTrait({
             channel: args.channel,
             request: args.request,

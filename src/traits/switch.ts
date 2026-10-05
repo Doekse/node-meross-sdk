@@ -1,4 +1,4 @@
-import type { EnrollBoardContext, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardContext, TraitAttachContext } from '../device/enroll-context';
 import type { GraphEndpoint } from '../device/index';
 import {
     decodeHubExceptionPush,
@@ -18,16 +18,10 @@ import {
     TOGGLE_NAMESPACE,
     TOGGLEX_NAMESPACE
 } from '../protocol/namespaces';
-import {
-    ALL_CHANNELS,
-    DEFAULT,
-    idList,
-    ONCE,
-    type PollSpec
-} from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
+import { SwitchCatalog } from './switch.catalog';
 
 export { TOGGLE_NAMESPACE };
 
@@ -238,45 +232,9 @@ export function enrollHubUntypedOnoff(input: {
     };
 }
 
-export const SwitchDescriptor: TraitDescriptor & {
-    readonly name: 'switch';
-    attach(args: TraitAttachArgs<SwitchValues>): SwitchTrait;
-} = {
-    name: 'switch',
-    push: [
-        TOGGLEX_NAMESPACE,
-        TOGGLE_NAMESPACE,
-        HUB_TOGGLEX_NAMESPACE,
-        HUB_EXCEPTION_NAMESPACE,
-        HUB_SUBDEVICE_VERSION_NAMESPACE
-    ],
-    poll: {
-        [TOGGLEX_NAMESPACE]: {
-            ...DEFAULT,
-            payload: ALL_CHANNELS
-        },
-        [TOGGLE_NAMESPACE]: {
-            ...DEFAULT,
-            payload: { dict: 'toggle' }
-        },
-        /**
-         * Shared with climate hub setOn; keep unfiltered
-         * `idList('togglex')` so MTS100 stays in the GET.
-         */
-        [HUB_TOGGLEX_NAMESPACE]: {
-            ...DEFAULT,
-            payload: idList('togglex')
-        },
-        /**
-         * Shared with sensor, sprinkler, climate handlePush; keep unfiltered
-         * `idList('version')` so mixed children stay in the GET.
-         */
-        [HUB_SUBDEVICE_VERSION_NAMESPACE]: {
-            ...ONCE,
-            payload: idList('version')
-        }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<SwitchValues>): SwitchTrait {
+export const descriptor: TraitDescriptor<'switch', SwitchTrait> = {
+    ...SwitchCatalog,
+    attach(args: TraitAttachContext<'switch'>): SwitchTrait {
         if (args.graphEndpoint.subDeviceId) {
             return new SwitchTrait({
                 kind: 'hub',

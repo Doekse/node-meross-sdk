@@ -1,4 +1,4 @@
-import type { EnrollBoardExtraInput, TraitAttachArgs } from '../device/enroll-context';
+import type { EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
 import type { TraitName } from '../endpoint';
 import { decodeSystemAllGetAck } from '../protocol/codecs/system-all';
 import {
@@ -27,15 +27,10 @@ import {
 } from '../protocol/codecs/system';
 import type { MerossMessage } from '../protocol/message';
 import { SYSTEM_ALL_NAMESPACE } from '../protocol/namespaces';
-import {
-    ONCE,
-    SMART_CONFIG,
-    SYSTEM_ALL_PERIOD_MS,
-    type PollSpec
-} from '../poll/spec';
 import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
+import { SystemCatalog } from './system.catalog';
 
 export type {
     SystemDebugState,
@@ -272,46 +267,9 @@ export function enrollBoardSystemExtra(input: EnrollBoardExtraInput): TraitName[
     return [];
 }
 
-export const SystemDescriptor: TraitDescriptor & {
-    readonly name: 'system';
-    attach(args: TraitAttachArgs<SystemValues>): SystemTrait;
-} = {
-    name: 'system',
-    push: [
-        SYSTEM_ALL_NAMESPACE,
-        SYSTEM_TIME_NAMESPACE,
-        SYSTEM_FIRMWARE_NAMESPACE,
-        SYSTEM_HARDWARE_NAMESPACE,
-        SYSTEM_DEBUG_NAMESPACE,
-        SYSTEM_POSITION_NAMESPACE,
-        SYSTEM_RUNTIME_NAMESPACE,
-        SYSTEM_CLOCK_NAMESPACE
-    ],
-    poll: {
-        [SYSTEM_ALL_NAMESPACE]: {
-            strategy: 'all',
-            periodMs: SYSTEM_ALL_PERIOD_MS,
-            periodCloudMs: 0,
-            base: 1_000
-        },
-        [SYSTEM_RUNTIME_NAMESPACE]: { ...SMART_CONFIG, base: 330 },
-        // Firmware / Hardware / Time ride System.All; standalone GET is the fallback.
-        [SYSTEM_FIRMWARE_NAMESPACE]: {
-            ...ONCE,
-            skipIf: SYSTEM_ALL_NAMESPACE
-        },
-        [SYSTEM_HARDWARE_NAMESPACE]: {
-            ...ONCE,
-            skipIf: SYSTEM_ALL_NAMESPACE
-        },
-        [SYSTEM_TIME_NAMESPACE]: {
-            ...SMART_CONFIG,
-            skipIf: SYSTEM_ALL_NAMESPACE
-        },
-        [SYSTEM_POSITION_NAMESPACE]: ONCE,
-        [SYSTEM_DEBUG_NAMESPACE]: { ...ONCE, base: 1_900 }
-    } satisfies Record<string, PollSpec>,
-    attach(args: TraitAttachArgs<SystemValues>): SystemTrait {
+export const descriptor: TraitDescriptor<'system', SystemTrait> = {
+    ...SystemCatalog,
+    attach(args: TraitAttachContext<'system'>): SystemTrait {
         return new SystemTrait({
             initialFirmware: args.physical.system.firmware,
             initialHardware: args.physical.system.hardware,
