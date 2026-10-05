@@ -964,8 +964,10 @@ describe('Session.sync', () => {
         const { session, client } = await loginConnected();
         const before = session.endpoint(`${UUID}:0`);
 
+        // sync skips already-enrolled uuids; unenroll then enroll re-reads Ability.
         client.ackOptions = { encrypt: true };
-        await session.sync();
+        await session.unenroll(UUID);
+        await session.enroll([UUID]);
 
         const after = session.endpoint(`${UUID}:0`);
         assert.notEqual(after, before);
