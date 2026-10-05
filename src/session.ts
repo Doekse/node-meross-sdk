@@ -75,15 +75,6 @@ export interface SessionOptions {
 }
 
 /**
- * Allowlist for {@link Session.connect} / {@link Session.sync}.
- * Physical uuids only — not inventory ids (`{uuid}:0`).
- */
-export interface SyncOptions {
-    /** Omitted or `undefined` enrolls the whole online account; `[]` enrolls nothing. */
-    uuids?: readonly string[];
-}
-
-/**
  * Physical devices on the account, not enrolled {@link Inventory} rows.
  * `name`/`model` match InventoryRow; identity is `uuid` (inventory `id` is `{uuid}:0`).
  */
@@ -101,11 +92,11 @@ interface SessionEvents {
     connection: [connected: boolean];
     ratelimit: [uuid: string, dropped: number];
     /**
-     * Per-device failure {@link Session.sync} swallowed to keep going.
-     * Typical cases are an Ability / System.All timeout, or a hub cloud
+     * Per-device failure {@link Session.enroll} swallowed to keep going. Typical
+     * cases are an Ability / System.All timeout, or a hub cloud
      * `listSubDevices` failure (digest children still enroll; cloud names /
-     * extra ids are omitted). Cloud-level failures still reject `sync` itself,
-     * so a stale token surfaces there rather than here.
+     * extra ids are omitted). Cloud-level failures still reject the call
+     * itself, so a stale token surfaces there rather than here.
      *
      * Deliberately not named `error`: Node throws on an unhandled `error` emit,
      * which would turn one unreachable device into a crashed host process.
@@ -136,26 +127,45 @@ export class Session extends EventEmitter<SessionEvents> {
     private graph = new DeviceGraph();
     private readonly endpoints = new Map<string, Endpoint>();
     private readonly devices = new Map<string, DeviceRuntime>();
-    /** Monotonic so devices enrolled by a later sync keep spreading their ticks. */
+    /** Monotonic so devices enrolled later keep spreading their ticks. */
     private startedDevices = 0;
     private router: TransportRouter | undefined;
     /**
      * Handshake of the {@link Session.connect} that opened {@link router}.
      * `router` is assigned before it settles, so a concurrent connect must
-     * await this rather than read a set `router` as "already connected" and
-     * enroll over a broker that is not up yet.
+     * await this rather than read a set `router` as "already connected".
      */
     private connecting: Promise<void> | undefined;
     /**
-     * In-flight {@link Session.sync} drain. Overlapping callers replace
-     * {@link pendingSyncOptions} with their options and await this promise.
+     * One Ability / System.All pass per uuid. Concurrent {@link enroll} callers
+     * for the same uuid join this promise instead of starting a second pass.
      */
-    private syncing: Promise<void> | undefined;
+    private readonly enrolling = new Map<string, Promise<void>>();
     /**
-     * Latest overlapping `sync` options. One slot so concurrent callers cannot
-     * start a second enroll pass; never a session-wide filtered mode.
+     * Shared cloud `devList` for overlapping {@link enroll} calls. Cleared in
+     * `finally` so a later enroll lists again.
      */
-    private pendingSyncOptions: SyncOptions | undefined;
+    private listing: Promise<CloudDevice[]> | undefined;
+    /**
+     * Settles when every {@link enroll} in the list-or-register phase has
+     * registered its per-uuid passes, so {@link unenroll} cannot finish during
+     * the shared `devList` gap before `enrolling` has an entry.
+     */
+    private listingBarrier: Promise<void> | undefined;
+    private releaseListingBarrier: (() => void) | undefined;
+    /** {@link enroll} callers still inside list-or-register. */
+    private listingPending = 0;
+    /** Slots held under {@link withEnrollSlot}; capped by {@link ENROLL_CONCURRENCY}. */
+    private activeEnrolls = 0;
+    /** Resolvers waiting for a free {@link withEnrollSlot} slot. */
+    private readonly enrollWaiters: Array<() => void> = [];
+    /**
+     * Set for the whole {@link disconnect}, including the wait for in-flight
+     * enrolls. Those passes must not start pollers after transports tear down.
+     */
+    private closing = false;
+    /** Shared by overlapping {@link disconnect} calls so teardown runs once. */
+    private disconnectPromise: Promise<void> | undefined;
     /** Session-owned LAN AES memo; fingerprint misses when key or MAC changes. */
     private readonly lanEncryptionKeys = new LanEncryptionKeys();
     /** False after {@link logout}; {@link getToken} rejects until {@link reauthenticate}. */
@@ -214,22 +224,20 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Opens MQTT and LAN, then enrolls devices into {@link Inventory}.
-     * Transports stay internal; hosts only see inventory after this.
-     * A failed attempt clears the router so a later call can retry.
-     *
-     * Once the transports are open, a bare call is a no-op; passing `uuids`
-     * (including `[]`, but not `undefined`) re-runs {@link sync} so hosts can
-     * tighten the set.
+     * Opens MQTT and LAN. Membership is separate: call {@link enroll} afterward.
+     * A failed attempt clears the router so a later call can retry. Once open,
+     * a second call joins an in-flight handshake, then returns. After
+     * {@link logout}, rejects with {@link AuthError}.
      */
-    async connect(options: SyncOptions = {}): Promise<void> {
+    async connect(): Promise<void> {
+        if (!this.credentialsValid) {
+            throw new AuthError('Not authenticated');
+        }
         if (this.router) {
             // Settled once connected, so this only waits for a first connect
             // that is still mid-handshake.
             await this.connecting;
-            if (options.uuids !== undefined) {
-                await this.sync(options);
-            }
+            this.throwIfNotConnected();
             return;
         }
         const router = this.createRouter();
@@ -237,7 +245,6 @@ export class Session extends EventEmitter<SessionEvents> {
         this.connecting = router.connect();
         try {
             await this.connecting;
-            await this.sync(options);
         } catch (error) {
             await this.teardownRouter();
             throw error;
@@ -284,89 +291,159 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Reconciles inventory with the cloud account: devices that left (or are
-     * outside an explicit `uuids` allowlist) are dropped, new online devices
-     * are enrolled, and known devices are re-read so a firmware update that
-     * changed abilities takes effect. Unreachable devices are skipped so one
-     * timeout cannot block the rest; each skip is reported on `warning`.
-     *
-     * Omit `uuids`, or pass it as `undefined`, to enroll every online cloud
-     * device. Pass `uuids: []` to enroll nothing. Overlapping callers share the
-     * drain already in flight and leave one follow-up with the latest options
-     * so two enroll passes never run at once.
+     * Adds online cloud devices to inventory. Additive and idempotent: a uuid
+     * already enrolled (or mid-pass) does not list the account or contact the
+     * device again. Concurrent callers share one in-flight `devList` and one
+     * Ability / System.All pass per uuid; passes are bounded by
+     * {@link ENROLL_CONCURRENCY} across calls. Omit `uuids` to enroll every
+     * online device not yet enrolled; pass `[]` to enroll nothing. Offline rows
+     * and uuids absent from the account are skipped silently; a reachable
+     * device that fails is reported on `warning` and the rest continue.
      */
-    async sync(options: SyncOptions = {}): Promise<void> {
-        if (!this.router) {
-            throw new MerossError('Session is not connected', 'NOT_CONNECTED');
-        }
-        if (this.syncing) {
-            this.pendingSyncOptions = options;
-            return this.syncing;
-        }
-        this.syncing = this.drainSync(options);
-        return this.syncing;
-    }
+    async enroll(uuids?: readonly string[]): Promise<void> {
+        this.throwIfNotConnected();
+        await this.connecting;
+        this.throwIfNotConnected();
 
-    /**
-     * Overlapping callers must not start a second enroll pass; this loop
-     * applies the latest follow-up only after the active run. Both slots are
-     * cleared inside the drain rather than from a `.finally()` on it, so a
-     * caller cannot join a drain that has already stopped reading follow-ups.
-     */
-    private async drainSync(current: SyncOptions): Promise<void> {
-        this.pendingSyncOptions = undefined;
-        try {
-            for (;;) {
-                await this.runSync(current);
-                const followUp = this.pendingSyncOptions;
-                if (followUp === undefined) {
-                    return;
+        const requested = uuids === undefined ? undefined : new Set(uuids);
+        const joined: Promise<void>[] = [];
+        let needsList = false;
+        if (requested === undefined) {
+            needsList = true;
+        } else {
+            for (const uuid of requested) {
+                const inFlight = this.enrolling.get(uuid);
+                if (inFlight) {
+                    joined.push(inFlight);
+                } else if (!this.devices.has(uuid)) {
+                    needsList = true;
                 }
-                this.pendingSyncOptions = undefined;
-                current = followUp;
+            }
+        }
+        if (!needsList) {
+            await Promise.all(joined);
+            this.throwIfNotConnected();
+            return;
+        }
+
+        this.enterListingPhase();
+        const passes: Promise<void>[] = [];
+        try {
+            const cloudDevices = await this.listCloudDevices();
+            this.throwIfNotConnected();
+            for (const cloudDevice of cloudDevices) {
+                if (cloudDevice.onlineStatus !== 1) {
+                    continue;
+                }
+                if (requested !== undefined && !requested.has(cloudDevice.uuid)) {
+                    continue;
+                }
+                passes.push(this.enrollDevice(cloudDevice));
             }
         } finally {
-            this.syncing = undefined;
-            this.pendingSyncOptions = undefined;
+            this.releaseListingPhase();
         }
+        await Promise.all([...passes, ...joined]);
+        this.throwIfNotConnected();
     }
 
     /**
-     * Account (and allowlisted) devices stay in the graph even when offline;
-     * Ability / System.All only run for online rows.
+     * Joins the phase {@link listingBarrier} covers. Called before `devList`
+     * so {@link unenroll} cannot finish before {@link enrollDevice} stores passes.
      */
-    private async runSync(options: SyncOptions): Promise<void> {
-        const cloudDevices = await this.cloud.listDevices();
-        const allowlist = options.uuids === undefined ? undefined : new Set(options.uuids);
-        const keepUuids = new Set<string>();
-        const wanted: CloudDevice[] = [];
-        for (const cloudDevice of cloudDevices) {
-            if (allowlist !== undefined && !allowlist.has(cloudDevice.uuid)) {
-                continue;
-            }
-            keepUuids.add(cloudDevice.uuid);
-            if (cloudDevice.onlineStatus === 1) {
-                wanted.push(cloudDevice);
-            }
+    private enterListingPhase(): void {
+        if (this.listingBarrier === undefined) {
+            this.listingBarrier = new Promise<void>((resolve) => {
+                this.releaseListingBarrier = resolve;
+            });
         }
-        for (const uuid of this.graph.uuids()) {
-            if (!keepUuids.has(uuid)) {
-                this.stopDevice(uuid);
-                this.graph.remove(uuid);
-            }
-        }
-        this.materializeEndpoints(await this.enrollAll(wanted));
+        this.listingPending += 1;
     }
 
     /**
-     * Closes transports without discarding the stored token.
+     * Leaves the list-or-register phase. The last caller opens
+     * {@link listingBarrier}. Runs after passes are stored, and also when
+     * listing fails, so {@link unenroll} cannot wait forever.
+     */
+    private releaseListingPhase(): void {
+        this.listingPending -= 1;
+        if (this.listingPending > 0) {
+            return;
+        }
+        this.releaseListingBarrier?.();
+        this.releaseListingBarrier = undefined;
+        this.listingBarrier = undefined;
+    }
+
+    /**
+     * Stops a device's runtime and drops its graph / inventory rows. Awaits an
+     * in-flight enroll for that uuid first so a poller cannot start afterward.
+     * Safe when the session is not connected.
+     */
+    async unenroll(uuid: string): Promise<void> {
+        await this.listingBarrier?.catch(() => undefined);
+        await this.dropDevice(uuid);
+    }
+
+    /**
+     * Waiting out the in-flight pass first keeps that pass from starting a
+     * poller after the row is gone.
+     */
+    private async dropDevice(uuid: string): Promise<void> {
+        await this.enrolling.get(uuid)?.catch(() => undefined);
+        this.stopDevice(uuid);
+        this.graph.remove(uuid);
+        this.inventory.replace(this.graph.inventoryRows());
+    }
+
+    /**
+     * Closes transports without discarding the stored token. Sets
+     * {@link closing}, stops pollers, waits for in-flight enrolls (which skip
+     * materialize when closing), drops enrollment again, then tears down
+     * transports. Overlapping callers share one teardown.
      */
     async disconnect(): Promise<void> {
+        if (this.disconnectPromise) {
+            return this.disconnectPromise;
+        }
+        this.closing = true;
+        this.dropEnrollment();
+        this.disconnectPromise = this.finishDisconnect();
+        try {
+            await this.disconnectPromise;
+        } finally {
+            this.disconnectPromise = undefined;
+            this.closing = false;
+        }
+    }
+
+    /**
+     * In-flight enrolls may finish their cloud / Ability reads; materialize is
+     * skipped via {@link closing}. Enrollment is dropped again in case a device
+     * was still written into the graph.
+     */
+    private async finishDisconnect(): Promise<void> {
+        await Promise.allSettled(this.enrolling.values());
+        this.dropEnrollment();
+        await this.teardownRouter();
+    }
+
+    /** Stops pollers and drops enrolled devices without touching transports. */
+    private dropEnrollment(): void {
         this.stopAllDevices();
         this.graph = new DeviceGraph();
         this.inventory.replace([]);
         this.lanEncryptionKeys.clear();
-        await this.teardownRouter();
+    }
+
+    /**
+     * {@link disconnect} rejects new work while {@link closing} is set. After
+     * it finishes, {@link closing} is clear and {@link router} is gone.
+     */
+    private throwIfNotConnected(): void {
+        if (this.closing || !this.router) {
+            throw new MerossError('Session is not connected', 'NOT_CONNECTED');
+        }
     }
 
     /**
@@ -460,26 +537,75 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Enrolls up to {@link ENROLL_CONCURRENCY} devices at a time, collecting the
-     * uuids whose shape changed so the caller can rebuild just those.
+     * Shared `devList` so concurrent {@link enroll} calls do not list twice.
      */
-    private async enrollAll(cloudDevices: readonly CloudDevice[]): Promise<Set<string>> {
-        const reshaped = new Set<string>();
-        let next = 0;
-        const worker = async (): Promise<void> => {
-            while (next < cloudDevices.length) {
-                const cloudDevice = cloudDevices[next++]!;
-                try {
-                    if ((await this.enroll(cloudDevice)).reshaped) {
-                        reshaped.add(cloudDevice.uuid);
-                    }
-                } catch (error) {
-                    this.emitWarning(error);
-                }
+    private listCloudDevices(): Promise<CloudDevice[]> {
+        this.listing ??= this.cloud.listDevices().finally(() => {
+            this.listing = undefined;
+        });
+        return this.listing;
+    }
+
+    /**
+     * One pass per uuid. A repeat caller joins the in-flight promise, and an
+     * already-enrolled uuid must not contact the device again.
+     */
+    private enrollDevice(cloudDevice: CloudDevice): Promise<void> {
+        const uuid = cloudDevice.uuid;
+        const inFlight = this.enrolling.get(uuid);
+        if (inFlight) {
+            return inFlight;
+        }
+        if (this.devices.has(uuid)) {
+            return Promise.resolve();
+        }
+        const pass = this.runEnroll(cloudDevice).finally(() => {
+            this.enrolling.delete(uuid);
+        });
+        this.enrolling.set(uuid, pass);
+        return pass;
+    }
+
+    /**
+     * One Ability / System.All pass under the global slot limiter. Skips
+     * materialize when {@link closing} so disconnect cannot leave a poller.
+     */
+    private async runEnroll(cloudDevice: CloudDevice): Promise<void> {
+        await this.withEnrollSlot(async () => {
+            if (this.closing) {
+                return;
             }
-        };
-        await Promise.all(Array.from({ length: ENROLL_CONCURRENCY }, worker));
-        return reshaped;
+            try {
+                const { reshaped } = await this.readDevice(cloudDevice);
+                if (this.closing) {
+                    return;
+                }
+                this.materializeEndpoints(reshaped ? new Set([cloudDevice.uuid]) : new Set());
+            } catch (error) {
+                this.emitWarning(error);
+            }
+        });
+    }
+
+    /**
+     * Caps concurrent Ability / System.All passes at {@link ENROLL_CONCURRENCY}
+     * across overlapping {@link enroll} callers. Re-checks after each wake so a
+     * new caller cannot steal the slot a waiter was promised.
+     */
+    private async withEnrollSlot<T>(run: () => Promise<T>): Promise<T> {
+        while (this.activeEnrolls >= ENROLL_CONCURRENCY) {
+            await new Promise<void>((resolve) => {
+                this.enrollWaiters.push(resolve);
+            });
+        }
+        this.activeEnrolls += 1;
+        try {
+            return await run();
+        } finally {
+            this.activeEnrolls -= 1;
+            const next = this.enrollWaiters.shift();
+            next?.();
+        }
     }
 
     /**
@@ -548,11 +674,11 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Ability and System.All failures reject so {@link enrollAll} can skip the
+     * Ability and System.All failures reject so {@link runEnroll} can skip the
      * device. A hub `listSubDevices` failure is emitted as `warning` instead,
      * so digest children still enroll without the cloud name overlay.
      */
-    private async enroll(cloudDevice: CloudDevice): Promise<EnrollResult> {
+    private async readDevice(cloudDevice: CloudDevice): Promise<EnrollResult> {
         const [abilityReply, allReply] = await this.connectedRouter.requestGets({
             uuid: cloudDevice.uuid,
             gets: [
