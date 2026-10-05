@@ -340,6 +340,7 @@ export class Session extends EventEmitter<SessionEvents> {
      * applies the latest follow-up only after the active run. Both slots are
      * cleared inside the drain rather than from a `.finally()` on it, so a
      * caller cannot join a drain that has already stopped reading follow-ups.
+     * {@link closing} stops the loop so disconnect does not start another pass.
      */
     private async drainSync(current: SyncOptions): Promise<void> {
         this.pendingSyncOptions = undefined;
@@ -381,7 +382,7 @@ export class Session extends EventEmitter<SessionEvents> {
             }
         }
         const removals: Promise<void>[] = [];
-        for (const uuid of [...this.graph.uuids()]) {
+        for (const uuid of this.graph.uuids()) {
             if (!keepUuids.has(uuid)) {
                 removals.push(this.dropDevice(uuid));
             }
@@ -391,8 +392,8 @@ export class Session extends EventEmitter<SessionEvents> {
             return;
         }
         await Promise.all(wanted.map((cloudDevice) => this.enrollDevice(cloudDevice)));
-        // Removals leave inventory stale when every wanted uuid was already enrolled
-        // and skipped a materialize inside runEnroll.
+        // Already-enrolled uuids skip materialize, so a sync whose adds all
+        // took that path still needs one publish from the graph.
         if (!this.closing) {
             this.inventory.replace(this.graph.inventoryRows());
         }
@@ -415,54 +416,64 @@ export class Session extends EventEmitter<SessionEvents> {
 
         const allowlist = uuids === undefined ? undefined : new Set(uuids);
         const joined: Promise<void>[] = [];
-        if (allowlist !== undefined) {
-            const fresh: string[] = [];
+        let needsList = false;
+        if (allowlist === undefined) {
+            needsList = true;
+        } else {
             for (const uuid of allowlist) {
                 const inFlight = this.enrolling.get(uuid);
                 if (inFlight) {
                     joined.push(inFlight);
-                    continue;
+                } else if (!this.devices.has(uuid)) {
+                    needsList = true;
                 }
-                if (!this.devices.has(uuid)) {
-                    fresh.push(uuid);
-                }
-            }
-            if (fresh.length === 0) {
-                await Promise.all(joined);
-                this.throwIfNotConnected();
-                return;
             }
         }
+        if (!needsList) {
+            await Promise.all(joined);
+            this.throwIfNotConnected();
+            return;
+        }
 
+        this.enterListingPhase();
+        const passes: Promise<void>[] = [];
+        try {
+            const cloudDevices = await this.listCloudDevices();
+            this.throwIfNotConnected();
+            for (const cloudDevice of cloudDevices) {
+                if (cloudDevice.onlineStatus !== 1) {
+                    continue;
+                }
+                if (allowlist !== undefined && !allowlist.has(cloudDevice.uuid)) {
+                    continue;
+                }
+                passes.push(this.enrollDevice(cloudDevice));
+            }
+        } finally {
+            this.releaseListingPhase();
+        }
+        await Promise.all([...passes, ...joined]);
+        this.throwIfNotConnected();
+    }
+
+    /**
+     * Joins the phase {@link listingBarrier} covers. Called before `devList`
+     * so {@link unenroll} cannot finish before {@link enrollDevice} stores passes.
+     */
+    private enterListingPhase(): void {
         if (this.listingBarrier === undefined) {
             this.listingBarrier = new Promise<void>((resolve) => {
                 this.releaseListingBarrier = resolve;
             });
         }
         this.listingPending += 1;
-        let registered = false;
-        try {
-            const cloudDevices = await this.listCloudDevices();
-            this.throwIfNotConnected();
-            const wanted = cloudDevices.filter((cloudDevice) => (
-                cloudDevice.onlineStatus === 1
-                && (allowlist === undefined || allowlist.has(cloudDevice.uuid))
-            ));
-            // Register per-uuid passes before opening the barrier so unenroll
-            // during listCloudDevices can await them.
-            const passes = wanted.map((cloudDevice) => this.enrollDevice(cloudDevice));
-            registered = true;
-            this.releaseListingPhase();
-            await Promise.all([...passes, ...joined]);
-            this.throwIfNotConnected();
-        } finally {
-            if (!registered) {
-                this.releaseListingPhase();
-            }
-        }
     }
 
-    /** Opens {@link listingBarrier} once every list-or-register caller has registered. */
+    /**
+     * Leaves the list-or-register phase. The last caller opens
+     * {@link listingBarrier}. Runs after passes are stored, and also when
+     * listing fails, so {@link unenroll} cannot wait forever.
+     */
     private releaseListingPhase(): void {
         this.listingPending -= 1;
         if (this.listingPending > 0) {
@@ -484,8 +495,8 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Awaits an in-flight enroll for `uuid`, then stops its runtime and drops
-     * graph / inventory rows. Shared by {@link unenroll} and {@link runSync}.
+     * Sync removals share this with {@link unenroll}. Waiting out the in-flight
+     * pass first keeps that pass from starting a poller after the row is gone.
      */
     private async dropDevice(uuid: string): Promise<void> {
         await this.enrolling.get(uuid)?.catch(() => undefined);
@@ -645,8 +656,8 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Joins an in-flight pass for `cloudDevice.uuid`, returns immediately when
-     * that uuid is already enrolled, or starts {@link runEnroll}.
+     * One pass per uuid. A repeat caller joins the in-flight promise, and an
+     * already-enrolled uuid must not contact the device again.
      */
     private enrollDevice(cloudDevice: CloudDevice): Promise<void> {
         const uuid = cloudDevice.uuid;
