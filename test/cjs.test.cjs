@@ -15,7 +15,6 @@ describe('CJS public surface', () => {
         assert.equal(typeof sdk.Session.prototype.endpoint, 'function');
         assert.equal(typeof sdk.Session.prototype.getToken, 'function');
         assert.equal(typeof sdk.Session.prototype.listDevices, 'function');
-        assert.equal(typeof sdk.Session.prototype.sync, 'function');
         assert.equal(typeof sdk.Session.prototype.enroll, 'function');
         assert.equal(typeof sdk.Session.prototype.unenroll, 'function');
         assert.equal(typeof sdk.Endpoint, 'function');

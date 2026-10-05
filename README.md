@@ -83,6 +83,7 @@ const { Session } = require('node-meross-sdk');
   });
 
   await session.connect();
+  await session.enroll();
 
   for (const row of session.inventory.endpoints()) {
     const endpoint = session.endpoint(row.id);
@@ -115,7 +116,7 @@ import { Session } from 'node-meross-sdk';
 
 | Piece         | Role                                                                                                                                 |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| **Session**   | Cloud credentials, live inventory, and connect/disconnect. Persist `[TokenData](#reuse-a-token)` and rebuild with `Session.restore`. |
+| **Session**   | Cloud credentials, live inventory, and connect/enroll/disconnect. Persist `[TokenData](#reuse-a-token)` and rebuild with `Session.restore`. |
 | **DeviceList** | Account rows from HTTP `devList` via `listDevices()` (`uuid`, `name`, `model`, `subType`, `onlineStatus`, `channels`). Not enrolled; no MQTT. |
 | **Inventory** | User-visible rows after enrollment (`id`, `name`, `model`, `classHint`, `traits`, optional `parentId`). Live availability is on Endpoint. |
 | **Endpoint**  | One device you would show a user. Traits live here. Channel and subdevice id are bound at enrollment; they are not method arguments. |
@@ -138,18 +139,20 @@ const session = await Session.login({
   password: 'secret'
 });
 await session.connect();
+await session.enroll();
 const token = session.getToken();
 // persist JSON.stringify(token)
 
 const restored = Session.restore(token);
 await restored.connect();
+await restored.enroll();
 ```
 
 
 
 ### List cloud devices without enrolling
 
-`listDevices()` is HTTP `devList` only. Each `DeviceList` row has a physical `uuid`, plus `name` and `model` (the same field names as inventory), `onlineStatus`, and `channels`. It does not open MQTT, run Ability / System.All, or mutate `session.inventory`. Pairing UIs use this; runtime uses inventory after `connect` / `sync`.
+`listDevices()` is HTTP `devList` only. Each `DeviceList` row has a physical `uuid`, plus `name` and `model` (the same field names as inventory), `onlineStatus`, and `channels`. It does not open MQTT, run Ability / System.All, or mutate `session.inventory`. Pairing UIs use this; runtime uses inventory after `enroll`.
 
 ```javascript
 const account = await session.listDevices();
@@ -176,42 +179,11 @@ Offline rows (`onlineStatus !== 1`) and uuids absent from the account are skippe
 
 Hosts that pair devices one at a time (for example Homey `onInit` per outlet) call `enroll([uuid])` from each device and `unenroll(uuid)` when the last sibling for that physical plug is deleted. There is no need to resubmit the whole paired set.
 
-### Refresh inventory
-
-`connect()` opens transports and enrolls devices into inventory.
-
-`sync()` reconciles again. Devices that left, or that fall outside an explicit allowlist, are dropped. Devices that came online are added. Known devices are re-read so a firmware update that changed abilities takes effect. Offline devices (`onlineStatus !== 1`) are skipped silently; a device that is online but unreachable is skipped so one timeout cannot block the rest, and that skip is reported on the session `warning` event. A stale token still rejects `sync()` itself.
-
-Both accept optional `SyncOptions`:
-
-| `uuids` | Effect |
-| --- | --- |
-| omitted or `undefined` | Enroll every online cloud device (default for scripts). |
-| `[]` | `connect` opens transports; `sync` reconciles. Enroll nothing, and stop anything not in the set. |
-| `[A, …]` | Enroll only those physical uuids (still skip `onlineStatus !== 1`). |
-
-`undefined` is the same as omitting the key, so a host holding `string[] | undefined` cannot empty its account by passing it through.
-
-Pass physical uuids only — not inventory ids (`{uuid}:0`). Hub children are not independently allowlisted: including the hub uuid enrolls the parent and its digest children as usual.
-
-Hosts that track a paired set must pass the **full** physical-uuid list on every `connect` / `sync`. There is no session-wide filtered mode, so a later bare `sync()` enrolls the whole account again.
-
-Already-connected bare `connect()` stays a no-op. `connect({ uuids })`, including `[]`, re-runs `sync` so a host can tighten the set. A `connect()` that arrives while another is still opening transports joins that attempt instead of enrolling over a broker that is not up yet. Overlapping `sync()` calls share one drain and keep a single latest follow-up, so two enroll passes never run at once.
-
-```javascript
-await session.connect({ uuids: pairedUuids });
-await session.sync({ uuids: pairedUuids });
-```
-
-A re-read reuses the existing `Endpoint` when the device reports the same abilities and channels, so listeners survive. Only a changed shape replaces it, which shows up as a new object from `session.endpoint(id)`.
-
-Devices are enrolled a few at a time rather than one after another, so a large account does not take minutes to appear.
-
-`disconnect()` closes transports and clears inventory; the stored token remains valid for `restore`.
+`connect()` only opens transports. A second call while already connected joins an in-flight handshake, then returns. `disconnect()` closes transports and clears inventory; the stored token remains valid for `restore`.
 
 ### Log out of the cloud account
 
-Call `logout()` when removing a stored profile or replacing a token so Meross stops counting it against the account token limit. It runs `disconnect()` first, then POSTs `/v1/Profile/logout`. Afterward, `getToken()` throws and you must not persist the old token or pass it to `Session.restore`.
+Call `logout()` when removing a stored profile or replacing a token so Meross stops counting it against the account token limit. It runs `disconnect()` first, then POSTs `/v1/Profile/logout`. Afterward, `getToken()` and `connect()` throw `AuthError`, and you must not persist the old token or pass it to `Session.restore`.
 
 ```javascript
 await session.logout();
@@ -224,12 +196,12 @@ A long-running host will eventually see `AuthError` with code `TOKEN_EXPIRED`. `
 
 ```javascript
 try {
-  await session.sync();
+  await session.enroll();
 } catch (error) {
   if (error.code === 'TOKEN_EXPIRED') {
     await session.reauthenticate({ email: 'you@example.com', password: 'secret' });
     // persist session.getToken() again
-    await session.sync();
+    await session.enroll();
   }
 }
 ```
@@ -250,9 +222,9 @@ session.on('ratelimit', (uuid, dropped) => {
 });
 
 session.on('warning', (error) => {
-  // a single device that sync() skipped, e.g. an Ability / System.All timeout,
+  // a single device that enroll() skipped, e.g. an Ability / System.All timeout,
   // or a hub whose cloud subdevice list failed (digest children still enroll).
-  // Cloud-level failures reject sync() itself instead of arriving here.
+  // Cloud-level failures reject enroll() itself instead of arriving here.
 });
 
 const endpoint = session.endpoint(row.id);
@@ -366,8 +338,8 @@ Catch by class. Each error has a string `code`. Trait commands such as `setOn`, 
 | `TransportError` | MQTT/LAN connect or publish failure after failover (`MQTT_RATE_LIMITED`, …)                                                             |
 | `ProtocolError`  | Malformed envelope, `SIGNATURE_ERROR`, or a LAN body that is not a pending reply                                                          |
 | `MerossError`    | `NOT_CONNECTED`, `ENDPOINT_NOT_FOUND`, `TIMER_NOT_FOUND`, `TRIGGER_NOT_FOUND`, `NAMESPACE_NOT_ADVERTISED`, and other operational failures |
-| `AuthError`      | Login, `listDevices()`, `sync()`, or `reauthenticate()` — bad credentials, MFA, or an incomplete / expired token                          |
-| `CloudError`     | Login, `listDevices()`, `sync()`, or `reauthenticate()` — cloud HTTP failure, region redirect exhaustion, or a non-auth `apiStatus`       |
+| `AuthError`      | Login, `listDevices()`, `enroll()`, `connect()` after logout, or `reauthenticate()` — bad credentials, MFA, or an incomplete / expired token |
+| `CloudError`     | Login, `listDevices()`, `enroll()`, or `reauthenticate()` — cloud HTTP failure, region redirect exhaustion, or a non-auth `apiStatus`       |
 
 
 ```javascript
