@@ -1241,14 +1241,14 @@ describe('Session.enroll and unenroll', () => {
 
     it('enroll of an enrolled uuid does not list or contact the device', async () => {
         const { session, client, calls } = await loginConnected();
-        const listed = cloudCallCount(calls, '/v1/Device/devList');
-        const gets = abilityAllGets(client, UUID).length;
+        const listedAfterConnect = cloudCallCount(calls, '/v1/Device/devList');
+        const getsAfterConnect = abilityAllGets(client, UUID).length;
 
         await session.enroll([UUID]);
         await session.enroll([UUID, UUID]);
 
-        assert.equal(cloudCallCount(calls, '/v1/Device/devList'), listed);
-        assert.equal(abilityAllGets(client, UUID).length, gets);
+        assert.equal(cloudCallCount(calls, '/v1/Device/devList'), listedAfterConnect);
+        assert.equal(abilityAllGets(client, UUID).length, getsAfterConnect);
         await session.disconnect();
     });
 
@@ -1257,7 +1257,7 @@ describe('Session.enroll and unenroll', () => {
             devices: [DEVICE_ROW, LAMP_ROW],
             connect: { uuids: [] }
         });
-        const listed = cloudCallCount(calls, '/v1/Device/devList');
+        const listedAfterConnect = cloudCallCount(calls, '/v1/Device/devList');
 
         await Promise.all([
             session.enroll([UUID]),
@@ -1266,17 +1266,14 @@ describe('Session.enroll and unenroll', () => {
         ]);
         await waitMacrotask();
 
-        assert.equal(cloudCallCount(calls, '/v1/Device/devList'), listed + 1);
+        const passes = abilityAllGets(client, UUID);
+        assert.equal(cloudCallCount(calls, '/v1/Device/devList'), listedAfterConnect + 1);
         assert.equal(
-            abilityAllGets(client, UUID).filter(
-                (message) => message.header.namespace === ABILITY_NAMESPACE
-            ).length,
+            passes.filter((message) => message.header.namespace === ABILITY_NAMESPACE).length,
             1
         );
         assert.equal(
-            abilityAllGets(client, UUID).filter(
-                (message) => message.header.namespace === SYSTEM_ALL_NAMESPACE
-            ).length,
+            passes.filter((message) => message.header.namespace === SYSTEM_ALL_NAMESPACE).length,
             1
         );
         assert.deepEqual(
@@ -1458,17 +1455,18 @@ describe('Session.enroll and unenroll', () => {
     });
 
     it('disconnect during enroll does not start a poller', async () => {
-        let devLists = 0;
+        let devListCalls = 0;
         let releaseDevList!: () => void;
         const devListGate = new Promise<void>((resolve) => {
             releaseDevList = resolve;
         });
-        const devices = [DEVICE_ROW];
-        const { fetchImpl: innerFetch } = createCloudFetch(devices);
+        const { fetchImpl: innerFetch } = createCloudFetch([DEVICE_ROW]);
         const fetchImpl: typeof fetch = async (url, init) => {
             if (String(url).endsWith('/v1/Device/devList')) {
-                devLists += 1;
-                if (devLists > 1) {
+                devListCalls += 1;
+                // connect({ uuids: [] }) already listed. Hold enroll's list so
+                // disconnect can set closing before a pass materializes a poller.
+                if (devListCalls > 1) {
                     await devListGate;
                 }
             }
@@ -1486,7 +1484,7 @@ describe('Session.enroll and unenroll', () => {
         session.on('warning', (error) => warnings.push(error));
         await session.connect({ uuids: [] });
         await waitMacrotask();
-        const enrolledGets = abilityAllGets(clientRef.current!, UUID).length;
+        const getsBefore = abilityAllGets(clientRef.current!, UUID).length;
 
         const enrolling = session.enroll([UUID]);
         const disconnecting = session.disconnect();
@@ -1495,7 +1493,7 @@ describe('Session.enroll and unenroll', () => {
 
         assert.deepEqual(warnings, []);
         assert.deepEqual(session.inventory.endpoints(), []);
-        assert.equal(abilityAllGets(clientRef.current!, UUID).length, enrolledGets);
+        assert.equal(abilityAllGets(clientRef.current!, UUID).length, getsBefore);
         assert.throws(
             () => session.endpoint(`${UUID}:0`),
             (err: unknown) => err instanceof MerossError && err.code === 'ENDPOINT_NOT_FOUND'
