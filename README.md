@@ -158,6 +158,22 @@ for (const row of account) {
 }
 ```
 
+### Enroll and unenroll devices
+
+Membership is additive. After `connect()` opens transports:
+
+```javascript
+await session.connect();
+await session.enroll([uuid]);   // one physical device
+await session.enroll();         // every online device not yet enrolled
+await session.unenroll(uuid);   // stop its runtime and drop its rows
+await session.disconnect();
+```
+
+`enroll` is idempotent per uuid: an already-enrolled or in-flight uuid does not list the account or contact the device again. Concurrent callers share one in-flight `devList` and one Ability / System.All pass per uuid; passes are bounded by `ENROLL_CONCURRENCY` across calls. Pass `[]` to enroll nothing. Offline rows (`onlineStatus !== 1`) and uuids absent from the account are skipped silently; a reachable device that fails is reported on `warning` and the rest continue. `session.endpoint(id)` still throws `ENDPOINT_NOT_FOUND` for anything that did not enroll.
+
+Hosts that pair devices one at a time (for example Homey `onInit` per outlet) call `enroll([uuid])` from each device and `unenroll(uuid)` when the last sibling for that physical plug is deleted. There is no need to resubmit the whole paired set.
+
 ### Refresh inventory
 
 `connect()` opens transports and enrolls devices into inventory.

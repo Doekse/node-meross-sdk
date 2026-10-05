@@ -1216,6 +1216,311 @@ describe('Session SyncOptions allowlist', () => {
     });
 });
 
+describe('Session.enroll and unenroll', () => {
+    it('enroll with uuids enrolls only those online devices', async () => {
+        const { session, client } = await loginConnected({
+            devices: [DEVICE_ROW, LAMP_ROW],
+            connect: { uuids: [] }
+        });
+
+        await session.enroll([UUID]);
+        await waitMacrotask();
+
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            [`${UUID}:0`]
+        );
+        assert.ok(abilityAllGets(client, UUID).length >= 2);
+        assert.equal(abilityAllGets(client, LAMP_UUID).length, 0);
+        assert.throws(
+            () => session.endpoint(`${LAMP_UUID}:0`),
+            (err: unknown) => err instanceof MerossError && err.code === 'ENDPOINT_NOT_FOUND'
+        );
+        await session.disconnect();
+    });
+
+    it('enroll of an enrolled uuid does not list or contact the device', async () => {
+        const { session, client, calls } = await loginConnected();
+        const listed = cloudCallCount(calls, '/v1/Device/devList');
+        const gets = abilityAllGets(client, UUID).length;
+
+        await session.enroll([UUID]);
+        await session.enroll([UUID, UUID]);
+
+        assert.equal(cloudCallCount(calls, '/v1/Device/devList'), listed);
+        assert.equal(abilityAllGets(client, UUID).length, gets);
+        await session.disconnect();
+    });
+
+    it('concurrent enroll for the same uuid shares one Ability and System.All pass and one devList', async () => {
+        const { session, client, calls } = await loginConnected({
+            devices: [DEVICE_ROW, LAMP_ROW],
+            connect: { uuids: [] }
+        });
+        const listed = cloudCallCount(calls, '/v1/Device/devList');
+
+        await Promise.all([
+            session.enroll([UUID]),
+            session.enroll([UUID]),
+            session.enroll([UUID])
+        ]);
+        await waitMacrotask();
+
+        assert.equal(cloudCallCount(calls, '/v1/Device/devList'), listed + 1);
+        assert.equal(
+            abilityAllGets(client, UUID).filter(
+                (message) => message.header.namespace === ABILITY_NAMESPACE
+            ).length,
+            1
+        );
+        assert.equal(
+            abilityAllGets(client, UUID).filter(
+                (message) => message.header.namespace === SYSTEM_ALL_NAMESPACE
+            ).length,
+            1
+        );
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            [`${UUID}:0`]
+        );
+        await session.disconnect();
+    });
+
+    it('enroll with no uuids enrolls every online device not yet enrolled', async () => {
+        const { session, client } = await loginConnected({
+            devices: [DEVICE_ROW, LAMP_ROW],
+            connect: { uuids: [] }
+        });
+
+        await session.enroll();
+        await waitMacrotask();
+
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id).sort(),
+            [`${LAMP_UUID}:0`, `${UUID}:0`].sort()
+        );
+        assert.ok(abilityAllGets(client, UUID).length >= 2);
+        assert.ok(abilityAllGets(client, LAMP_UUID).length >= 2);
+        await session.disconnect();
+    });
+
+    it('enroll skips offline rows and uuids not on the account', async () => {
+        const shed = {
+            uuid: 'offline00000000000000000000000001',
+            devName: 'Shed plug',
+            deviceType: 'mss110',
+            onlineStatus: 2,
+            channels: [{ channel: 0, devName: 'Shed plug' }]
+        };
+        const missingUuid = 'missing0000000000000000000000001';
+        const { session, client } = await loginConnected({
+            devices: [DEVICE_ROW, shed],
+            connect: { uuids: [] }
+        });
+
+        await session.enroll([UUID, shed.uuid, missingUuid]);
+        await waitMacrotask();
+
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            [`${UUID}:0`]
+        );
+        assert.equal(abilityAllGets(client, shed.uuid).length, 0);
+        assert.equal(abilityAllGets(client, missingUuid).length, 0);
+        assert.throws(
+            () => session.endpoint(`${shed.uuid}:0`),
+            (err: unknown) => err instanceof MerossError && err.code === 'ENDPOINT_NOT_FOUND'
+        );
+        assert.throws(
+            () => session.endpoint(`${missingUuid}:0`),
+            (err: unknown) => err instanceof MerossError && err.code === 'ENDPOINT_NOT_FOUND'
+        );
+        await session.disconnect();
+    });
+
+    it('enroll during the handshake waits for the broker', async () => {
+        const { fetchImpl } = createCloudFetch([DEVICE_ROW, LAMP_ROW]);
+        let openBroker!: () => void;
+        const handshake = new Promise<void>((resolve) => {
+            openBroker = resolve;
+        });
+        const clientRef: { current?: EnrollingMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: () => {
+                    const client = new EnrollingMqttClient();
+                    clientRef.current = client;
+                    void handshake.then(() => client.emit('connect'));
+                    return client;
+                }
+            }
+        );
+        const warnings: Error[] = [];
+        session.on('warning', (error) => warnings.push(error));
+
+        const opening = session.connect({ uuids: [] });
+        await Promise.resolve();
+        const enrolling = session.enroll([UUID]);
+        openBroker();
+        await Promise.all([opening, enrolling]);
+        await waitMacrotask();
+
+        assert.deepEqual(warnings, []);
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            [`${UUID}:0`]
+        );
+        assert.ok(abilityAllGets(clientRef.current!, UUID).length >= 2);
+        await session.disconnect();
+    });
+
+    it('enroll warns and keeps the rest when one device fails', async () => {
+        const { session, client } = await loginConnected({
+            devices: [DEVICE_ROW, LAMP_ROW],
+            connect: { uuids: [] }
+        });
+        const warnings: Error[] = [];
+        session.on('warning', (error) => warnings.push(error));
+
+        client.failUuid = LAMP_UUID;
+        await session.enroll([UUID, LAMP_UUID]);
+        await waitMacrotask();
+
+        assert.equal(warnings.length, 1);
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            [`${UUID}:0`]
+        );
+        await session.disconnect();
+    });
+
+    it('unenroll stops the runtime and drops its rows', async () => {
+        const { session } = await loginConnected({
+            devices: [DEVICE_ROW, LAMP_ROW]
+        });
+        assert.equal(session.inventory.endpoints().length, 2);
+
+        await session.unenroll(LAMP_UUID);
+
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            [`${UUID}:0`]
+        );
+        assert.throws(
+            () => session.endpoint(`${LAMP_UUID}:0`),
+            (err: unknown) => err instanceof MerossError && err.code === 'ENDPOINT_NOT_FOUND'
+        );
+        await session.disconnect();
+    });
+
+    it('a device enrolled again after unenroll does not inherit its MQTT publish window', async () => {
+        const { session, client } = await loginConnected({
+            devices: [DEVICE_ROW, LAMP_ROW]
+        });
+        const lamp = session.endpoint(`${LAMP_UUID}:0`);
+        let limited = false;
+        for (let i = 0; i < RATE_LIMIT_MAX_PUBLISHES + 2; i += 1) {
+            const publishedBefore = client.published.length;
+            const pending = lamp.switch!.setOn(i % 2 === 0);
+            await Promise.resolve();
+            if (client.published.length === publishedBefore) {
+                await assert.rejects(
+                    pending,
+                    (err: unknown) =>
+                        err instanceof TransportError && err.code === 'MQTT_RATE_LIMITED'
+                );
+                limited = true;
+                break;
+            }
+            const sent = JSON.parse(client.published.at(-1)!.payload) as MerossMessage;
+            client.deliver(ackFor(sent, 'SETACK', {
+                togglex: { channel: 0, onoff: i % 2 === 0 ? 1 : 0 }
+            }));
+            await pending;
+        }
+        assert.equal(limited, true);
+
+        await session.unenroll(LAMP_UUID);
+        await session.enroll([LAMP_UUID]);
+        await waitMacrotask();
+
+        const returned = session.endpoint(`${LAMP_UUID}:0`);
+        const publishedBefore = client.published.length;
+        const pending = returned.switch!.setOn(true);
+        await Promise.resolve();
+        assert.notEqual(client.published.length, publishedBefore);
+        const sent = JSON.parse(client.published.at(-1)!.payload) as MerossMessage;
+        client.deliver(ackFor(sent, 'SETACK', { togglex: { channel: 0, onoff: 1 } }));
+        await pending;
+        await session.disconnect();
+    });
+
+    it('disconnect during enroll does not start a poller', async () => {
+        let devLists = 0;
+        let releaseDevList!: () => void;
+        const devListGate = new Promise<void>((resolve) => {
+            releaseDevList = resolve;
+        });
+        const devices = [DEVICE_ROW];
+        const { fetchImpl: innerFetch } = createCloudFetch(devices);
+        const fetchImpl: typeof fetch = async (url, init) => {
+            if (String(url).endsWith('/v1/Device/devList')) {
+                devLists += 1;
+                if (devLists > 1) {
+                    await devListGate;
+                }
+            }
+            return innerFetch(url, init);
+        };
+        const clientRef: { current?: EnrollingMqttClient } = {};
+        const session = await Session.login(
+            { email: EMAIL, password: PASSWORD },
+            {
+                cloud: { now: () => NOW, nonce: () => NONCE, fetch: fetchImpl },
+                mqttConnect: createMqttConnect(clientRef)
+            }
+        );
+        const warnings: Error[] = [];
+        session.on('warning', (error) => warnings.push(error));
+        await session.connect({ uuids: [] });
+        await waitMacrotask();
+        const enrolledGets = abilityAllGets(clientRef.current!, UUID).length;
+
+        const enrolling = session.enroll([UUID]);
+        const disconnecting = session.disconnect();
+        releaseDevList();
+        await Promise.allSettled([enrolling, disconnecting]);
+
+        assert.deepEqual(warnings, []);
+        assert.deepEqual(session.inventory.endpoints(), []);
+        assert.equal(abilityAllGets(clientRef.current!, UUID).length, enrolledGets);
+        assert.throws(
+            () => session.endpoint(`${UUID}:0`),
+            (err: unknown) => err instanceof MerossError && err.code === 'ENDPOINT_NOT_FOUND'
+        );
+
+        await session.connect();
+        await waitMacrotask();
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            [`${UUID}:0`]
+        );
+        await session.disconnect();
+    });
+
+    it('enroll after disconnect rejects NOT_CONNECTED', async () => {
+        const { session } = await loginConnected({ connect: { uuids: [] } });
+        await session.disconnect();
+
+        await assert.rejects(
+            session.enroll([UUID]),
+            (err: unknown) => err instanceof MerossError && err.code === 'NOT_CONNECTED'
+        );
+    });
+});
+
 describe('Session hub enroll', () => {
     const hubDigestChild = [{ id: HUB_CHILD_ID, status: 1, ms130: {} }];
     const hubEndpointIds = [HUB_UUID, `${HUB_UUID}#${HUB_CHILD_ID}`];
@@ -1288,6 +1593,50 @@ describe('Session hub enroll', () => {
             subDevices: [],
             connect: { uuids: [UUID] }
         });
+
+        assert.equal(cloudCallCount(calls, '/v1/Hub/getSubDevices'), 0);
+        assert.equal(abilityAllGets(client, HUB_UUID).length, 0);
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            [`${UUID}:0`]
+        );
+        await session.disconnect();
+    });
+
+    it('enroll of a hub lists subdevices and enrolls digest children', async () => {
+        const { session, calls } = await loginConnected({
+            devices: [HUB_ROW, DEVICE_ROW],
+            ack: { hubSubdevice: hubDigestChild },
+            subDevices: [],
+            connect: { uuids: [] }
+        });
+
+        await session.enroll([HUB_UUID]);
+        await waitMacrotask();
+
+        assert.equal(cloudCallCount(calls, '/v1/Hub/getSubDevices'), 1);
+        assert.deepEqual(
+            session.inventory.endpoints().map((row) => row.id),
+            hubEndpointIds
+        );
+        assert.throws(
+            () => session.endpoint(`${UUID}:0`),
+            (err: unknown) => err instanceof MerossError && err.code === 'ENDPOINT_NOT_FOUND'
+        );
+        await session.disconnect();
+    });
+
+    it('a hub left out of enroll does not call getSubDevices', async () => {
+        const { session, client, calls } = await loginConnected({
+            devices: [HUB_ROW, DEVICE_ROW],
+            // Omit hubSubdevice. That ack is applied to every enrolled device,
+            // so the plug would advertise Hub.SubdeviceList and getSubDevices would hang.
+            subDevices: [],
+            connect: { uuids: [] }
+        });
+
+        await session.enroll([UUID]);
+        await waitMacrotask();
 
         assert.equal(cloudCallCount(calls, '/v1/Hub/getSubDevices'), 0);
         assert.equal(abilityAllGets(client, HUB_UUID).length, 0);
