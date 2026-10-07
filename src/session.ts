@@ -1,39 +1,18 @@
 import { EventEmitter } from 'node:events';
 
 import { CloudClient } from './cloud';
-import type { CloudClientOptions, CloudDevice, CloudSubDevice } from './cloud';
+import type { CloudClientOptions, CloudDevice } from './cloud';
+import { Board } from './device/board';
 import { Endpoint } from './endpoint';
 import { AuthError, MerossError } from './errors';
-import {
-    ABILITY_NAMESPACE,
-    DeviceGraph,
-    SYSTEM_ALL_NAMESPACE,
-    decodeAbilityGetAck,
-    type EnrollResult,
-    type PhysicalDevice
-} from './device';
-import { attachEndpoint } from './device/attach';
-import { DeviceRuntime } from './device/runtime';
 import { Inventory } from './inventory';
 import type { LogLevel, SessionLogger } from './log';
 import {
     DEFAULT_POLL_INTERVAL_MS,
-    POLL_START_STAGGER_MS,
-    buildPollJobs
+    POLL_START_STAGGER_MS
 } from './poll';
-import {
-    ONLINE_NAMESPACE,
-    decodeOnlineStatus
-} from './protocol/codecs/online';
 import { ProtocolDispatcher } from './protocol/dispatcher';
-import {
-    LanEncryptionKeys,
-    macAddressFromUuid,
-    supportsLanEncryption
-} from './protocol/encryption';
-import { EMPTY_PAYLOAD, uuidFromHeader, type MerossMessage } from './protocol/message';
-import { HUB_SUBDEVICE_LIST_NAMESPACE } from './protocol/namespaces';
-import type { DeviceRequest } from './request';
+import { uuidFromHeader, type MerossMessage } from './protocol/message';
 import {
     LanHttpTransport,
     MqttTransport,
@@ -149,6 +128,15 @@ interface SessionEvents {
 const ENROLL_CONCURRENCY = 4;
 
 /**
+ * Inventory ids are `{uuid}:{channel}`, `{uuid}#{subDeviceId}`, or a bare
+ * hub-parent `uuid`.
+ */
+function uuidFromInventoryId(id: string): string {
+    const sep = id.search(/[:#]/);
+    return sep === -1 ? id : id.slice(0, sep);
+}
+
+/**
  * Cloud credentials plus live inventory. Hosts persist {@link TokenData}
  * and rebuild a session with {@link Session.restore}.
  */
@@ -161,9 +149,8 @@ export class Session extends EventEmitter<SessionEvents> {
     private readonly lanFetch?: typeof globalThis.fetch;
     private readonly logger?: SessionLogger;
     private readonly logLevel?: LogLevel;
-    private graph = new DeviceGraph();
-    private readonly endpoints = new Map<string, Endpoint>();
-    private readonly devices = new Map<string, DeviceRuntime>();
+    /** One board per enrolled physical uuid. */
+    private readonly boards = new Map<string, Board>();
     /** Monotonic so devices enrolled later keep spreading their ticks. */
     private startedDevices = 0;
     private router: TransportRouter | undefined;
@@ -203,8 +190,6 @@ export class Session extends EventEmitter<SessionEvents> {
     private closing = false;
     /** Shared by overlapping {@link disconnect} calls so teardown runs once. */
     private disconnectPromise: Promise<void> | undefined;
-    /** Session-owned LAN AES memo; fingerprint misses when key or MAC changes. */
-    private readonly lanEncryptionKeys = new LanEncryptionKeys();
     /** False after {@link logout}; {@link getToken} rejects until {@link reauthenticate}. */
     private credentialsValid = true;
 
@@ -356,7 +341,7 @@ export class Session extends EventEmitter<SessionEvents> {
                 const inFlight = this.enrolling.get(uuid);
                 if (inFlight) {
                     joined.push(inFlight);
-                } else if (this.devices.has(uuid)) {
+                } else if (this.boards.has(uuid)) {
                     if (!report.enrolled.includes(uuid)) {
                         report.enrolled.push(uuid);
                     }
@@ -440,10 +425,10 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Stops a device's runtime and drops its graph / inventory rows. Awaits an
-     * in-flight enroll for that uuid first so a poller cannot start afterward.
-     * An Endpoint already returned for it rejects commands until that uuid is
-     * enrolled again. Safe when the session is not connected.
+     * Stops a device's board and drops its inventory rows. Awaits an in-flight
+     * enroll for that uuid first so a poller cannot start afterward. An Endpoint
+     * already returned for it rejects commands until that uuid is enrolled again.
+     * Safe when the session is not connected.
      */
     async unenroll(uuid: string): Promise<void> {
         await this.listingBarrier?.catch(() => undefined);
@@ -456,9 +441,13 @@ export class Session extends EventEmitter<SessionEvents> {
      */
     private async dropDevice(uuid: string): Promise<void> {
         await this.enrolling.get(uuid)?.catch(() => undefined);
-        this.stopDevice(uuid);
-        this.graph.remove(uuid);
-        this.inventory.replace(this.graph.inventoryRows());
+        this.router?.forget(uuid);
+        const board = this.boards.get(uuid);
+        if (board) {
+            board.stop();
+            this.boards.delete(uuid);
+        }
+        this.refreshInventory();
     }
 
     /**
@@ -485,7 +474,7 @@ export class Session extends EventEmitter<SessionEvents> {
     /**
      * In-flight enrolls may finish their cloud / Ability reads; materialize is
      * skipped via {@link closing}. Enrollment is dropped again in case a device
-     * was still written into the graph.
+     * was still written into the map.
      */
     private async finishDisconnect(): Promise<void> {
         await Promise.allSettled(this.enrolling.values());
@@ -493,12 +482,14 @@ export class Session extends EventEmitter<SessionEvents> {
         await this.teardownRouter();
     }
 
-    /** Stops pollers and drops enrolled devices without touching transports. */
+    /** Stops boards and clears membership without touching transports. */
     private dropEnrollment(): void {
-        this.stopAllDevices();
-        this.graph = new DeviceGraph();
+        for (const [uuid, board] of this.boards) {
+            this.router?.forget(uuid);
+            board.stop();
+        }
+        this.boards.clear();
         this.inventory.replace([]);
-        this.lanEncryptionKeys.clear();
     }
 
     /**
@@ -530,11 +521,11 @@ export class Session extends EventEmitter<SessionEvents> {
      * Looks up an enrolled endpoint by inventory row id.
      */
     endpoint(id: string): Endpoint {
-        const endpoint = this.endpoints.get(id);
-        if (!endpoint) {
+        const board = this.boards.get(uuidFromInventoryId(id));
+        if (!board) {
             throw new MerossError(`Unknown endpoint: ${id}`, 'ENDPOINT_NOT_FOUND');
         }
-        return endpoint;
+        return board.endpoint(id);
     }
 
     /**
@@ -551,8 +542,10 @@ export class Session extends EventEmitter<SessionEvents> {
 
     private createRouter(): TransportRouter {
         const dispatcher = new ProtocolDispatcher({
-            onPush: (message) => this.deviceRuntime(message)?.handlePush(message),
-            onInbound: (message, originUuid) => this.handleInbound(message, originUuid)
+            onPush: (message) => this.boardForMessage(message)?.handlePush(message),
+            onInbound: (message, originUuid) => {
+                this.boardForMessage(message, originUuid)?.handleInbound(message, originUuid);
+            }
         });
         const mqtt = new MqttTransport({
             userId: this.token.userId,
@@ -564,8 +557,8 @@ export class Session extends EventEmitter<SessionEvents> {
             logLevel: this.logLevel,
             onConnectionChange: (connected) => {
                 if (!connected) {
-                    for (const runtime of this.devices.values()) {
-                        runtime.clearMqtt();
+                    for (const board of this.boards.values()) {
+                        board.clearMqtt();
                     }
                 }
                 this.emit('connection', connected);
@@ -640,7 +633,7 @@ export class Session extends EventEmitter<SessionEvents> {
         if (inFlight) {
             return inFlight;
         }
-        if (this.devices.has(uuid)) {
+        if (this.boards.has(uuid)) {
             return Promise.resolve({ status: 'enrolled', uuid });
         }
         const pass = this.runEnroll(cloudDevice).finally(() => {
@@ -661,11 +654,39 @@ export class Session extends EventEmitter<SessionEvents> {
                 return { status: 'closed', uuid };
             }
             try {
-                const { reshaped } = await this.readDevice(cloudDevice);
-                if (this.closing) {
+                if (this.boards.has(uuid)) {
+                    return { status: 'enrolled', uuid };
+                }
+                const board = new Board(uuid, {
+                    request: (options) => this.connectedRouter.request({
+                        uuid,
+                        ...options
+                    }),
+                    requestGets: (options) => this.connectedRouter.requestGets({
+                        uuid,
+                        ...options
+                    }),
+                    isCloudPath: (ip) => this.connectedRouter.isCloudPath(uuid, ip),
+                    isHttpDown: () => this.connectedRouter.isHttpDown(uuid),
+                    userKey: () => this.token.key,
+                    listSubDevices: (hubUuid) => this.cloud.listSubDevices(hubUuid),
+                    warn: (error, warnUuid) => this.emitWarning(error, warnUuid),
+                    nextStartDelayMs: () => {
+                        const delay = (this.startedDevices * POLL_START_STAGGER_MS)
+                            % DEFAULT_POLL_INTERVAL_MS;
+                        this.startedDevices += 1;
+                        return delay;
+                    },
+                    isClosing: () => this.closing
+                });
+                const enrolled = await board.enroll(cloudDevice);
+                if (!enrolled || this.closing) {
                     return { status: 'closed', uuid };
                 }
-                this.materializeEndpoints(reshaped ? new Set([uuid]) : new Set());
+                // Membership before start so a start failure still leaves the board.
+                this.boards.set(uuid, board);
+                this.refreshInventory();
+                board.start();
                 return { status: 'enrolled', uuid };
             } catch (error) {
                 const err = error instanceof Error ? error : new Error(String(error));
@@ -699,217 +720,20 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Forwards one inbound frame to the matching runtime. MQTT
-     * (`originUuid` omitted) records liveness, except System.Online that is
-     * not PUSH with status 1. LAN (POST uuid) applies
-     * {@link DeviceRuntime.handleMessage} without recording liveness.
-     */
-    private handleInbound(message: MerossMessage, originUuid?: string): void {
-        const runtime = this.deviceRuntime(message, originUuid);
-        if (!runtime) {
-            return;
-        }
-        if (
-            originUuid === undefined
-            && message.header.namespace === ONLINE_NAMESPACE
-            && (
-                message.header.method !== 'PUSH'
-                || decodeOnlineStatus(message.payload) !== 1
-            )
-        ) {
-            return;
-        }
-        if (originUuid === undefined) {
-            runtime.recordPush();
-        }
-        runtime.handleMessage(message);
-    }
-
-    /**
-     * Runtime for a non-empty `originUuid` when set, otherwise for the uuid
+     * Board for a non-empty `originUuid` when set, otherwise for the uuid
      * in the message header/`from`.
      */
-    private deviceRuntime(
+    private boardForMessage(
         message: MerossMessage,
         originUuid?: string
-    ): DeviceRuntime | undefined {
+    ): Board | undefined {
         const uuid = originUuid || uuidFromHeader(message.header);
-        return uuid ? this.devices.get(uuid) : undefined;
+        return uuid ? this.boards.get(uuid) : undefined;
     }
 
-    private stopAllDevices(): void {
-        for (const uuid of this.devices.keys()) {
-            this.stopDevice(uuid);
-        }
-    }
-
-    /**
-     * Stops a device's timers and forgets the endpoints it owns. Per-uuid
-     * stale-PUSH timestamps, MQTT windows, and HTTP-down go with it so a
-     * later enrollment cannot inherit them. The graph entry stays so
-     * {@link materializeEndpoints} can rebuild from a fresh enrollment.
-     */
-    private stopDevice(uuid: string): void {
-        this.lanEncryptionKeys.remove(uuid);
-        this.router?.forget(uuid);
-        const runtime = this.devices.get(uuid);
-        if (!runtime) {
-            return;
-        }
-        runtime.stop();
-        for (const endpoint of runtime.endpoints) {
-            this.endpoints.delete(endpoint.id);
-        }
-        this.devices.delete(uuid);
-    }
-
-    /**
-     * Ability and System.All failures reject so {@link runEnroll} can skip the
-     * device. A hub `listSubDevices` failure is emitted as `warning` instead,
-     * so digest children still enroll without the cloud name overlay.
-     */
-    private async readDevice(cloudDevice: CloudDevice): Promise<EnrollResult> {
-        const [abilityReply, allReply] = await this.connectedRouter.requestGets({
-            uuid: cloudDevice.uuid,
-            gets: [
-                { namespace: ABILITY_NAMESPACE, payload: EMPTY_PAYLOAD },
-                { namespace: SYSTEM_ALL_NAMESPACE, payload: EMPTY_PAYLOAD }
-            ]
-        });
-
-        const ability = decodeAbilityGetAck(abilityReply.payload);
-        let subDevices: CloudSubDevice[] | undefined;
-        if (HUB_SUBDEVICE_LIST_NAMESPACE in ability) {
-            try {
-                subDevices = await this.cloud.listSubDevices(cloudDevice.uuid);
-            } catch (error) {
-                // Leave subDevices undefined: digest children still enroll;
-                // only the cloud name overlay is lost.
-                this.emitWarning(error, cloudDevice.uuid);
-            }
-        }
-        return this.graph.enroll({
-            abilityPayload: abilityReply.payload,
-            allPayload: allReply.payload,
-            cloud: cloudDevice,
-            subDevices
-        });
-    }
-
-    /**
-     * Reshaped devices are torn down before being rebuilt, because their traits
-     * captured the previous ability snapshot at construction.
-     */
-    private materializeEndpoints(reshaped: ReadonlySet<string>): void {
-        for (const uuid of reshaped) {
-            this.stopDevice(uuid);
-        }
-
-        const rows = this.graph.inventoryRows();
-        this.inventory.replace(rows);
-        const byUuid = new Map<string, Endpoint[]>();
-        const deviceRequests = new Map<string, DeviceRequest>();
-        const abilityNamespaces = new Map<string, ReadonlySet<string>>();
-        for (const row of rows) {
-            const graphEndpoint = this.graph.getEndpoint(row.id)!;
-            let endpoint = this.endpoints.get(row.id);
-            if (!endpoint) {
-                const physical = this.graph.getPhysical(graphEndpoint.uuid)!;
-                let request = deviceRequests.get(physical.uuid);
-                if (!request) {
-                    request = this.deviceRequest(physical);
-                    deviceRequests.set(physical.uuid, request);
-                }
-                let namespaces = abilityNamespaces.get(physical.uuid);
-                if (!namespaces) {
-                    namespaces = new Set(Object.keys(physical.ability));
-                    abilityNamespaces.set(physical.uuid, namespaces);
-                }
-                endpoint = attachEndpoint(graphEndpoint, request, physical, namespaces);
-                this.endpoints.set(row.id, endpoint);
-            }
-            const group = byUuid.get(graphEndpoint.uuid) ?? [];
-            group.push(endpoint);
-            byUuid.set(graphEndpoint.uuid, group);
-        }
-
-        for (const [uuid, endpoints] of byUuid) {
-            if (this.devices.has(uuid)) {
-                continue;
-            }
-            const physical = this.graph.getPhysical(uuid)!;
-            let request = deviceRequests.get(physical.uuid);
-            if (!request) {
-                request = this.deviceRequest(physical);
-                deviceRequests.set(physical.uuid, request);
-            }
-            const startDelayMs = (this.startedDevices * POLL_START_STAGGER_MS) % DEFAULT_POLL_INTERVAL_MS;
-            this.startedDevices += 1;
-            const runtime = new DeviceRuntime({
-                uuid,
-                initialOnline: physical.online,
-                endpoints,
-                request: (namespace, method, payload) => request({
-                    namespace,
-                    method,
-                    payload: payload ?? EMPTY_PAYLOAD,
-                    priority: 'background'
-                }),
-                onInnerIp: (innerIp) => {
-                    physical.innerIp = innerIp;
-                },
-                isCloudPath: () => this.connectedRouter.isCloudPath(uuid, physical.innerIp),
-                httpDown: () => this.connectedRouter.isHttpDown(uuid),
-                maxCmdNum: () => physical.maxCmdNum,
-                requestGets: (gets, maxCmdNum, onPackedFallback) => this.connectedRouter.requestGets({
-                    uuid,
-                    gets,
-                    maxCmdNum,
-                    priority: 'background',
-                    ...this.lanBind(physical),
-                    onPackedFallback
-                }),
-                onAck: (message) => this.deviceRuntime(message, uuid)?.handlePush(message),
-                jobs: buildPollJobs(physical.ability, physical.endpoints, physical.digestNamespaces),
-                startDelayMs
-            });
-            this.devices.set(uuid, runtime);
-            runtime.start();
-        }
-    }
-
-    private lanBind(physical: PhysicalDevice) {
-        if (!supportsLanEncryption(physical.ability)) {
-            this.lanEncryptionKeys.remove(physical.uuid);
-            return { ip: physical.innerIp };
-        }
-        const mac = physical.macAddress ?? macAddressFromUuid(physical.uuid);
-        return {
-            ip: physical.innerIp,
-            encryptionKey: this.lanEncryptionKeys.derive(
-                physical.uuid,
-                this.token.key,
-                mac
-            )
-        };
-    }
-
-    private deviceRequest(physical: PhysicalDevice): DeviceRequest {
-        return (options) => {
-            const router = this.connectedRouter;
-            if (!this.devices.has(physical.uuid)) {
-                throw new MerossError(
-                    `Unknown endpoint: ${physical.uuid}`,
-                    'ENDPOINT_NOT_FOUND'
-                );
-            }
-            return router.request({
-                uuid: physical.uuid,
-                ...this.lanBind(physical),
-                ...options
-            }).finally(() => {
-                this.devices.get(physical.uuid)?.publishProtocol();
-            });
-        };
+    private refreshInventory(): void {
+        this.inventory.replace(
+            [...this.boards.values()].flatMap((board) => board.inventoryRows())
+        );
     }
 }
