@@ -282,7 +282,7 @@ export class Session extends EventEmitter<SessionEvents> {
      */
     async reauthenticate(options: LoginOptions): Promise<TokenData> {
         const previous = this.token;
-        this.token = await this.cloud.login(options);
+        this.token = await this.cloud.authenticate(options);
         this.credentialsValid = true;
         const stale = this.router;
         if (!stale || !this.brokerChanged(previous)) {

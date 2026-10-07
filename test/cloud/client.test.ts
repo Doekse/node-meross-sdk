@@ -46,7 +46,7 @@ describe('cloud request signing', () => {
     });
 });
 
-describe('CloudClient.login', () => {
+describe('CloudClient.login factory', () => {
     it('POSTs a signed signIn body with an MD5 password and optional MFA', async () => {
         const calls: Array<{ url: string; init: RequestInit }> = [];
         await CloudClient.login(
@@ -231,7 +231,37 @@ describe('CloudClient.login', () => {
     });
 });
 
-describe('CloudClient.restore and device list', () => {
+describe('CloudClient.authenticate', () => {
+    it('replaces credentials on an existing client', async () => {
+        const client = CloudClient.restore({
+            token: 'stale-token',
+            key: 'stale-key',
+            userId: '42',
+            userEmail: EMAIL,
+            domain: 'iotx-eu.meross.com',
+            mqttDomain: 'eu-iotx.meross.com',
+            issuedOn: '2026-01-02T03:04:05.000Z'
+        }, {
+            now: () => NOW,
+            nonce: () => NONCE,
+            fetch: async () => ok({
+                ...LOGIN_DATA,
+                token: 'fresh-token',
+                key: 'fresh-key'
+            })
+        });
+
+        const token = await client.authenticate({ email: EMAIL, password: PASSWORD });
+
+        assert.equal(token.token, 'fresh-token');
+        assert.equal(token.key, 'fresh-key');
+        assert.equal(client.getToken().token, 'fresh-token');
+        assert.equal(client.getToken().key, 'fresh-key');
+        assert.equal(client.getToken().issuedOn, new Date(NOW).toISOString());
+    });
+});
+
+describe('CloudClient.restore factory and device list', () => {
     const saved: TokenData = {
         token: 'saved-token',
         key: 'saved-key',
@@ -253,6 +283,21 @@ describe('CloudClient.restore and device list', () => {
             mqttDomain: 'eu-iotx.meross.com',
             issuedOn: '2026-01-02T03:04:05.000Z'
         });
+    });
+
+    it('rejects an incomplete token before any request', () => {
+        assert.throws(
+            () => CloudClient.restore({
+                token: '',
+                key: 'saved-key',
+                userId: '42',
+                userEmail: EMAIL,
+                domain: 'iotx-eu.meross.com',
+                mqttDomain: 'eu-iotx.meross.com',
+                issuedOn: '2026-01-02T03:04:05.000Z'
+            }),
+            (err: unknown) => err instanceof AuthError && err.code === 'AUTHENTICATION'
+        );
     });
 
     it('lists devices over HTTP with the restored Basic token', async () => {
