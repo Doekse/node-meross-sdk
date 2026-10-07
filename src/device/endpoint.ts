@@ -1,26 +1,26 @@
 import { EventEmitter } from 'node:events';
 
-import type { MerossMessage } from './protocol';
-import type { AlarmTrait, AlarmValues } from './traits/alarm';
-import type { AlertTrait, AlertValues } from './traits/alert';
-import type { ClimateTrait, ClimateValues } from './traits/climate';
-import type { CoverTrait, CoverValues } from './traits/cover';
-import type { DiffuserTrait, DiffuserValues } from './traits/diffuser';
-import type { DndTrait, DndValues } from './traits/dnd';
-import type { EnergyTrait, EnergyValues } from './traits/energy';
-import type { FanTrait, FanValues } from './traits/fan';
-import type { LightTrait, LightValues } from './traits/light';
-import type { MediaTrait, MediaValues } from './traits/media';
-import type { OverTempTrait, OverTempValues } from './traits/overtemp';
-import type { PresenceTrait, PresenceValues } from './traits/presence';
-import type { SensorTrait, SensorValues } from './traits/sensor';
-import type { SprayTrait, SprayValues } from './traits/spray';
-import type { SprinklerTrait, SprinklerValues } from './traits/sprinkler';
-import type { StandbyKillerTrait, StandbyKillerValues } from './traits/standbykiller';
-import type { SwitchTrait, SwitchValues } from './traits/switch';
-import type { SystemTrait, SystemValues } from './traits/system';
-import type { TimerTrait, TimerValues } from './traits/timer';
-import type { TriggerTrait, TriggerValues } from './traits/trigger';
+import type { MerossMessage } from '../protocol';
+import type { AlarmTrait, AlarmValues } from '../traits/alarm';
+import type { AlertTrait, AlertValues } from '../traits/alert';
+import type { ClimateTrait, ClimateValues } from '../traits/climate';
+import type { CoverTrait, CoverValues } from '../traits/cover';
+import type { DiffuserTrait, DiffuserValues } from '../traits/diffuser';
+import type { DndTrait, DndValues } from '../traits/dnd';
+import type { EnergyTrait, EnergyValues } from '../traits/energy';
+import type { FanTrait, FanValues } from '../traits/fan';
+import type { LightTrait, LightValues } from '../traits/light';
+import type { MediaTrait, MediaValues } from '../traits/media';
+import type { OverTempTrait, OverTempValues } from '../traits/overtemp';
+import type { PresenceTrait, PresenceValues } from '../traits/presence';
+import type { SensorTrait, SensorValues } from '../traits/sensor';
+import type { SprayTrait, SprayValues } from '../traits/spray';
+import type { SprinklerTrait, SprinklerValues } from '../traits/sprinkler';
+import type { StandbyKillerTrait, StandbyKillerValues } from '../traits/standbykiller';
+import type { SwitchTrait, SwitchValues } from '../traits/switch';
+import type { SystemTrait, SystemValues } from '../traits/system';
+import type { TimerTrait, TimerValues } from '../traits/timer';
+import type { TriggerTrait, TriggerValues } from '../traits/trigger';
 
 export type TraitName =
     | 'switch' | 'energy' | 'light' | 'climate' | 'cover'

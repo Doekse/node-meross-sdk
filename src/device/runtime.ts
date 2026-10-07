@@ -1,4 +1,4 @@
-import type { Endpoint, TraitName } from '../endpoint';
+import type { Endpoint, TraitName } from './endpoint';
 import { Poller, type PollJob } from '../poll';
 import type { MerossMessage } from '../protocol/message';
 import { TRAIT_CATALOGS } from '../traits/catalog';

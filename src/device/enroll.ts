@@ -3,7 +3,7 @@
  * enroll does not load those classes, and so their published `.d.ts` is
  * only the host class.
  */
-import type { TraitName } from '../endpoint';
+import type { TraitName } from './endpoint';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import {
     CONFIG_OVERTEMP_NAMESPACE,

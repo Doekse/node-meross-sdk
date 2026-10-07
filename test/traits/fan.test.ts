@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint } from '../../src/device/endpoint';
 import {
     FAN_BTN_CONFIG_NAMESPACE,
     FAN_CONFIG_NAMESPACE,

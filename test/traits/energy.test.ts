@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
-import { Endpoint, type EndpointChange } from '../../src/endpoint';
+import { Endpoint, type EndpointChange } from '../../src/device/endpoint';
 import { CommandError, ProtocolError, TransportError } from '../../src/errors';
 import {
     CONSUMPTIONH_NAMESPACE,

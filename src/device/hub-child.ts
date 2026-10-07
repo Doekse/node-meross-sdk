@@ -2,7 +2,7 @@
  * Hub child SKU tables for climate / sensor / sprinkler. Kept out of those
  * trait modules so hub child classification does not `require` them.
  */
-import type { TraitName } from '../endpoint';
+import type { TraitName } from './endpoint';
 import type { HubChildRule } from '../traits/descriptor';
 import { SENSOR_FAMILY_MAP } from '../traits/sensor-family';
 

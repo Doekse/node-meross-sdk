@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Endpoint, type EndpointChange } from '../../src/endpoint';
+import { Endpoint, type EndpointChange } from '../../src/device/endpoint';
 import { MerossError } from '../../src/errors';
 import {
     THERMOSTAT_MODE_NAMESPACE,

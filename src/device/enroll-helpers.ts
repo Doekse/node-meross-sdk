@@ -3,7 +3,7 @@
  * call sites stay readable; this file is not a catalog and must not be walked
  * from TRAIT_CATALOGS.
  */
-import type { TraitName } from '../endpoint';
+import type { TraitName } from './endpoint';
 import type { ClassHint } from '../inventory';
 import type { EnrollBoardContext, EnrollBoardExtraInput } from './enroll-context';
 

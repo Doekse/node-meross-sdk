@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { CloudClient } from './cloud';
 import type { CloudClientOptions, CloudDevice } from './cloud';
 import { Board } from './device/board';
-import { Endpoint } from './endpoint';
+import { Endpoint } from './device/endpoint';
 import { AuthError, MerossError } from './errors';
 import { Inventory } from './inventory';
 import type { LogLevel, SessionLogger } from './log';

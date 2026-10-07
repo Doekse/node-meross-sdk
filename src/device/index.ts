@@ -1,5 +1,5 @@
 import type { CloudDevice, CloudSubDevice } from '../cloud';
-import type { TraitName } from '../endpoint';
+import type { TraitName } from './endpoint';
 import type { ClassHint, InventoryRow } from '../inventory';
 import type {
     SystemFirmwareState,

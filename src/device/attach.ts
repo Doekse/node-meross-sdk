@@ -5,7 +5,7 @@ import {
     type TraitInstances,
     type TraitName,
     type TraitValues
-} from '../endpoint';
+} from './endpoint';
 import type { DeviceRequest } from '../request';
 import { loadTrait } from '../traits/load';
 import type { TraitAttachContext } from './enroll-context';

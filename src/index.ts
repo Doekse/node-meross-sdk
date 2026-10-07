@@ -31,8 +31,8 @@ export type {
 } from './log';
 export { Inventory } from './inventory';
 export type { ClassHint, InventoryRow } from './inventory';
-export { Endpoint } from './endpoint';
-export type { EndpointChange, Protocol, TraitName } from './endpoint';
+export { Endpoint } from './device/endpoint';
+export type { EndpointChange, Protocol, TraitName } from './device/endpoint';
 export type {
     SwitchTrait,
     SwitchValues,

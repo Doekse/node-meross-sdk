@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 
 import type { AbilityMap, EnrolledEndpoint, PhysicalDevice } from '../../src/device';
 import { attachEndpoint } from '../../src/device/attach';
-import type { Endpoint, EndpointChange, TraitName } from '../../src/endpoint';
+import type { Endpoint, EndpointChange, TraitName } from '../../src/device/endpoint';
 import { MerossError } from '../../src/errors';
 import {
     CONTROL_TIMER_NAMESPACE,

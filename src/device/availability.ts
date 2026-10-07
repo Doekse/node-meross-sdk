@@ -1,4 +1,4 @@
-import type { Endpoint } from '../endpoint';
+import type { Endpoint } from './endpoint';
 import type { MerossMessage, MerossPayload } from '../protocol/message';
 import { HUB_ONLINE_NAMESPACE, decodeHubOnline } from '../protocol/codecs/online';
 import { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from '../protocol/codecs/system-all';

@@ -1,5 +1,5 @@
 import type { CloudDevice } from '../cloud';
-import type { TraitName, TraitValues } from '../endpoint';
+import type { TraitName, TraitValues } from './endpoint';
 import type { ClassHint } from '../inventory';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import type { SystemAll } from '../protocol/codecs/system-all';

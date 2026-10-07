@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it, type TestContext } from 'node:test';
 
 import { Runtime, type RuntimeOptions } from '../../src/device/runtime';
-import { Endpoint, type Protocol } from '../../src/endpoint';
+import { Endpoint, type Protocol } from '../../src/device/endpoint';
 import {
     SYSTEM_RUNTIME_NAMESPACE,
     encodeMessage,

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint } from '../../src/device/endpoint';
 import {
     PRESENCE_CONFIG_NAMESPACE,
     PRESENCE_STUDY_NAMESPACE,

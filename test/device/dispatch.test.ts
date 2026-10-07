@@ -7,7 +7,7 @@ import {
     type EndpointChange,
     type EndpointOptions,
     type TraitName
-} from '../../src/endpoint';
+} from '../../src/device/endpoint';
 import {
     HUB_SENSOR_ALL_NAMESPACE,
     HUB_SENSOR_TEMPHUM_NAMESPACE,

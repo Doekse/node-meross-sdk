@@ -5,7 +5,7 @@ import { describe, it, type TestContext } from 'node:test';
 
 import { Availability } from '../../src/device/availability';
 import { Heartbeat } from '../../src/device/heartbeat';
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint } from '../../src/device/endpoint';
 import { decodeMessage, encodeMessage, type MerossMessage, type MerossPayload } from '../../src/protocol';
 
 const fixturesDir = join(process.cwd(), 'test/fixtures');

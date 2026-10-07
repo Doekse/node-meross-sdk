@@ -18,7 +18,7 @@ import {
 } from '../../src/poll/poller';
 import { Runtime } from '../../src/device/runtime';
 import { SYSTEM_ALL_NAMESPACE } from '../../src/protocol/codecs/system-all';
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint } from '../../src/device/endpoint';
 import { CTL_RANGE_NAMESPACE } from '../../src/protocol/codecs/climate';
 import { CONSUMPTIONX_NAMESPACE } from '../../src/protocol/codecs/consumptionx';
 import { DND_MODE_NAMESPACE } from '../../src/protocol/codecs/dnd';

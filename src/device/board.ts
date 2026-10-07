@@ -1,5 +1,5 @@
 import type { CloudDevice, CloudSubDevice } from '../cloud';
-import { Endpoint } from '../endpoint';
+import { Endpoint } from './endpoint';
 import { MerossError } from '../errors';
 import type { InventoryRow } from '../inventory';
 import { buildPollJobs } from '../poll';
