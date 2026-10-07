@@ -1001,29 +1001,38 @@ describe('DevicePoller', () => {
         harness.poller.stop();
     });
 
-    it('deduplicates jobs by namespace', async (t) => {
+    it('initializes constructor jobs once with first-entry namespace dedupe', async (t) => {
         const harness = createHarness(t, {
             jobs: [
                 {
-                    namespace: 'Appliance.Control.Electricity',
+                    namespace: ELECTRICITY_NAMESPACE,
                     strategy: 'smart',
                     periodMs: 0,
                     periodCloudMs: 180_000
                 },
                 {
-                    namespace: 'Appliance.Control.Electricity',
+                    namespace: ELECTRICITY_NAMESPACE,
                     strategy: 'smart',
                     periodMs: 0,
                     periodCloudMs: 180_000,
                     payload: { electricity: [{ channel: 1 }] }
+                },
+                {
+                    namespace: TOGGLEX_NAMESPACE,
+                    strategy: 'default',
+                    periodMs: 0,
+                    periodCloudMs: 0
                 }
             ]
         });
 
         harness.poller.start();
         await harness.advance(0);
+        // Cold nextMs/lastRequestMs: both distinct namespaces fire once; the
+        // duplicate Electricity entry keeps the first empty payload.
         assert.deepEqual(harness.getsHistory[0], [
-            { namespace: 'Appliance.Control.Electricity', payload: {} }
+            { namespace: ELECTRICITY_NAMESPACE, payload: {} },
+            { namespace: TOGGLEX_NAMESPACE, payload: {} }
         ]);
         harness.poller.stop();
     });

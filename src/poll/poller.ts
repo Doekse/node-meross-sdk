@@ -199,23 +199,12 @@ export class DevicePoller {
         this.startDelayMs = options.startDelayMs ?? 0;
         this.now = options.now ?? Date.now;
         this.offlineDelayMs = this.intervalMs;
-        if (options.jobs) {
-            this.setJobs(options.jobs);
-        }
-    }
-
-    /**
-     * Replaces the job table, preserving schedule state for namespaces that
-     * stay registered so a re-materialize does not storm the device.
-     */
-    setJobs(jobs: readonly PollJob[]): void {
-        const previous = new Map(this.jobs);
-        this.jobs.clear();
-        for (const job of jobs) {
+        // First entry wins per namespace so a multi-gang strip does not GET the
+        // same Electricity (or other) namespace once per channel.
+        for (const job of options.jobs ?? []) {
             if (this.jobs.has(job.namespace)) {
                 continue;
             }
-            const prior = previous.get(job.namespace);
             const payload = job.payload ?? EMPTY_PAYLOAD;
             this.jobs.set(job.namespace, {
                 namespace: job.namespace,
@@ -224,12 +213,10 @@ export class DevicePoller {
                 periodCloudMs: job.periodCloudMs,
                 payload,
                 method: job.method ?? 'GET',
-                responseSize: job.responseSize
-                    ?? prior?.responseSize
-                    ?? estimateResponseSize(job.namespace, payload),
+                responseSize: job.responseSize ?? estimateResponseSize(job.namespace, payload),
                 calibrate: job.calibrate,
-                nextMs: prior?.nextMs ?? null,
-                lastRequestMs: prior?.lastRequestMs ?? null
+                nextMs: null,
+                lastRequestMs: null
             });
         }
     }
