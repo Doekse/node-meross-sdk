@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it, type TestContext } from 'node:test';
 
-import { DeviceRuntime, type DeviceRuntimeOptions } from '../../src/device/runtime';
+import { Runtime, type RuntimeOptions } from '../../src/device/runtime';
 import { Endpoint, type Protocol } from '../../src/endpoint';
 import {
     SYSTEM_RUNTIME_NAMESPACE,
@@ -69,14 +69,14 @@ function togglePush(): MerossMessage {
 }
 
 interface Harness {
-    runtime: DeviceRuntime;
+    runtime: Runtime;
     endpoint: Endpoint;
     requestGets: ReturnType<TestContext['mock']['fn']>;
     request: ReturnType<TestContext['mock']['fn']>;
     advance: (ms: number) => Promise<void>;
 }
 
-function createHarness(t: TestContext, overrides: Partial<DeviceRuntimeOptions> = {}): Harness {
+function createHarness(t: TestContext, overrides: Partial<RuntimeOptions> = {}): Harness {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     let clock = 0;
     const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
@@ -96,7 +96,7 @@ function createHarness(t: TestContext, overrides: Partial<DeviceRuntimeOptions> 
 
     const request = t.mock.fn(async () => systemAllGetAck());
 
-    const runtime = new DeviceRuntime({
+    const runtime = new Runtime({
         uuid: UUID,
         initialOnline: true,
         endpoints: [endpoint],
@@ -140,12 +140,12 @@ function createHarness(t: TestContext, overrides: Partial<DeviceRuntimeOptions> 
 }
 
 interface SystemRuntimeHarness {
-    runtime: DeviceRuntime;
+    runtime: Runtime;
     endpoint: Endpoint;
     warnings: { error: Error; trait: string }[];
 }
 
-function createSystemRuntime(overrides: Partial<DeviceRuntimeOptions> = {}): SystemRuntimeHarness {
+function createSystemRuntime(overrides: Partial<RuntimeOptions> = {}): SystemRuntimeHarness {
     let endpoint!: Endpoint;
     endpoint = new Endpoint({
         id: `${UUID}:0`,
@@ -162,7 +162,7 @@ function createSystemRuntime(overrides: Partial<DeviceRuntimeOptions> = {}): Sys
     endpoint.on('warning', (error, traitName) => {
         warnings.push({ error, trait: traitName });
     });
-    const runtime = new DeviceRuntime({
+    const runtime = new Runtime({
         uuid: UUID,
         initialOnline: true,
         endpoints: [endpoint],
@@ -182,7 +182,7 @@ function assertSystemAllWarning(warnings: { error: Error; trait: string }[]): vo
     assert.match(warnings[0]?.error.message ?? '', /System\.All/);
 }
 
-describe('DeviceRuntime', () => {
+describe('Runtime', () => {
     it('start() starts polling and the heartbeat; stop() halts both', async (t: TestContext) => {
         const harness = createHarness(t, { heartbeatIntervalMs: 2_000 });
 
@@ -216,18 +216,18 @@ describe('DeviceRuntime', () => {
         harness.runtime.stop();
     });
 
-    it('forwards recordPush() and clearMqtt() to the poller', async (t: TestContext) => {
+    it('forwards markMqttActive() and clearMqttActive() to the poller', async (t: TestContext) => {
         const harness = createHarness(t);
 
         harness.runtime.start();
         await harness.advance(0);
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
-        harness.runtime.recordPush();
+        harness.runtime.markMqttActive();
         await harness.advance(INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
-        harness.runtime.clearMqtt();
+        harness.runtime.clearMqttActive();
         await harness.advance(INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 2);
 
@@ -312,7 +312,7 @@ describe('DeviceRuntime', () => {
         });
         harness.runtime.start();
         await harness.advance(0);
-        harness.runtime.recordPush();
+        harness.runtime.markMqttActive();
         harness.runtime.applyUpdate(systemAllGetAck({
             all: {
                 system: {
@@ -341,7 +341,7 @@ describe('DeviceRuntime', () => {
         });
         const sensorSeen: boolean[] = [];
         sensor.on('availability', (online) => sensorSeen.push(online));
-        const runtime = new DeviceRuntime({
+        const runtime = new Runtime({
             uuid: hubUuid,
             initialOnline: true,
             endpoints: [hub, sensor],

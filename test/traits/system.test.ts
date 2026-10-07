@@ -57,7 +57,7 @@ function pushMessage(namespace: string, payload: Record<string, unknown>): Meros
 }
 
 /**
- * Poller delivers Runtime via GETACK; DeviceRuntime.handlePush routes both
+ * Poller delivers Runtime via GETACK; Runtime.handlePush routes both
  * GETACK and PUSH through the same trait handler.
  */
 function runtimeGetAck(runtime: Record<string, unknown>): MerossMessage {

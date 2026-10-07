@@ -126,7 +126,7 @@ function digestGetAck(digest: Array<Record<string, unknown>>): MerossMessage {
     });
 }
 
-/** DevicePoller GETACK path: Digest resolve then Control.TimerX GET-by-id. */
+/** Poller GETACK path: Digest resolve then Control.TimerX GET-by-id. */
 async function seedFromDigest(
     trait: TimerTrait,
     digest: Array<Record<string, unknown>> = [{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]

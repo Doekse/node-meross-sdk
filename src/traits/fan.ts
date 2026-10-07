@@ -41,7 +41,7 @@ export type { FanButtonConfig, FanButtonConfigSetOptions };
  * ToggleX/Toggle when the device has it; Control.Fan handles the rest. Speed is
  * host 0..1; wire is 0..maxSpeed from the last GETACK. Optional Fan.Config,
  * Fan.BtnConfig, and FilterMaintenance attach when Ability advertises them.
- * FilterMaintenance is PUSH-query only (GET disconnects MAP100). DevicePoller
+ * FilterMaintenance is PUSH-query only (GET disconnects MAP100). Poller
  * issues that PUSH on the cloud MQTT period; this trait only applies the ACK.
  */
 export class FanTrait {
@@ -121,7 +121,7 @@ export class FanTrait {
     }
 
     /**
-     * GET disconnects on MFC100, so this is never polled from DevicePoller.
+     * GET disconnects on MFC100, so this is never polled from Poller.
      * Returns `undefined` when BtnConfig is absent.
      */
     async getButtonConfig(): Promise<FanButtonConfig | undefined> {
@@ -153,7 +153,7 @@ export class FanTrait {
     }
 
     /**
-     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     * PUSH/GETACK from Runtime. Hosts subscribe to Endpoint `change`.
      *
      * @internal
      * @package

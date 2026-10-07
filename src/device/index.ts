@@ -121,7 +121,7 @@ export interface PhysicalDevice {
     maxCmdNum: number;
     innerIp?: string;
     macAddress?: string;
-    /** Digest/cloud snapshot so DeviceAvailability can start before the first Online PUSH. */
+    /** Digest/cloud snapshot so Availability can start before the first Online PUSH. */
     online: boolean;
     /**
      * System.All device snapshot so SystemTrait can start before the first poll.
@@ -133,7 +133,7 @@ export interface PhysicalDevice {
         time?: SystemTimeState;
     };
     /**
-     * Namespaces carried in the System.All digest so DevicePoller GETs them
+     * Namespaces carried in the System.All digest so Poller GETs them
      * only as the All fallback, not beside it.
      */
     digestNamespaces: ReadonlySet<string>;

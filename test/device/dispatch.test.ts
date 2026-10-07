@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it, type TestContext } from 'node:test';
 
-import { DeviceRuntime } from '../../src/device/runtime';
+import { Runtime } from '../../src/device/runtime';
 import {
     Endpoint,
     type EndpointChange,
@@ -66,8 +66,8 @@ function ignoreAck(): void {}
 function createRuntime(
     endpoints: readonly Endpoint[],
     onAck: (message: MerossMessage) => void = ignoreAck
-): DeviceRuntime {
-    return new DeviceRuntime({
+): Runtime {
+    return new Runtime({
         uuid: UUID,
         initialOnline: true,
         endpoints,
@@ -161,7 +161,7 @@ function climateTrait(emit: EmitChange): ClimateHubTrait {
     });
 }
 
-describe('DeviceRuntime.applyUpdate', () => {
+describe('Runtime.applyUpdate', () => {
     it('(a) ToggleX routes to switch, not system', (t: TestContext) => {
         const { endpoint, system, switch: sw } = wiredEndpoint(
             `${UUID}:0`,
@@ -242,7 +242,7 @@ describe('DeviceRuntime.applyUpdate', () => {
             (emit) => ({ switch: boardSwitch(emit) })
         );
 
-        let runtime!: DeviceRuntime;
+        let runtime!: Runtime;
         function onAck(message: MerossMessage): void {
             runtime.applyUpdate(message);
         }

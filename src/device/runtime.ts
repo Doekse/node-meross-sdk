@@ -1,15 +1,15 @@
 import type { Endpoint, TraitName } from '../endpoint';
-import { DevicePoller, type PollJob } from '../poll';
+import { Poller, type PollJob } from '../poll';
 import type { MerossMessage } from '../protocol/message';
 import { TRAIT_CATALOGS } from '../traits/catalog';
 import type { GetCommand } from '../transport/router';
-import { DeviceAvailability, type DeviceAvailabilityOptions } from './availability';
+import { Availability, type AvailabilityOptions } from './availability';
 
-export interface DeviceRuntimeOptions {
+export interface RuntimeOptions {
     uuid: string;
     initialOnline: boolean;
     endpoints: readonly Endpoint[];
-    request: DeviceAvailabilityOptions['request'];
+    request: AvailabilityOptions['request'];
     /** System.All `firmware.innerIp` can change after DHCP. */
     onInnerIp?: (innerIp: string | undefined) => void;
     heartbeatIntervalMs?: number;
@@ -17,9 +17,9 @@ export interface DeviceRuntimeOptions {
     httpDown?: () => boolean;
     maxCmdNum: () => number;
     /**
-     * One extra parameter versus {@link DevicePoller}'s own `requestGets`:
+     * One extra parameter versus {@link Poller}'s own `requestGets`:
      * the caller routes the request (it owns the transport), so
-     * DeviceRuntime hands back its poller's own `shrinkResponseBudget` for
+     * Runtime hands back its poller's own `shrinkResponseBudget` for
      * the caller to wire into that request instead of reaching into the
      * poller itself.
      */
@@ -31,7 +31,7 @@ export interface DeviceRuntimeOptions {
     onAck: (message: MerossMessage) => void;
     jobs?: readonly PollJob[];
     pollIntervalMs?: number;
-    /** Delay before the first poll tick; see DevicePoller's POLL_START_STAGGER_MS. */
+    /** Delay before the first poll tick; see Poller's POLL_START_STAGGER_MS. */
     startDelayMs?: number;
     now?: () => number;
 }
@@ -43,11 +43,11 @@ export interface DeviceRuntimeOptions {
  * state changes — so they are constructed and wired here, in one place with
  * its own tests, rather than by every caller.
  */
-export class DeviceRuntime {
+export class Runtime {
     readonly endpoints: readonly Endpoint[];
     private readonly isCloudPath: () => boolean;
-    private readonly availability: DeviceAvailability;
-    private readonly poller: DevicePoller;
+    private readonly availability: Availability;
+    private readonly poller: Poller;
     /**
      * Namespace → (endpoint, trait) lists. Built once from catalog `push`
      * so each frame is an O(1) lookup instead of walking every trait on
@@ -56,7 +56,7 @@ export class DeviceRuntime {
      */
     private readonly handlers = new Map<string, { endpoint: Endpoint; trait: TraitName }[]>();
 
-    constructor(options: DeviceRuntimeOptions) {
+    constructor(options: RuntimeOptions) {
         this.endpoints = options.endpoints;
         this.isCloudPath = options.isCloudPath;
 
@@ -74,16 +74,16 @@ export class DeviceRuntime {
             }
         }
 
-        const availability = new DeviceAvailability({
+        const availability = new Availability({
             uuid: options.uuid,
             initialOnline: options.initialOnline,
             endpoints: options.endpoints,
             request: options.request,
             onOnlineChange: (online) => poller.setOnline(online),
-            clearMqtt: () => poller.clearMqtt(),
+            clearMqttActive: () => poller.clearMqttActive(),
             onInnerIp: (innerIp) => {
                 options.onInnerIp?.(innerIp);
-                this.publishProtocol();
+                this.refreshProtocol();
             },
             onAck: (message) => this.applyUpdate(message),
             heartbeatIntervalMs: options.heartbeatIntervalMs,
@@ -91,7 +91,7 @@ export class DeviceRuntime {
         });
         // Mutually referential with `availability`; both only read each
         // other from callbacks, so declaration order is safe.
-        const poller: DevicePoller = new DevicePoller({
+        const poller: Poller = new Poller({
             isOnline: () => availability.isOnline(),
             isCloudPath: options.isCloudPath,
             httpDown: options.httpDown,
@@ -101,7 +101,7 @@ export class DeviceRuntime {
                 maxCmdNum,
                 () => poller.shrinkResponseBudget()
             ).finally(() => {
-                this.publishProtocol();
+                this.refreshProtocol();
             }),
             onAck: options.onAck,
             jobs: options.jobs,
@@ -117,7 +117,7 @@ export class DeviceRuntime {
     start(): void {
         this.availability.start();
         this.poller.start();
-        this.publishProtocol(true);
+        this.refreshProtocol(true);
     }
 
     stop(): void {
@@ -127,8 +127,8 @@ export class DeviceRuntime {
     }
 
     /** LAN GETACK/PUSH liveness, distinct from {@link observeInbound}'s availability decode. */
-    recordPush(): void {
-        this.poller.recordPush();
+    markMqttActive(): void {
+        this.poller.markMqttActive();
     }
 
     /** Heartbeat/liveness only; payload state is {@link applyUpdate}. */
@@ -159,15 +159,15 @@ export class DeviceRuntime {
         }
     }
 
-    clearMqtt(): void {
-        this.poller.clearMqtt();
+    clearMqttActive(): void {
+        this.poller.clearMqttActive();
     }
 
     /**
      * Endpoint does not choose a path; this copies the router's current LAN vs
      * MQTT decision after that decision may have changed.
      */
-    publishProtocol(force = false): void {
+    refreshProtocol(force = false): void {
         const protocol = this.isCloudPath() ? 'mqtt' : 'http';
         for (const endpoint of this.endpoints) {
             endpoint.setProtocol(protocol, force);

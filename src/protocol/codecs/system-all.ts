@@ -125,8 +125,8 @@ export function getDigestNamespaces(digest: SystemAll['digest']): Set<string> {
 /**
  * Successful projections only. Availability swallows a bad All; SystemTrait
  * must still throw that same payload into Endpoint `warning`. Keyed by
- * payload identity so DeviceAvailability, SystemTrait, and a heartbeat
- * re-apply share one tree without keeping All on DeviceRuntime.
+ * payload identity so Availability, SystemTrait, and a heartbeat
+ * re-apply share one tree without keeping All on Runtime.
  */
 const decodedAll = new WeakMap<MerossPayload, SystemAll>();
 

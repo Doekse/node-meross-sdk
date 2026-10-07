@@ -121,7 +121,7 @@ function digestGetAck(digest: Array<Record<string, unknown>>): MerossMessage {
     });
 }
 
-/** DevicePoller GETACK path: Digest resolve then Control.TriggerX GET-by-id. */
+/** Poller GETACK path: Digest resolve then Control.TriggerX GET-by-id. */
 async function seedFromDigest(
     trait: TriggerTrait,
     digest: Array<Record<string, unknown>> = [{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]

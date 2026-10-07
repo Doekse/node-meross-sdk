@@ -471,7 +471,7 @@ describe('Session.connect', () => {
         const availability: boolean[] = [];
         endpoint.on('availability', (online) => availability.push(online));
 
-        // Broker session state — dropped before recordPush / observeInbound.
+        // Broker session state — dropped before markMqttActive / observeInbound.
         client.deliver(encodeMessage({
             namespace: ONLINE_NAMESPACE,
             method: 'PUSH',

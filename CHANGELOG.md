@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Poll/PUSH catalogs live in `src/traits/*.catalog.ts`. `buildPollJobs` and DeviceRuntime iterate `TRAIT_CATALOGS`; trait class modules stay lazy. Packed GET order is `PollSpec.order`.
+- Poll/PUSH catalogs live in `src/traits/*.catalog.ts`. `buildPollJobs` and Runtime iterate `TRAIT_CATALOGS`; trait class modules stay lazy. Packed GET order is `PollSpec.order`.
 
 ### Added
 

@@ -68,7 +68,7 @@ export class DndTrait {
     }
 
     /**
-     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     * PUSH/GETACK from Runtime. Hosts subscribe to Endpoint `change`.
      *
      * @internal
      * @package

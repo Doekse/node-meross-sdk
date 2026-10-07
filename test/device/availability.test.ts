@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, type TestContext } from 'node:test';
 
-import { DeviceAvailability } from '../../src/device/availability';
+import { Availability } from '../../src/device/availability';
 import { Heartbeat } from '../../src/device/heartbeat';
 import { Endpoint } from '../../src/endpoint';
 import { decodeMessage, encodeMessage, type MerossMessage, type MerossPayload } from '../../src/protocol';
@@ -60,7 +60,7 @@ function alwaysOnline(): boolean {
 }
 
 /** Wire-frame path: observe liveness then apply payload state once. */
-function ingest(monitor: DeviceAvailability, message: MerossMessage): void {
+function ingest(monitor: Availability, message: MerossMessage): void {
     monitor.observeInbound(message);
     monitor.applyUpdate(message);
 }
@@ -273,7 +273,7 @@ describe('Heartbeat silence detection', () => {
 });
 
 /**
- * DeviceAvailability silence uses the same timer dance as Heartbeat; this
+ * Availability silence uses the same timer dance as Heartbeat; this
  * keeps malformed vs unreachable vs success probes from copying it.
  */
 async function runBoardSilence(
@@ -282,16 +282,16 @@ async function runBoardSilence(
 ): Promise<{
     endpoint: Endpoint;
     seen: boolean[];
-    monitor: DeviceAvailability;
-    clearMqttCalls: number;
+    monitor: Availability;
+    clearMqttActiveCalls: number;
 }> {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     let clock = 0;
-    let clearMqttCalls = 0;
+    let clearMqttActiveCalls = 0;
     const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
     const seen: boolean[] = [];
     endpoint.on('availability', (online) => seen.push(online));
-    const monitor = new DeviceAvailability({
+    const monitor = new Availability({
         uuid: UUID,
         initialOnline: true,
         endpoints: [endpoint],
@@ -299,8 +299,8 @@ async function runBoardSilence(
         now(): number {
             return clock;
         },
-        clearMqtt(): void {
-            clearMqttCalls += 1;
+        clearMqttActive(): void {
+            clearMqttActiveCalls += 1;
         },
         // Production Runtime wires this to applyUpdate; heartbeat applies once here.
         onAck(message: MerossMessage): void {
@@ -314,16 +314,16 @@ async function runBoardSilence(
     clock = INTERVAL_MS + 1;
     t.mock.timers.tick(INTERVAL_MS + 1);
     await settle(3);
-    return { endpoint, seen, monitor, clearMqttCalls };
+    return { endpoint, seen, monitor, clearMqttActiveCalls };
 }
 
-describe('DeviceAvailability', () => {
+describe('Availability', () => {
     it('syncs initial availability on start', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
         const seen: boolean[] = [];
         endpoint.on('availability', (online) => seen.push(online));
 
-        const monitor = new DeviceAvailability({
+        const monitor = new Availability({
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
@@ -340,7 +340,7 @@ describe('DeviceAvailability', () => {
         const seen: boolean[] = [];
         endpoint.on('availability', (online) => seen.push(online));
 
-        const monitor = new DeviceAvailability({
+        const monitor = new Availability({
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
@@ -361,7 +361,7 @@ describe('DeviceAvailability', () => {
         const seen: boolean[] = [];
         endpoint.on('availability', (online) => seen.push(online));
 
-        const monitor = new DeviceAvailability({
+        const monitor = new Availability({
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
@@ -390,7 +390,7 @@ describe('DeviceAvailability', () => {
         const seen: boolean[] = [];
         endpoint.on('availability', (online) => seen.push(online));
 
-        const monitor = new DeviceAvailability({
+        const monitor = new Availability({
             uuid: UUID,
             initialOnline: false,
             endpoints: [endpoint],
@@ -412,20 +412,20 @@ describe('DeviceAvailability', () => {
         monitor.stop();
     });
 
-    it('onlines a dead board from System.All and reports innerIp without clearMqtt when status is 1', () => {
+    it('onlines a dead board from System.All and reports innerIp without clearMqttActive when status is 1', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: false });
         const seen: boolean[] = [];
         const ips: Array<string | undefined> = [];
-        let clearMqttCalls = 0;
+        let clearMqttActiveCalls = 0;
         endpoint.on('availability', (online) => seen.push(online));
 
-        const monitor = new DeviceAvailability({
+        const monitor = new Availability({
             uuid: UUID,
             initialOnline: false,
             endpoints: [endpoint],
             request: stubRequest(),
-            clearMqtt(): void {
-                clearMqttCalls += 1;
+            clearMqttActive(): void {
+                clearMqttActiveCalls += 1;
             },
             onInnerIp(innerIp: string | undefined): void {
                 ips.push(innerIp);
@@ -438,23 +438,23 @@ describe('DeviceAvailability', () => {
 
         assert.deepEqual(seen, [true]);
         assert.deepEqual(ips, ['192.168.201.190']);
-        assert.equal(clearMqttCalls, 0);
+        assert.equal(clearMqttActiveCalls, 0);
         monitor.stop();
     });
 
-    it('calls clearMqtt on All status !== 1 without offlining the board', () => {
+    it('calls clearMqttActive on All status !== 1 without offlining the board', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
         const seen: boolean[] = [];
-        let clearMqttCalls = 0;
+        let clearMqttActiveCalls = 0;
         endpoint.on('availability', (online) => seen.push(online));
 
-        const monitor = new DeviceAvailability({
+        const monitor = new Availability({
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
             request: stubRequest(),
-            clearMqtt(): void {
-                clearMqttCalls += 1;
+            clearMqttActive(): void {
+                clearMqttActiveCalls += 1;
             }
         });
         monitor.start();
@@ -463,29 +463,29 @@ describe('DeviceAvailability', () => {
         ingest(monitor, systemAllGetAck({ status: 2 }));
 
         assert.deepEqual(seen, []);
-        assert.equal(clearMqttCalls, 1);
+        assert.equal(clearMqttActiveCalls, 1);
         assert.equal(endpoint.isOnline(), true);
         monitor.stop();
     });
 
-    it('does not call clearMqtt on All status 1', () => {
+    it('does not call clearMqttActive on All status 1', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
-        let clearMqttCalls = 0;
+        let clearMqttActiveCalls = 0;
 
-        const monitor = new DeviceAvailability({
+        const monitor = new Availability({
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
             request: stubRequest(),
-            clearMqtt(): void {
-                clearMqttCalls += 1;
+            clearMqttActive(): void {
+                clearMqttActiveCalls += 1;
             }
         });
         monitor.start();
 
         ingest(monitor, loadFixture('system-all-getack.json'));
 
-        assert.equal(clearMqttCalls, 0);
+        assert.equal(clearMqttActiveCalls, 0);
         monitor.stop();
     });
 
@@ -494,7 +494,7 @@ describe('DeviceAvailability', () => {
         const seen: boolean[] = [];
         endpoint.on('availability', (online) => seen.push(online));
 
-        const monitor = new DeviceAvailability({
+        const monitor = new Availability({
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
@@ -511,14 +511,14 @@ describe('DeviceAvailability', () => {
     });
 
     it('does not offline after silence when the liveness probe All succeeds', async (t: TestContext) => {
-        const { endpoint, seen, monitor, clearMqttCalls } = await runBoardSilence(
+        const { endpoint, seen, monitor, clearMqttActiveCalls } = await runBoardSilence(
             t,
             async () => systemAllGetAck({ status: 2 })
         );
 
         assert.deepEqual(seen, []);
         assert.equal(endpoint.isOnline(), true);
-        assert.equal(clearMqttCalls, 1);
+        assert.equal(clearMqttActiveCalls, 1);
         monitor.stop();
     });
 
@@ -527,7 +527,7 @@ describe('DeviceAvailability', () => {
         const seen: boolean[] = [];
         endpoint.on('availability', (online) => seen.push(online));
 
-        const monitor = new DeviceAvailability({
+        const monitor = new Availability({
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
@@ -563,7 +563,7 @@ describe('DeviceAvailability', () => {
         const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
         const seen: boolean[] = [];
         endpoint.on('availability', (online) => seen.push(online));
-        const monitor = new DeviceAvailability({
+        const monitor = new Availability({
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
@@ -609,7 +609,7 @@ describe('DeviceAvailability', () => {
         const seen: boolean[] = [];
         endpoint.on('availability', (online) => seen.push(online));
 
-        const monitor = new DeviceAvailability({
+        const monitor = new Availability({
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
@@ -635,7 +635,7 @@ describe('DeviceAvailability', () => {
     });
 });
 
-describe('DeviceAvailability hub children', () => {
+describe('Availability hub children', () => {
     const HUB_UUID = '9109182170548290880048b1a9522933';
     const SENSOR_ID = '120027D21C19';
     const VALVE_ID = '01008C11';
@@ -648,8 +648,8 @@ describe('DeviceAvailability hub children', () => {
             heartbeatIntervalMs?: number;
             now?: () => number;
         } = {}
-    ): DeviceAvailability {
-        const monitor = new DeviceAvailability({
+    ): Availability {
+        const monitor = new Availability({
             uuid: HUB_UUID,
             initialOnline: hub.isOnline(),
             endpoints: [hub, ...children],

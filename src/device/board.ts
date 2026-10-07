@@ -25,7 +25,7 @@ import {
     projectInventoryRows,
     type PhysicalDevice
 } from './index';
-import { DeviceRuntime } from './runtime';
+import { Runtime } from './runtime';
 
 /**
  * Transport and session hooks Board needs without owning the router or cloud
@@ -69,7 +69,7 @@ export class Board {
     private readonly lanKeys = new LanEncryptionKeys();
     private readonly endpoints = new Map<string, Endpoint>();
     private physical: PhysicalDevice | undefined;
-    private runtime: DeviceRuntime | undefined;
+    private runtime: Runtime | undefined;
     /** After {@link stop}, {@link request} rejects like an unenrolled device. */
     private stopped = false;
 
@@ -166,7 +166,7 @@ export class Board {
             return;
         }
         if (originUuid === undefined) {
-            this.runtime.recordPush();
+            this.runtime.markMqttActive();
         }
         this.runtime.observeInbound(message);
     }
@@ -179,8 +179,8 @@ export class Board {
         this.runtime?.applyUpdate(message);
     }
 
-    clearMqtt(): void {
-        this.runtime?.clearMqtt();
+    clearMqttActive(): void {
+        this.runtime?.clearMqttActive();
     }
 
     /**
@@ -211,7 +211,7 @@ export class Board {
         }
 
         const startDelayMs = this.deps.nextStartDelayMs();
-        this.runtime = new DeviceRuntime({
+        this.runtime = new Runtime({
             uuid: this.uuid,
             initialOnline: physical.online,
             endpoints: attached,
@@ -268,7 +268,7 @@ export class Board {
                 ...this.lanBind(physical),
                 ...options
             }).finally(() => {
-                this.runtime?.publishProtocol();
+                this.runtime?.refreshProtocol();
             });
         };
     }

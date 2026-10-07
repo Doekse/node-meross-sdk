@@ -558,7 +558,7 @@ export class Session extends EventEmitter<SessionEvents> {
             onConnectionChange: (connected) => {
                 if (!connected) {
                     for (const board of this.boards.values()) {
-                        board.clearMqtt();
+                        board.clearMqttActive();
                     }
                 }
                 this.emit('connection', connected);
