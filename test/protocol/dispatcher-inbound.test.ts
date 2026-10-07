@@ -71,6 +71,44 @@ describe('ProtocolDispatcher.onInbound', () => {
         ]);
     });
 
+    it('observes System.All GETACK without onPush; PUSH observes then applies', () => {
+        const steps: string[] = [];
+        const dispatcher = new ProtocolDispatcher({
+            onInbound: (message) => {
+                steps.push(`observe:${message.header.method}:${message.header.namespace}`);
+            },
+            onPush: (message) => {
+                steps.push(`apply:${message.header.method}:${message.header.namespace}`);
+            }
+        });
+
+        const getAck = encodeMessage({
+            namespace: 'Appliance.System.All',
+            method: 'GETACK',
+            key: KEY,
+            from: '/appliance/uuid-1/publish',
+            uuid: 'uuid-1',
+            payload: {}
+        });
+        assert.equal(dispatcher.handle(getAck), 'ignored');
+        assert.deepEqual(steps, ['observe:GETACK:Appliance.System.All']);
+
+        steps.length = 0;
+        const push = encodeMessage({
+            namespace: 'Appliance.System.All',
+            method: 'PUSH',
+            key: KEY,
+            from: '/appliance/uuid-1/publish',
+            uuid: 'uuid-1',
+            payload: {}
+        });
+        assert.equal(dispatcher.handle(push), 'push');
+        assert.deepEqual(steps, [
+            'observe:PUSH:Appliance.System.All',
+            'apply:PUSH:Appliance.System.All'
+        ]);
+    });
+
     it('accepts a legacy push-only callback constructor', () => {
         const pushed: string[] = [];
         const dispatcher = new ProtocolDispatcher((message) => {

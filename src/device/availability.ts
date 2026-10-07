@@ -98,12 +98,23 @@ export class DeviceAvailability {
         return this.online;
     }
 
-    handleMessage(message: MerossMessage): void {
+    /**
+     * Heartbeat/liveness only. Payload state (Hub.Online, System.All) is
+     * {@link applyUpdate} so a frame that is both observed and applied does
+     * not decode twice.
+     */
+    observeInbound(_message: MerossMessage): void {
         this.heartbeat.recordResponse();
         // setOnline no-ops when already true; recordResponse first so an
         // inbound while offline still resets the probe backoff.
         this.setOnline(true);
+    }
 
+    /**
+     * Hub.Online and System.All payload state. Does not record liveness —
+     * callers that also saw the frame on the wire call {@link observeInbound}.
+     */
+    applyUpdate(message: MerossMessage): void {
         const { namespace, method } = message.header;
         if (namespace === HUB_ONLINE_NAMESPACE && isPushOrGetAck(method)) {
             try {
@@ -128,12 +139,13 @@ export class DeviceAvailability {
 
     /**
      * Firmware liveness is System.All; System.Online is not used as the probe.
-     * Decode errors reject so Heartbeat.perform marks offline.
+     * Decode errors reject so Heartbeat.perform marks offline. Application of
+     * the GETACK is {@link onAck} (Runtime `applyUpdate`); this only validates.
      */
     private async pollOnline(): Promise<void> {
         const reply = await this.request(SYSTEM_ALL_NAMESPACE, 'GET', {});
         this.onAck?.(reply);
-        this.applySystemAll(reply);
+        decodeSystemAllGetAck(reply.payload);
     }
 
     /**

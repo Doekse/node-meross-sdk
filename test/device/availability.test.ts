@@ -59,6 +59,12 @@ function alwaysOnline(): boolean {
     return true;
 }
 
+/** Wire-frame path: observe liveness then apply payload state once. */
+function ingest(monitor: DeviceAvailability, message: MerossMessage): void {
+    monitor.observeInbound(message);
+    monitor.applyUpdate(message);
+}
+
 /** Drain queued `perform` microtasks after a fake-timer tick. */
 async function settle(hops: number): Promise<void> {
     for (let i = 0; i < hops; i++) {
@@ -296,10 +302,14 @@ async function runBoardSilence(
         clearMqtt(): void {
             clearMqttCalls += 1;
         },
+        // Production Runtime wires this to applyUpdate; heartbeat applies once here.
+        onAck(message: MerossMessage): void {
+            monitor.applyUpdate(message);
+        },
         request
     });
     monitor.start();
-    monitor.handleMessage(loadFixture('online-getack.json'));
+    monitor.observeInbound(loadFixture('online-getack.json'));
     seen.length = 0;
     clock = INTERVAL_MS + 1;
     t.mock.timers.tick(INTERVAL_MS + 1);
@@ -339,7 +349,7 @@ describe('DeviceAvailability', () => {
         monitor.start();
         seen.length = 0;
 
-        monitor.handleMessage(loadFixture('online-push.json'));
+        ingest(monitor, loadFixture('online-push.json'));
 
         assert.deepEqual(seen, []);
         assert.equal(endpoint.isOnline(), true);
@@ -368,7 +378,7 @@ describe('DeviceAvailability', () => {
             payload: { online: { status: 2 } }
         });
 
-        monitor.handleMessage(ack);
+        ingest(monitor, ack);
 
         assert.deepEqual(seen, []);
         assert.equal(endpoint.isOnline(), true);
@@ -389,7 +399,7 @@ describe('DeviceAvailability', () => {
         monitor.start();
         seen.length = 0;
 
-        monitor.handleMessage(encodeMessage({
+        ingest(monitor, encodeMessage({
             namespace: 'Appliance.Control.ToggleX',
             method: 'PUSH',
             key: KEY,
@@ -424,7 +434,7 @@ describe('DeviceAvailability', () => {
         monitor.start();
         seen.length = 0;
 
-        monitor.handleMessage(loadFixture('system-all-getack.json'));
+        ingest(monitor, loadFixture('system-all-getack.json'));
 
         assert.deepEqual(seen, [true]);
         assert.deepEqual(ips, ['192.168.201.190']);
@@ -450,7 +460,7 @@ describe('DeviceAvailability', () => {
         monitor.start();
         seen.length = 0;
 
-        monitor.handleMessage(systemAllGetAck({ status: 2 }));
+        ingest(monitor, systemAllGetAck({ status: 2 }));
 
         assert.deepEqual(seen, []);
         assert.equal(clearMqttCalls, 1);
@@ -473,7 +483,7 @@ describe('DeviceAvailability', () => {
         });
         monitor.start();
 
-        monitor.handleMessage(loadFixture('system-all-getack.json'));
+        ingest(monitor, loadFixture('system-all-getack.json'));
 
         assert.equal(clearMqttCalls, 0);
         monitor.stop();
@@ -493,7 +503,7 @@ describe('DeviceAvailability', () => {
         monitor.start();
         seen.length = 0;
 
-        monitor.handleMessage(loadFixture('runtime-getack-abnormal.json'));
+        ingest(monitor, loadFixture('runtime-getack-abnormal.json'));
 
         assert.deepEqual(seen, []);
         assert.equal(endpoint.isOnline(), true);
@@ -526,7 +536,7 @@ describe('DeviceAvailability', () => {
         monitor.start();
         seen.length = 0;
 
-        monitor.handleMessage(systemAllGetAck({ payload: {} }));
+        ingest(monitor, systemAllGetAck({ payload: {} }));
 
         assert.deepEqual(seen, []);
         assert.equal(endpoint.isOnline(), true);
@@ -578,7 +588,7 @@ describe('DeviceAvailability', () => {
 
         assert.deepEqual(seen, [false]);
 
-        monitor.handleMessage(encodeMessage({
+        ingest(monitor, encodeMessage({
             namespace: 'Appliance.Control.ToggleX',
             method: 'PUSH',
             key: KEY,
@@ -612,9 +622,9 @@ describe('DeviceAvailability', () => {
 
         monitor.start();
         seen.length = 0;
-        monitor.handleMessage(loadFixture('online-getack.json'));
+        ingest(monitor, loadFixture('online-getack.json'));
         clock = INTERVAL_MS / 2;
-        monitor.handleMessage(loadFixture('online-getack.json'));
+        ingest(monitor, loadFixture('online-getack.json'));
         clock = INTERVAL_MS;
 
         t.mock.timers.tick(INTERVAL_MS);
@@ -700,7 +710,7 @@ describe('DeviceAvailability hub children', () => {
         const monitor = hubMonitor(hub, [sensor, valve]);
         sensorSeen.length = 0;
         valveSeen.length = 0;
-        monitor.handleMessage(fromHub('Appliance.Hub.Online', {
+        ingest(monitor, fromHub('Appliance.Hub.Online', {
             online: [{ id: SENSOR_ID, status: 2 }]
         }));
 
@@ -721,7 +731,7 @@ describe('DeviceAvailability hub children', () => {
 
         const monitor = hubMonitor(hub, [sensor]);
         sensorSeen.length = 0;
-        monitor.handleMessage(fromHub('Appliance.System.All', {
+        ingest(monitor, fromHub('Appliance.System.All', {
             all: {
                 system: {
                     hardware: { type: 'msh300', uuid: HUB_UUID },
@@ -759,7 +769,7 @@ describe('DeviceAvailability hub children', () => {
             },
             request: unreachable
         });
-        monitor.handleMessage(fromHub('Appliance.Control.ToggleX', {
+        ingest(monitor, fromHub('Appliance.Control.ToggleX', {
             togglex: [{ channel: 0, onoff: 1 }]
         }));
         hubSeen.length = 0;
@@ -786,7 +796,7 @@ describe('DeviceAvailability hub children', () => {
 
         const monitor = hubMonitor(hub, [sensor]);
         sensorSeen.length = 0;
-        monitor.handleMessage(fromHub('Appliance.Control.ToggleX', {
+        ingest(monitor, fromHub('Appliance.Control.ToggleX', {
             togglex: [{ channel: 0, onoff: 1 }]
         }));
 
@@ -807,10 +817,10 @@ describe('DeviceAvailability hub children', () => {
 
         const monitor = hubMonitor(hub, [sensor]);
         sensorSeen.length = 0;
-        monitor.handleMessage(fromHub('Appliance.Control.ToggleX', {
+        ingest(monitor, fromHub('Appliance.Control.ToggleX', {
             togglex: [{ channel: 0, onoff: 1 }]
         }));
-        monitor.handleMessage(fromHub('Appliance.Hub.Online', {
+        ingest(monitor, fromHub('Appliance.Hub.Online', {
             online: [{ id: SENSOR_ID, status: 1 }]
         }));
 

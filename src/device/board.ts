@@ -145,16 +145,13 @@ export class Board {
         return endpoint;
     }
 
-    handlePush(message: MerossMessage): void {
-        this.runtime?.handlePush(message);
-    }
-
     /**
-     * MQTT (`originUuid` omitted) records liveness, except System.Online that
-     * is not PUSH with status 1. LAN (POST uuid) applies handleMessage without
-     * recording liveness.
+     * MQTT (`originUuid` omitted) records MQTT activity and liveness, except
+     * System.Online that is not PUSH with status 1. LAN (POST uuid) observes
+     * liveness without recording MQTT activity. Payload state is
+     * {@link applyUpdate}.
      */
-    handleInbound(message: MerossMessage, originUuid?: string): void {
+    observeInbound(message: MerossMessage, originUuid?: string): void {
         if (!this.runtime) {
             return;
         }
@@ -171,7 +168,15 @@ export class Board {
         if (originUuid === undefined) {
             this.runtime.recordPush();
         }
-        this.runtime.handleMessage(message);
+        this.runtime.observeInbound(message);
+    }
+
+    /**
+     * Availability payload and trait state for an accepted PUSH or unpacked
+     * GETACK. Observation of the same frame is {@link observeInbound}.
+     */
+    applyUpdate(message: MerossMessage): void {
+        this.runtime?.applyUpdate(message);
     }
 
     clearMqtt(): void {
@@ -229,7 +234,7 @@ export class Board {
                 ...this.lanBind(physical),
                 onPackedFallback
             }),
-            onAck: (message) => this.handlePush(message),
+            onAck: (message) => this.applyUpdate(message),
             jobs: buildPollJobs(physical.ability, physical.endpoints, physical.digestNamespaces),
             startDelayMs
         });

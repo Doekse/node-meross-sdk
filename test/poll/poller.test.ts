@@ -1071,7 +1071,7 @@ describe('DevicePoller', () => {
             electricity: { channel: 0, power: 11_000, current: 53, voltage: 2274 }
         };
         // Handler table is built in the constructor; this poller is never
-        // started. GETACKs apply through handlePush so a thrown trait cannot
+        // started. GETACKs apply through applyUpdate so a thrown trait cannot
         // skip later namespaces.
         const runtime = new DeviceRuntime({
             uuid: UUID,
@@ -1085,7 +1085,7 @@ describe('DevicePoller', () => {
         });
         const harness = createHarness(t, {
             maxCmdNum: 5,
-            onAck: (message) => runtime.handlePush(message),
+            onAck: (message) => runtime.applyUpdate(message),
             jobs: [
                 {
                     namespace: CONFIG_STANDBY_KILLER_NAMESPACE,

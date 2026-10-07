@@ -542,9 +542,9 @@ export class Session extends EventEmitter<SessionEvents> {
 
     private createRouter(): TransportRouter {
         const dispatcher = new ProtocolDispatcher({
-            onPush: (message) => this.boardForMessage(message)?.handlePush(message),
+            onPush: (message) => this.boardForMessage(message)?.applyUpdate(message),
             onInbound: (message, originUuid) => {
-                this.boardForMessage(message, originUuid)?.handleInbound(message, originUuid);
+                this.boardForMessage(message, originUuid)?.observeInbound(message, originUuid);
             }
         });
         const mqtt = new MqttTransport({

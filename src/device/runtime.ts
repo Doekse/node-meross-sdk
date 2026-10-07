@@ -1,6 +1,5 @@
 import type { Endpoint, TraitName } from '../endpoint';
 import { DevicePoller, type PollJob } from '../poll';
-import { SYSTEM_ALL_NAMESPACE } from '../protocol/codecs/system-all';
 import type { MerossMessage } from '../protocol/message';
 import { TRAIT_CATALOGS } from '../traits/catalog';
 import type { GetCommand } from '../transport/router';
@@ -86,7 +85,7 @@ export class DeviceRuntime {
                 options.onInnerIp?.(innerIp);
                 this.publishProtocol();
             },
-            onAck: (message) => this.handlePush(message),
+            onAck: (message) => this.applyUpdate(message),
             heartbeatIntervalMs: options.heartbeatIntervalMs,
             now: options.now
         });
@@ -127,28 +126,30 @@ export class DeviceRuntime {
         this.handlers.clear();
     }
 
-    /** LAN GETACK/PUSH liveness, distinct from {@link handleMessage}'s availability decode. */
+    /** LAN GETACK/PUSH liveness, distinct from {@link observeInbound}'s availability decode. */
     recordPush(): void {
         this.poller.recordPush();
     }
 
+    /** Heartbeat/liveness only; payload state is {@link applyUpdate}. */
+    observeInbound(message: MerossMessage): void {
+        this.availability.observeInbound(message);
+    }
+
     /**
      * ERROR and SETACK are skipped so poller onAck and dispatcher onPush share
-     * one gate. Unknown namespaces are a no-op.
+     * one gate. Unknown namespaces are a no-op for traits.
      *
-     * Packed Control.Multiple inbound is not System.All; poller onAck delivers
-     * the unpacked GETACK here so {@link handleMessage} still sees innerIp,
-     * clearMqtt, and hub digest. Decode errors stay swallowed so a bad All
-     * cannot fail the rest of the batch.
+     * Availability payload (System.All, Hub.Online) and trait handlers each
+     * run once. Packed Control.Multiple inbound is not System.All; poller
+     * onAck delivers each unpacked GETACK here.
      */
-    handlePush(message: MerossMessage): void {
+    applyUpdate(message: MerossMessage): void {
         const { method, namespace } = message.header;
         if (method === 'ERROR' || method === 'SETACK') {
             return;
         }
-        if (namespace === SYSTEM_ALL_NAMESPACE) {
-            this.handleMessage(message);
-        }
+        this.availability.applyUpdate(message);
         const list = this.handlers.get(namespace);
         if (!list) {
             return;
@@ -156,10 +157,6 @@ export class DeviceRuntime {
         for (const { endpoint, trait } of list) {
             endpoint.handlePush(message, trait);
         }
-    }
-
-    handleMessage(message: MerossMessage): void {
-        this.availability.handleMessage(message);
     }
 
     clearMqtt(): void {

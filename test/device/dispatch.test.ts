@@ -61,7 +61,7 @@ function togglexPush(on: boolean): MerossMessage {
 function ignoreAck(): void {}
 
 /**
- * Runtime for handlePush-only tests; poller/availability stay idle without start().
+ * Runtime for applyUpdate-only tests; poller/availability stay idle without start().
  */
 function createRuntime(
     endpoints: readonly Endpoint[],
@@ -161,7 +161,7 @@ function climateTrait(emit: EmitChange): ClimateHubTrait {
     });
 }
 
-describe('DeviceRuntime.handlePush', () => {
+describe('DeviceRuntime.applyUpdate', () => {
     it('(a) ToggleX routes to switch, not system', (t: TestContext) => {
         const { endpoint, system, switch: sw } = wiredEndpoint(
             `${UUID}:0`,
@@ -175,7 +175,7 @@ describe('DeviceRuntime.handlePush', () => {
         const systemPush = t.mock.method(system, 'handlePush');
         const runtime = createRuntime([endpoint]);
 
-        runtime.handlePush(togglexPush(true));
+        runtime.applyUpdate(togglexPush(true));
 
         assert.equal(sw.isOn(), true);
         assert.equal(systemPush.mock.callCount(), 0);
@@ -198,7 +198,7 @@ describe('DeviceRuntime.handlePush', () => {
         });
 
         const runtime = createRuntime([endpoint]);
-        runtime.handlePush(togglexPush(true));
+        runtime.applyUpdate(togglexPush(true));
 
         assert.equal(sw.isOn(), true);
         assert.equal(light.isOn(), true);
@@ -226,7 +226,7 @@ describe('DeviceRuntime.handlePush', () => {
         });
 
         const runtime = createRuntime([endpoint]);
-        runtime.handlePush(togglexPush(false));
+        runtime.applyUpdate(togglexPush(false));
 
         assert.equal(sw.isOn(), false);
         assert.equal(warnings.length, 1);
@@ -244,7 +244,7 @@ describe('DeviceRuntime.handlePush', () => {
 
         let runtime!: DeviceRuntime;
         function onAck(message: MerossMessage): void {
-            runtime.handlePush(message);
+            runtime.applyUpdate(message);
         }
         runtime = createRuntime([endpoint], onAck);
 
@@ -275,7 +275,7 @@ describe('DeviceRuntime.handlePush', () => {
 
         const runtime = createRuntime([endpoint]);
         assert.doesNotThrow(() => {
-            runtime.handlePush(pushMessage('Appliance.Control.DoesNotExist', { x: 1 }));
+            runtime.applyUpdate(pushMessage('Appliance.Control.DoesNotExist', { x: 1 }));
         });
         assert.equal(changes.length, 0);
         assert.equal(warnings.length, 0);
@@ -310,7 +310,7 @@ describe('DeviceRuntime.handlePush', () => {
         tempHumEndpoint.on('change', (change) => tempHumChanges.push(change));
 
         const runtime = createRuntime([tempHumEndpoint, contactEndpoint, climateEndpoint]);
-        runtime.handlePush(pushMessage(HUB_SENSOR_TEMPHUM_NAMESPACE, {
+        runtime.applyUpdate(pushMessage(HUB_SENSOR_TEMPHUM_NAMESPACE, {
             tempHum: [{ id: TEMP_HUM_ID, latestTemperature: 230, latestHumidity: 450 }]
         }));
 
@@ -339,7 +339,7 @@ describe('DeviceRuntime.handlePush', () => {
 
         const runtime = createRuntime([endpoint]);
         assert.doesNotThrow(() => {
-            runtime.handlePush(pushMessage(HUB_SENSOR_ALL_NAMESPACE, {
+            runtime.applyUpdate(pushMessage(HUB_SENSOR_ALL_NAMESPACE, {
                 all: [{ id: 'missing', onlineStatus: 1 }]
             }));
         });
