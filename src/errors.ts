@@ -1,3 +1,5 @@
+import type { MerossMessage } from './protocol/message';
+
 /**
  * Base error so hosts can instanceof-check as the kernel grows.
  */
@@ -98,5 +100,25 @@ export class TransportError extends MerossError {
     constructor(message: string, code = 'TRANSPORT_ERROR') {
         super(message, code);
         this.name = 'TransportError';
+    }
+}
+
+/**
+ * Control.Multiple failed and at least one fallback single failed too.
+ * {@link replies} are the GETACKs that did arrive. The poller applies those
+ * and still treats the batch as failed. Not on the public barrel: the poller
+ * catches it, so hosts do not depend on it.
+ */
+export class PackedFallbackError extends MerossError {
+    readonly replies: readonly MerossMessage[];
+
+    constructor(cause: unknown, replies: readonly MerossMessage[]) {
+        super(
+            cause instanceof Error ? cause.message : 'Control.Multiple fallback failed',
+            'PACKED_FALLBACK'
+        );
+        this.name = 'PackedFallbackError';
+        this.replies = replies;
+        this.cause = cause;
     }
 }

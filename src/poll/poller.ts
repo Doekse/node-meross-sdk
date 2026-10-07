@@ -1,3 +1,4 @@
+import { PackedFallbackError } from '../errors';
 import { canPackInMultiple } from '../protocol/codecs/multiple';
 import { EMPTY_PAYLOAD, type MerossMessage, type MerossPayload } from '../protocol/message';
 import type { GetCommand } from '../transport/router';
@@ -459,7 +460,15 @@ export class DevicePoller {
                 this.updateResponseSizeFromReply(reply);
                 this.onAck(reply);
             }
-        } catch {
+        } catch (error) {
+            // Partial fallback GETACKs still apply. The batch rejected, so
+            // lastResponseMs stays unset and the next tick can probe.
+            if (error instanceof PackedFallbackError) {
+                for (const reply of error.replies) {
+                    this.updateResponseSizeFromReply(reply);
+                    this.onAck(reply);
+                }
+            }
             // A `once` job has no period to fall back on, so leave it cold
             // rather than let one failed batch retire it for good.
             for (const job of sending) {

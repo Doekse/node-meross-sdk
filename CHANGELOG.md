@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A failed `Control.Multiple` fallback single no longer counts as a successful poll tick. GETACKs that did arrive are still applied.
 - `disconnect` during an in-flight enroll no longer starts pollers after transports close.
 - A board that enrolled successfully is treated as already sampled by heartbeat, so a failed first silence probe can mark it offline.
 - TriggerX digest GET-by-id failures no longer replace the cached list with empty (same 5050-only omit as TimerX).

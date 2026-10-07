@@ -1,4 +1,4 @@
-import { CommandError, ProtocolError } from '../errors';
+import { CommandError, PackedFallbackError, ProtocolError } from '../errors';
 import {
     MULTIPLE_NAMESPACE,
     canPackInMultiple,
@@ -152,7 +152,9 @@ export class TransportRouter {
      * Unpacks the SETACK so callers still see one GETACK (or ERROR) per GET.
      * PUSH-query stays unscoped: Control.Multiple sub-commands are always
      * method GET. A packed Multiple that fails is retried as singles so HTTP
-     * truncation cannot drop the rest of the chunk.
+     * truncation cannot drop the rest of the chunk. A single that then fails
+     * does not stop the others, but the call rejects with
+     * {@link PackedFallbackError} so a partial batch is not a full success.
      */
     async requestGets(options: RequestGetsOptions): Promise<MerossMessage[]> {
         const maxCmdNum = options.maxCmdNum ?? 0;
@@ -171,13 +173,26 @@ export class TransportRouter {
         }
 
         const results = await this.sendGets(leading, options);
+        let failure: unknown;
         for (let i = 0; i < packable.length; i += maxCmdNum) {
             const chunk = packable.slice(i, i + maxCmdNum);
             if (chunk.length === 1) {
                 results.push(...await this.sendGets(chunk, options));
                 continue;
             }
-            results.push(...await this.sendPacked(chunk, options));
+            try {
+                results.push(...await this.sendPacked(chunk, options));
+            } catch (error) {
+                if (!(error instanceof PackedFallbackError)) {
+                    throw error;
+                }
+                // Earlier chunks already in `results` must survive this chunk.
+                results.push(...error.replies);
+                failure ??= error.cause ?? error;
+            }
+        }
+        if (failure !== undefined) {
+            throw new PackedFallbackError(failure, results);
         }
         return results;
     }
@@ -230,17 +245,22 @@ export class TransportRouter {
             if (decodingPackedReply && error instanceof ProtocolError) {
                 options.onPackedFallback?.();
             }
-            // Retry a failed Multiple as singles, then continue when one of
-            // those also fails so later namespaces in the chunk still run.
-            const results: MerossMessage[] = [];
+            // Retry every GET in the chunk. A later single still runs when
+            // an earlier one fails; the batch rejects so the poller does not
+            // count the tick as answered.
+            const replies: MerossMessage[] = [];
+            let failure: unknown;
             for (const get of chunk) {
                 try {
-                    results.push(await this.sendGet(get, options));
-                } catch {
-                    // Remaining namespaces in this chunk still run.
+                    replies.push(await this.sendGet(get, options));
+                } catch (singleError) {
+                    failure ??= singleError;
                 }
             }
-            return results;
+            if (failure !== undefined) {
+                throw new PackedFallbackError(failure, replies);
+            }
+            return replies;
         }
     }
 

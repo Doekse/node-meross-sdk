@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it, type TestContext } from 'node:test';
 
+import { PackedFallbackError } from '../../src/errors';
 import {
     buildPollJobs,
     CLOUDMQTT_PERIOD_MS,
@@ -316,6 +317,61 @@ describe('DevicePoller', () => {
 
         await harness.advance(INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 3);
+
+        harness.poller.stop();
+    });
+
+    it('applies packed fallback GETACKs without counting the tick as answered', async (t) => {
+        const harness = createHarness(t, {
+            maxCmdNum: 5,
+            jobs: [
+                {
+                    namespace: CTL_RANGE_NAMESPACE,
+                    strategy: 'once',
+                    periodMs: 0,
+                    periodCloudMs: 0,
+                    responseSize: 100
+                },
+                {
+                    namespace: TOGGLEX_NAMESPACE,
+                    strategy: 'default',
+                    periodMs: 0,
+                    periodCloudMs: 0,
+                    responseSize: 100
+                }
+            ]
+        });
+
+        let failed = false;
+        harness.requestGets.mock.mockImplementation(async (gets: GetCommand[]) => {
+            harness.getsHistory.push(gets.map((get) => ({
+                namespace: get.namespace,
+                payload: get.payload ?? {}
+            })));
+            if (!failed && gets.length > 1) {
+                failed = true;
+                throw new PackedFallbackError(new Error('busy'), [ack(TOGGLEX_NAMESPACE)]);
+            }
+            return gets.map((get) => ack(get.namespace, get.payload ?? {}));
+        });
+
+        harness.poller.start();
+        await harness.advance(0);
+        assert.deepEqual(
+            harness.acks.map((message) => message.header.namespace),
+            [TOGGLEX_NAMESPACE]
+        );
+
+        await harness.advance(INTERVAL_MS);
+        assert.deepEqual(
+            harness.getsHistory[1]?.map((get) => get.namespace),
+            [SYSTEM_ALL_NAMESPACE]
+        );
+        assert.ok(
+            harness.getsHistory.slice(2).some((gets) => (
+                gets.some((get) => get.namespace === CTL_RANGE_NAMESPACE)
+            ))
+        );
 
         harness.poller.stop();
     });

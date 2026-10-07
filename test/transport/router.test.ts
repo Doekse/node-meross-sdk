@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { CommandError, ProtocolError, TransportError } from '../../src/errors';
+import { CommandError, PackedFallbackError, ProtocolError, TransportError } from '../../src/errors';
 import {
     HUB_TOGGLEX_NAMESPACE,
     MULTIPLE_NAMESPACE,
@@ -741,17 +741,22 @@ describe('TransportRouter', () => {
             }
         });
 
-        const replies = await router.requestGets({
-            uuid: UUID,
-            ip: IP,
-            maxCmdNum: 3,
-            gets: [
-                { namespace: TOGGLEX_NAMESPACE },
-                { namespace: ELECTRICITY }
-            ]
-        });
-
-        assert.equal(replies.length, 1);
-        assert.equal(replies[0]?.header.namespace, ELECTRICITY);
+        await assert.rejects(
+            router.requestGets({
+                uuid: UUID,
+                ip: IP,
+                maxCmdNum: 3,
+                gets: [
+                    { namespace: TOGGLEX_NAMESPACE },
+                    { namespace: ELECTRICITY }
+                ]
+            }),
+            (err: unknown) => {
+                assert.ok(err instanceof PackedFallbackError);
+                assert.equal(err.replies.length, 1);
+                assert.equal(err.replies[0]?.header.namespace, ELECTRICITY);
+                return true;
+            }
+        );
     });
 });
