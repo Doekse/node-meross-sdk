@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0-alpha] - 2026-10-07
+
 ### Breaking (alpha)
 
 - Climate, cover, and sensor are kind-discriminated unions (`endpoint.climate.kind`, `endpoint.cover.kind`, `endpoint.sensor.kind`). Climate kinds are `mode` / `modeB` / `modeC` / `hub`. ModeC-only methods (`setFanSpeed`) and hub-only methods (`setConfig`, `setSuperCtl`) are not on the other instances. Cover kinds are `garage` / `shutter`. Shutter-only methods (`stop`, `setPosition`, `setTravelTimes`, `calibrate`) and garage-only `setConfig` are not on the other instance. Sensor kinds are `tempHum` / `contact` / `leak` / `motion` / `smoke`. `setCalibration` / `setAlerts` are tempHum-only; `mute` / `test` / `setSmokeDnd` / `setSmokeDetect` are smoke-only. Ability-gated extras throw `MerossError` `NAMESPACE_NOT_ADVERTISED` instead of succeeding as a no-op. Hub `setMode('manual')` is not in the hub mode union. Mode `setOn` writes `onoff` only (schedule/eco/manual survive). ModeC `setTargetTemperature` throws `UNSUPPORTED` unless current mode is heat or cool. ModeC `setFanSpeed(..., null)` disables fan hold (`hTime=99999`). `mute()` throws `UNSUPPORTED` unless the live status is a mutable alarm or fault.
@@ -150,7 +152,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Traits: switch, light, energy, cover, climate, sensor, presence, fan, spray, diffuser, sprinkler, media, alarm, dnd, system, timer, trigger.
 - TypeScript types shipped next to CommonJS `dist/` so `require()` hosts (including Homey) load without a bundler.
 
-[unreleased]: https://github.com/Doekse/node-meross-sdk/compare/v0.5.0-alpha...HEAD
+[unreleased]: https://github.com/Doekse/node-meross-sdk/compare/v0.6.0-alpha...HEAD
+[0.6.0-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.5.0-alpha...v0.6.0-alpha
 [0.5.0-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.4.0-alpha...v0.5.0-alpha
 [0.4.0-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.3.0-alpha...v0.4.0-alpha
 [0.3.0-alpha]: https://github.com/Doekse/node-meross-sdk/compare/v0.2.0-alpha...v0.3.0-alpha
