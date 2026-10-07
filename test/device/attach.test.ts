@@ -517,6 +517,23 @@ describe('attachEndpoint climate', () => {
             ability: { [THERMOSTAT_MODEC_NAMESPACE]: {} }
         });
 
+        assert.equal(endpoint.climate!.generation, 'modeC');
+        await endpoint.climate!.setOn(true);
+
+        assert.equal(requests[0]?.header.namespace, THERMOSTAT_MODEC_NAMESPACE);
+    });
+
+    it('prefers ModeC when Mode, ModeB, and ModeC are advertised', async () => {
+        const { endpoint, requests } = createHarness({
+            traits: ['climate'],
+            ability: {
+                [THERMOSTAT_MODE_NAMESPACE]: {},
+                [THERMOSTAT_MODEB_NAMESPACE]: {},
+                [THERMOSTAT_MODEC_NAMESPACE]: {}
+            }
+        });
+
+        assert.equal(endpoint.climate!.generation, 'modeC');
         await endpoint.climate!.setOn(true);
 
         assert.equal(requests[0]?.header.namespace, THERMOSTAT_MODEC_NAMESPACE);
@@ -528,6 +545,22 @@ describe('attachEndpoint climate', () => {
             ability: { [THERMOSTAT_MODEB_NAMESPACE]: {} }
         });
 
+        assert.equal(endpoint.climate!.generation, 'modeB');
+        await endpoint.climate!.setOn(true);
+
+        assert.equal(requests[0]?.header.namespace, THERMOSTAT_MODEB_NAMESPACE);
+    });
+
+    it('prefers ModeB when Mode and ModeB are advertised and ModeC is absent', async () => {
+        const { endpoint, requests } = createHarness({
+            traits: ['climate'],
+            ability: {
+                [THERMOSTAT_MODE_NAMESPACE]: {},
+                [THERMOSTAT_MODEB_NAMESPACE]: {}
+            }
+        });
+
+        assert.equal(endpoint.climate!.generation, 'modeB');
         await endpoint.climate!.setOn(true);
 
         assert.equal(requests[0]?.header.namespace, THERMOSTAT_MODEB_NAMESPACE);
@@ -539,6 +572,7 @@ describe('attachEndpoint climate', () => {
             ability: { [THERMOSTAT_MODE_NAMESPACE]: {} }
         });
 
+        assert.equal(endpoint.climate!.generation, 'mode');
         await endpoint.climate!.setOn(true);
 
         assert.equal(requests[0]?.header.namespace, THERMOSTAT_MODE_NAMESPACE);

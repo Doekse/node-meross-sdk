@@ -16,7 +16,7 @@ import {
     type MerossMessage
 } from '../../src/protocol';
 import type { DeviceRequest } from '../../src/request';
-import { ClimateTrait } from '../../src/traits/climate';
+import { ClimateHubTrait } from '../../src/traits/climate';
 import { LightTrait } from '../../src/traits/light';
 import { SensorTrait } from '../../src/traits/sensor';
 import { SwitchTrait } from '../../src/traits/switch';
@@ -146,8 +146,8 @@ function sensorTrait(
     });
 }
 
-function climateTrait(emit: EmitChange): ClimateTrait {
-    return new ClimateTrait({
+function climateTrait(emit: EmitChange): ClimateHubTrait {
+    return new ClimateHubTrait({
         kind: 'hub',
         subDeviceId: CLIMATE_ID,
         namespaces: new Set(),

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking (alpha)
 
+- Climate is a generation-discriminated union (`mode` / `modeB` / `modeC` / `hub` on `endpoint.climate.generation`). ModeC-only methods (`setFanSpeed`) and hub-only methods (`setConfig`, `setSuperCtl`) are not on the other instances. Ability-gated extras throw `MerossError` `NAMESPACE_NOT_ADVERTISED` instead of succeeding as a no-op. Hub `setMode('manual')` is not in the hub mode union.
 - `Session.connect()` opens transports only and takes no options. Membership is `enroll` / `unenroll`. `Session.sync()` and `SyncOptions` are removed. After `logout()`, `connect()` rejects with `AuthError` (same as `getToken()`).
 
 ### Changed

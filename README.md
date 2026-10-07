@@ -307,7 +307,7 @@ Traits are present only when the device advertised the matching ability. Use opt
 | `light`          | Bulbs and light strips             | `setOn`, `setBrightness` / `setTemperature` (`0..1`), `setRgb`, `setEffect`           |
 | `energy`         | Metered plugs and strips           | `poll()` (power / current / voltage), `getHourlyConsumption()`, `deleteConsumption()` |
 | `cover`          | Garage doors, roller shutters      | `open()`, `close()`, `stop()`, `setPosition()`                                        |
-| `climate`        | Thermostats and hub valves         | `setOn`, `setMode`, `setTargetTemperature`, schedule / extras                         |
+| `climate`        | Thermostats and hub valves         | Narrow `generation` (`mode` / `modeB` / `modeC` / `hub`). Shared: `setOn`, `setTargetTemperature`. ModeC: `setFanSpeed`. Hub: `setConfig` / `setSuperCtl`. Missing Ability throws `NAMESPACE_NOT_ADVERTISED`. |
 | `sensor`         | Hub temp/hum, contact, leak, motion, smoke | Live values on `change`; `setCalibration`, `setAlerts`, smoke `mute` / `test`         |
 | `presence`       | Wi-Fi presence sensors             | `change` values; `getConfig()`, `setConfig()`, `startStudy()`                         |
 | `fan`            | Fans                               | `setOn`, `setSpeed`, `getButtonConfig` / `setButtonConfig`                            |

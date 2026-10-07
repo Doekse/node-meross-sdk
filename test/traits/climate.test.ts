@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Endpoint, type EndpointChange } from '../../src/endpoint';
+import { MerossError } from '../../src/errors';
 import {
     THERMOSTAT_MODE_NAMESPACE,
     THERMOSTAT_MODEB_NAMESPACE,
@@ -25,8 +26,13 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
-import { ClimateTrait } from '../../src/traits/climate';
-import type { ClimateTraitBind } from '../../src/traits/climate';
+import {
+    ClimateHubTrait,
+    ClimateModeBTrait,
+    ClimateModeCTrait,
+    ClimateModeTrait
+} from '../../src/traits/climate';
+import type { ClimateTraitBoardBind, ClimateTraitHubBind } from '../../src/traits/climate';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
@@ -35,41 +41,64 @@ const CHANNEL = 0;
 const SUB_DEVICE_ID = '00000101';
 
 function createBoardHarness(
+    generation: 'mode',
+    namespaces?: readonly string[]
+): { endpoint: Endpoint; trait: ClimateModeTrait; requests: MerossMessage[] };
+function createBoardHarness(
+    generation: 'modeB',
+    namespaces?: readonly string[]
+): { endpoint: Endpoint; trait: ClimateModeBTrait; requests: MerossMessage[] };
+function createBoardHarness(
+    generation: 'modeC',
+    namespaces?: readonly string[]
+): { endpoint: Endpoint; trait: ClimateModeCTrait; requests: MerossMessage[] };
+function createBoardHarness(
     generation: 'mode' | 'modeB' | 'modeC',
     namespaces: readonly string[] = []
 ): {
     endpoint: Endpoint;
-    trait: ClimateTrait;
+    trait: ClimateModeTrait | ClimateModeBTrait | ClimateModeCTrait;
     requests: MerossMessage[];
 } {
     const endpoint = new Endpoint({ id: `${UUID}:${CHANNEL}`, traits: ['climate'] });
     const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
-    const bind: ClimateTraitBind = {
+    const bind: ClimateTraitBoardBind = {
         kind: 'board',
         channel: CHANNEL,
-        generation,
         namespaces: new Set(namespaces),
         request,
         emitChange: (values) => endpoint.emit('change', { trait: 'climate', values: { ...values } })
     };
-    return { endpoint, trait: new ClimateTrait(bind), requests };
+    const trait = generation === 'modeC'
+        ? new ClimateModeCTrait(bind)
+        : generation === 'modeB'
+            ? new ClimateModeBTrait(bind)
+            : new ClimateModeTrait(bind);
+    return { endpoint, trait, requests };
 }
 
 function createHubHarness(namespaces: readonly string[] = []): {
     endpoint: Endpoint;
-    trait: ClimateTrait;
+    trait: ClimateHubTrait;
     requests: MerossMessage[];
 } {
     const endpoint = new Endpoint({ id: `${UUID}#${SUB_DEVICE_ID}`, traits: ['climate'] });
     const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
-    const bind: ClimateTraitBind = {
+    const bind: ClimateTraitHubBind = {
         kind: 'hub',
         subDeviceId: SUB_DEVICE_ID,
         namespaces: new Set(namespaces),
         request,
         emitChange: (values) => endpoint.emit('change', { trait: 'climate', values: { ...values } })
     };
-    return { endpoint, trait: new ClimateTrait(bind), requests };
+    return { endpoint, trait: new ClimateHubTrait(bind), requests };
+}
+
+function notAdvertised(run: () => Promise<unknown>): Promise<void> {
+    return assert.rejects(
+        run,
+        (error: unknown) => error instanceof MerossError && error.code === 'NAMESPACE_NOT_ADVERTISED'
+    );
 }
 
 function push(namespace: string, payload: MerossMessage['payload']): MerossMessage {
@@ -84,6 +113,10 @@ function push(namespace: string, payload: MerossMessage['payload']): MerossMessa
 }
 
 describe('ClimateTrait board Mode generation', () => {
+    it('exposes generation mode', () => {
+        const { trait } = createBoardHarness('mode');
+        assert.equal(trait.generation, 'mode');
+    });
     it('setOn(true) sends Thermostat.Mode SET', async () => {
         const { trait, requests } = createBoardHarness('mode');
 
@@ -154,6 +187,10 @@ describe('ClimateTrait board Mode generation', () => {
 });
 
 describe('ClimateTrait board ModeB generation', () => {
+    it('exposes generation modeB', () => {
+        const { trait } = createBoardHarness('modeB');
+        assert.equal(trait.generation, 'modeB');
+    });
     it('setOn(false) sends ModeB SET with onoff=2', async () => {
         const { trait, requests } = createBoardHarness('modeB');
 
@@ -191,6 +228,10 @@ describe('ClimateTrait board ModeB generation', () => {
 });
 
 describe('ClimateTrait board ModeC generation', () => {
+    it('exposes generation modeC', () => {
+        const { trait } = createBoardHarness('modeC');
+        assert.equal(trait.generation, 'modeC');
+    });
     it('setOn(true) uses ModeC SET with mode=heat', async () => {
         const { trait, requests } = createBoardHarness('modeC');
 
@@ -272,12 +313,9 @@ describe('ClimateTrait board ModeC generation', () => {
     });
 
     it('does not send Thermostat.System when the namespace is not advertised', async () => {
-        const { trait, requests } = createBoardHarness('modeC');
+        const { trait } = createBoardHarness('modeC');
 
-        const result = await trait.setSystem({ compTemp: 2 });
-
-        assert.deepEqual(result, { compTemp: 2 });
-        assert.equal(requests.length, 0);
+        await notAdvertised(() => trait.setSystem({ compTemp: 2 }));
         assert.equal(trait.getSystem(), undefined);
     });
 
@@ -303,6 +341,10 @@ describe('ClimateTrait board ModeC generation', () => {
 });
 
 describe('ClimateTrait hub valve', () => {
+    it('exposes generation hub', () => {
+        const { trait } = createHubHarness();
+        assert.equal(trait.generation, 'hub');
+    });
     it('setOn sends Hub.ToggleX SET', async () => {
         const { trait, requests } = createHubHarness();
 
@@ -409,15 +451,6 @@ describe('ClimateTrait hub valve', () => {
         assert.equal(payload.togglex[0]?.onoff, 0);
     });
 
-    it('setMode(manual) is a no-op on hub valves', async () => {
-        const { trait, requests } = createHubHarness();
-
-        const result = await trait.setMode('manual');
-
-        assert.equal(result.mode, 'manual');
-        assert.equal(requests.length, 0);
-    });
-
     it('ignores Hub.ToggleX PUSH for a different subDeviceId', () => {
         const { endpoint, trait } = createHubHarness();
         const changes: unknown[] = [];
@@ -432,12 +465,34 @@ describe('ClimateTrait hub valve', () => {
 });
 
 describe('ClimateTrait extras', () => {
-    it('setHold is a no-op when HoldAction is not advertised', async () => {
-        const { trait, requests } = createBoardHarness('mode');
+    it('setHold throws when HoldAction is not advertised', async () => {
+        const { trait } = createBoardHarness('mode');
 
-        await trait.setHold('untilSchedule');
+        await notAdvertised(() => trait.setHold('untilSchedule'));
+    });
 
-        assert.equal(requests.length, 0);
+    it('setFrost throws when Frost is not advertised', async () => {
+        const { trait } = createBoardHarness('mode');
+
+        await notAdvertised(() => trait.setFrost(true));
+    });
+
+    it('setOverheat throws when Overheat is not advertised', async () => {
+        const { trait } = createBoardHarness('mode');
+
+        await notAdvertised(() => trait.setOverheat(true));
+    });
+
+    it('setSchedule throws when Schedule is not advertised', async () => {
+        const { trait } = createBoardHarness('mode');
+
+        await notAdvertised(() => trait.setSchedule({}));
+    });
+
+    it('setChildLock throws when PhysicalLock is not advertised', async () => {
+        const { trait } = createBoardHarness('mode');
+
+        await notAdvertised(() => trait.setChildLock(true));
     });
 
     it('setHold sends HoldAction SET when advertised', async () => {
@@ -450,12 +505,10 @@ describe('ClimateTrait extras', () => {
         assert.equal(payload.holdAction[0]?.mode, 1);
     });
 
-    it('setWindowDetect is a no-op when WindowOpened is not advertised', async () => {
-        const { trait, requests } = createBoardHarness('mode');
+    it('setWindowDetect throws when WindowOpened is not advertised', async () => {
+        const { trait } = createBoardHarness('mode');
 
-        await trait.setWindowDetect(true);
-
-        assert.equal(requests.length, 0);
+        await notAdvertised(() => trait.setWindowDetect(true));
     });
 
     it('setWindowDetect sends WindowOpened SET when advertised', async () => {
@@ -487,12 +540,42 @@ describe('ClimateTrait extras', () => {
         assert.equal(payload.modeB[0]?.onoff, 1);
     });
 
-    it('setWorkMode is a no-op on Mode generation', async () => {
-        const { trait, requests } = createBoardHarness('mode');
+    it('setFanSpeed sends ModeC SET with fan.speed and hTime', async () => {
+        const { trait, requests } = createBoardHarness('modeC');
+
+        await trait.setFanSpeed('low', 30);
+
+        assert.equal(requests[0]?.header.namespace, THERMOSTAT_MODEC_NAMESPACE);
+        const payload = requests[0]?.payload as {
+            control: Array<{ fan?: { speed: number; hTime: number } }>
+        };
+        assert.equal(payload.control[0]?.fan?.speed, 1);
+        assert.equal(payload.control[0]?.fan?.hTime, 30);
+    });
+
+    it('setWorkMode(schedule) sends ModeC control.work=2', async () => {
+        const { trait, requests } = createBoardHarness('modeC');
 
         await trait.setWorkMode('schedule');
 
-        assert.equal(requests.length, 0);
+        assert.equal(requests[0]?.header.namespace, THERMOSTAT_MODEC_NAMESPACE);
+        const payload = requests[0]?.payload as { control: Array<{ work: number }> };
+        assert.equal(payload.control[0]?.work, 2);
+    });
+
+    it('setWorkMode(manual) sends ModeC control.work=1', async () => {
+        const { trait, requests } = createBoardHarness('modeC');
+
+        await trait.setWorkMode('manual');
+
+        const payload = requests[0]?.payload as { control: Array<{ work: number }> };
+        assert.equal(payload.control[0]?.work, 1);
+    });
+
+    it('setCalibration on hub throws when Adjust is not advertised', async () => {
+        const { trait } = createHubHarness();
+
+        await notAdvertised(() => trait.setCalibration(-2));
     });
 
     it('setCalibration on hub sends Adjust ×100 when advertised', async () => {
@@ -503,6 +586,22 @@ describe('ClimateTrait extras', () => {
         assert.equal(requests[0]?.header.namespace, HUB_MTS100_ADJUST_NAMESPACE);
         const payload = requests[0]?.payload as { adjust: Array<{ temperature: number }> };
         assert.equal(payload.adjust[0]?.temperature, -200);
+    });
+
+    it('ModeC ignores Thermostat.Mode PUSH when Mode is also advertised', () => {
+        const { endpoint, trait } = createBoardHarness('modeC', [
+            THERMOSTAT_MODE_NAMESPACE,
+            THERMOSTAT_MODEB_NAMESPACE,
+            THERMOSTAT_MODEC_NAMESPACE
+        ]);
+        const changes: unknown[] = [];
+        endpoint.on('change', (c) => changes.push(c));
+
+        trait.handlePush(push(THERMOSTAT_MODE_NAMESPACE, {
+            mode: [{ channel: CHANNEL, onoff: 1, mode: 0, targetTemp: 220, currentTemp: 180 }]
+        }));
+
+        assert.deepEqual(changes, []);
     });
 
     it('handlePush applies HoldAction when advertised', () => {
@@ -520,12 +619,10 @@ describe('ClimateTrait extras', () => {
 });
 
 describe('ClimateTrait device settings', () => {
-    it('setTempUnit is a no-op when TempUnit is not advertised', async () => {
-        const { trait, requests } = createBoardHarness('mode');
+    it('setTempUnit throws when TempUnit is not advertised', async () => {
+        const { trait } = createBoardHarness('mode');
 
-        await trait.setTempUnit('fahrenheit');
-
-        assert.equal(requests.length, 0);
+        await notAdvertised(() => trait.setTempUnit('fahrenheit'));
     });
 
     it('setTempUnit sends TempUnit SET when advertised', async () => {
@@ -560,12 +657,10 @@ describe('ClimateTrait device settings', () => {
         assert.equal(payload.lock[0]?.onoff, 0);
     });
 
-    it('setScreenBrightness is a no-op when Screen.Brightness is not advertised', async () => {
-        const { trait, requests } = createBoardHarness('mode');
+    it('setScreenBrightness throws when Screen.Brightness is not advertised', async () => {
+        const { trait } = createBoardHarness('mode');
 
-        await trait.setScreenBrightness({ operation: 0.5 });
-
-        assert.equal(requests.length, 0);
+        await notAdvertised(() => trait.setScreenBrightness({ operation: 0.5 }));
     });
 
     it('setScreenBrightness sends wire 0–100 when advertised', async () => {
@@ -650,7 +745,7 @@ describe('ClimateTrait board sensor readings', () => {
 
     function createSensorHarness(namespaces: readonly string[]): {
         endpoint: Endpoint;
-        trait: ClimateTrait;
+        trait: ClimateModeTrait;
         requests: MerossMessage[];
         changes: Record<string, unknown>[];
     } {
@@ -673,10 +768,9 @@ describe('ClimateTrait board sensor readings', () => {
                 return traitAck(sent, { key: KEY, method: 'GETACK', payload: replyPayload });
             }
         });
-        const bind: ClimateTraitBind = {
+        const bind: ClimateTraitBoardBind = {
             kind: 'board',
             channel: CHANNEL,
-            generation: 'mode',
             namespaces: new Set(namespaces),
             request,
             emitChange: (values) => {
@@ -684,7 +778,7 @@ describe('ClimateTrait board sensor readings', () => {
                 endpoint.emit('change', { trait: 'climate', values: { ...values } });
             }
         };
-        return { endpoint, trait: new ClimateTrait(bind), requests, changes };
+        return { endpoint, trait: new ClimateModeTrait(bind), requests, changes };
     }
 
     it('handlePush applies humidity from Sensor.Latest when advertised', () => {
@@ -698,22 +792,10 @@ describe('ClimateTrait board sensor readings', () => {
         assert.equal(change.values.humidity, 59.6);
     });
 
-    it('getHistory returns undefined when Sensor.History is not advertised', async () => {
-        const { trait, requests } = createBoardHarness('mode');
+    it('getHistory throws when Sensor.History is not advertised', async () => {
+        const { trait } = createBoardHarness('mode');
 
-        const samples = await trait.getHistory();
-
-        assert.equal(samples, undefined);
-        assert.equal(requests.length, 0);
-    });
-
-    it('getHistory returns undefined for hub valves', async () => {
-        const { trait, requests } = createHubHarness([SENSOR_HISTORY_NAMESPACE]);
-
-        const samples = await trait.getHistory();
-
-        assert.equal(samples, undefined);
-        assert.equal(requests.length, 0);
+        await notAdvertised(() => trait.getHistory());
     });
 
     it('getHistory returns decoded samples when advertised', async () => {
@@ -731,22 +813,10 @@ describe('ClimateTrait board sensor readings', () => {
         assert.equal(samples?.[0]?.humidity, 60.7);
     });
 
-    it('getHistoryX returns undefined when Sensor.HistoryX is not advertised', async () => {
-        const { trait, requests } = createBoardHarness('mode');
+    it('getHistoryX throws when Sensor.HistoryX is not advertised', async () => {
+        const { trait } = createBoardHarness('mode');
 
-        const history = await trait.getHistoryX();
-
-        assert.equal(history, undefined);
-        assert.equal(requests.length, 0);
-    });
-
-    it('getHistoryX returns undefined for hub valves', async () => {
-        const { trait, requests } = createHubHarness([SENSOR_HISTORYX_NAMESPACE]);
-
-        const history = await trait.getHistoryX();
-
-        assert.equal(history, undefined);
-        assert.equal(requests.length, 0);
+        await notAdvertised(() => trait.getHistoryX());
     });
 
     it('getHistoryX returns decoded series when advertised', async () => {
