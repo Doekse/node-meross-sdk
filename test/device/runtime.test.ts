@@ -26,10 +26,14 @@ async function unreachable(): Promise<never> {
     throw new Error('unreachable');
 }
 
-function systemAllGetAck(payload?: MerossPayload, uuid = UUID): MerossMessage {
+function systemAllGetAck(
+    payload?: MerossPayload,
+    uuid = UUID,
+    method: 'PUSH' | 'GETACK' = 'GETACK'
+): MerossMessage {
     return encodeMessage({
         namespace: 'Appliance.System.All',
-        method: 'GETACK',
+        method,
         key: KEY,
         from: `/appliance/${uuid}/publish`,
         uuid,
@@ -406,64 +410,35 @@ describe('Runtime', () => {
         runtime.stop();
     });
 
-    it('applies MQTT System.All PUSH availability and SystemTrait once', () => {
-        const ips: Array<string | undefined> = [];
-        const changes: unknown[] = [];
-        const { runtime, endpoint } = createSystemRuntime({
-            onInnerIp(innerIp: string | undefined): void {
-                ips.push(innerIp);
-            }
-        });
-        endpoint.on('change', (change) => changes.push(change));
-        const all = systemAllGetAck({
-            all: {
-                system: {
-                    hardware: { type: 'mss110', uuid: UUID },
-                    firmware: { version: '8.0.0', innerIp: '10.0.0.9' },
-                    online: { status: 1 }
-                },
-                digest: {}
-            }
-        });
+    it('applies System.All PUSH and GETACK availability and SystemTrait once', () => {
+        for (const method of ['PUSH', 'GETACK'] as const) {
+            const ips: Array<string | undefined> = [];
+            const changes: unknown[] = [];
+            const { runtime, endpoint } = createSystemRuntime({
+                onInnerIp(innerIp: string | undefined): void {
+                    ips.push(innerIp);
+                }
+            });
+            endpoint.on('change', (change) => changes.push(change));
+            const all = systemAllGetAck({
+                all: {
+                    system: {
+                        hardware: { type: 'mss110', uuid: UUID },
+                        firmware: { version: '8.0.0', innerIp: '10.0.0.9' },
+                        online: { status: 1 }
+                    },
+                    digest: {}
+                }
+            }, UUID, method);
 
-        // Dispatcher route: observe every frame, then apply accepted PUSH.
-        runtime.observeInbound(all);
-        runtime.applyUpdate(all);
+            runtime.observeInbound(all);
+            runtime.applyUpdate(all);
 
-        assert.deepEqual(ips, ['10.0.0.9']);
-        assert.equal(changes.length, 1);
-        assert.equal(endpoint.system?.getFirmware()?.version, '8.0.0');
-        runtime.stop();
-    });
-
-    it('applies poller System.All GETACK availability and SystemTrait once', () => {
-        const ips: Array<string | undefined> = [];
-        const changes: unknown[] = [];
-        const { runtime, endpoint } = createSystemRuntime({
-            onInnerIp(innerIp: string | undefined): void {
-                ips.push(innerIp);
-            }
-        });
-        endpoint.on('change', (change) => changes.push(change));
-        const all = systemAllGetAck({
-            all: {
-                system: {
-                    hardware: { type: 'mss110', uuid: UUID },
-                    firmware: { version: '8.1.0', innerIp: '10.0.0.10' },
-                    online: { status: 1 }
-                },
-                digest: {}
-            }
-        });
-
-        // Dispatcher observes the GETACK; poller onAck applies once.
-        runtime.observeInbound(all);
-        runtime.applyUpdate(all);
-
-        assert.deepEqual(ips, ['10.0.0.10']);
-        assert.equal(changes.length, 1);
-        assert.equal(endpoint.system?.getFirmware()?.version, '8.1.0');
-        runtime.stop();
+            assert.deepEqual(ips, ['10.0.0.9']);
+            assert.equal(changes.length, 1);
+            assert.equal(endpoint.system?.getFirmware()?.version, '8.0.0');
+            runtime.stop();
+        }
     });
 
     it('applies each packed inner System.All GETACK once', () => {
