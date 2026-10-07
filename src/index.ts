@@ -1,6 +1,6 @@
 /**
  * Package entry: Session, Endpoint, Inventory, public errors, and trait types.
- * Transports, namespace codecs, the device graph, and trait constructors
+ * Transports, namespace codecs, device internals, and trait constructors
  * are not exported.
  */
 export {
