@@ -42,6 +42,7 @@ export class StandbyKillerTrait {
     private readonly namespaces: ReadonlySet<string>;
     private last: StandbyKillerValues = {};
 
+    /** @internal */
     constructor(bind: StandbyKillerTraitBind) {
         this.bind = bind;
         this.namespaces = bind.namespaces ?? new Set();
@@ -122,6 +123,12 @@ export class StandbyKillerTrait {
         return this.applyConfig(options);
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         const { namespace } = message.header;
         if (namespace === CONFIG_STANDBY_KILLER_NAMESPACE && this.has(CONFIG_STANDBY_KILLER_NAMESPACE)) {

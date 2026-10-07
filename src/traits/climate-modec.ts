@@ -24,6 +24,7 @@ export class ClimateModeCTrait extends ClimateBoardBase {
      */
     private lastOnMode: Exclude<ClimateModeCMode, 'off'> = 'auto';
 
+    /** @internal */
     constructor(bind: ClimateTraitBoardBind) {
         super(bind);
     }

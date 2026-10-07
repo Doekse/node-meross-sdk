@@ -39,6 +39,7 @@ export class MediaTrait {
     private readonly bind: MediaTraitBind;
     private last: MediaValues = {};
 
+    /** @internal */
     constructor(bind: MediaTraitBind) {
         this.bind = bind;
     }
@@ -105,6 +106,12 @@ export class MediaTrait {
         return { song };
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         if (message.header.namespace !== MP3_NAMESPACE) {
             return;

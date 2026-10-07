@@ -12,7 +12,16 @@ export {
     ProtocolError
 } from './errors';
 export { Session } from './session';
-export type { LoginOptions, TokenData, SessionOptions, DeviceList } from './session';
+export type {
+    LoginOptions,
+    TokenData,
+    SessionOptions,
+    DeviceList,
+    EnrollReport,
+    EnrollSkip,
+    EnrollSkipReason,
+    EnrollFailure
+} from './session';
 export type {
     LogRecord,
     LogLevel,

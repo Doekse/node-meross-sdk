@@ -40,6 +40,7 @@ export class DndTrait {
     private readonly bind: DndTraitBind;
     private last: DndValues = {};
 
+    /** @internal */
     constructor(bind: DndTraitBind) {
         this.bind = bind;
     }
@@ -81,6 +82,12 @@ export class DndTrait {
         return { on };
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         if (message.header.namespace !== DND_MODE_NAMESPACE) {
             return;

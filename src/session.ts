@@ -88,6 +88,42 @@ export type DeviceList = readonly {
     channels: readonly unknown[];
 }[];
 
+/** Why {@link Session.enroll} did not contact this uuid. */
+export type EnrollSkipReason = 'offline' | 'unknown';
+
+export interface EnrollSkip {
+    readonly uuid: string;
+    readonly reason: EnrollSkipReason;
+}
+
+export interface EnrollFailure {
+    readonly uuid: string;
+    readonly error: Error;
+}
+
+/**
+ * Outcome of one {@link Session.enroll} call. The promise still fulfills when
+ * some uuids skip or fail; {@link failed} matches `warning` for reachable
+ * Ability / System.All errors. Offline and unknown uuids are only in
+ * {@link skipped} (no event). Already-enrolled uuids are in {@link enrolled}.
+ */
+export interface EnrollReport {
+    readonly enrolled: readonly string[];
+    readonly skipped: readonly EnrollSkip[];
+    readonly failed: readonly EnrollFailure[];
+}
+
+type DeviceEnrollOutcome =
+    | { status: 'enrolled'; uuid: string }
+    | { status: 'failed'; uuid: string; error: Error }
+    | { status: 'closed'; uuid: string };
+
+interface MutableEnrollReport {
+    enrolled: string[];
+    skipped: EnrollSkip[];
+    failed: EnrollFailure[];
+}
+
 interface SessionEvents {
     connection: [connected: boolean];
     ratelimit: [uuid: string, dropped: number];
@@ -98,10 +134,11 @@ interface SessionEvents {
      * extra ids are omitted). Cloud-level failures still reject the call
      * itself, so a stale token surfaces there rather than here.
      *
-     * Deliberately not named `error`: Node throws on an unhandled `error` emit,
-     * which would turn one unreachable device into a crashed host process.
+     * `uuid` is the physical device when known. Deliberately not named `error`:
+     * Node throws on an unhandled `error` emit, which would turn one
+     * unreachable device into a crashed host process.
      */
-    warning: [error: Error];
+    warning: [error: Error, uuid?: string];
 }
 
 /**
@@ -140,7 +177,7 @@ export class Session extends EventEmitter<SessionEvents> {
      * One Ability / System.All pass per uuid. Concurrent {@link enroll} callers
      * for the same uuid join this promise instead of starting a second pass.
      */
-    private readonly enrolling = new Map<string, Promise<void>>();
+    private readonly enrolling = new Map<string, Promise<DeviceEnrollOutcome>>();
     /**
      * Shared cloud `devList` for overlapping {@link enroll} calls. Cleared in
      * `finally` so a later enroll lists again.
@@ -297,17 +334,21 @@ export class Session extends EventEmitter<SessionEvents> {
      * Ability / System.All pass per uuid; passes are bounded by
      * {@link ENROLL_CONCURRENCY} across calls. Omit `uuids` to enroll every
      * online device not yet enrolled; pass `[]` to enroll nothing. Offline rows
-     * and uuids absent from the account are skipped silently; a reachable
-     * device that fails is reported on `warning` and the rest continue.
+     * and uuids absent from the account are in {@link EnrollReport.skipped};
+     * a reachable device that fails is in {@link EnrollReport.failed} and on
+     * `warning` (with that uuid) while the rest continue.
      */
-    async enroll(uuids?: readonly string[]): Promise<void> {
+    async enroll(uuids?: readonly string[]): Promise<EnrollReport> {
         this.throwIfNotConnected();
         await this.connecting;
         this.throwIfNotConnected();
 
-        const requested = uuids === undefined ? undefined : new Set(uuids);
-        const joined: Promise<void>[] = [];
+        const report: MutableEnrollReport = { enrolled: [], skipped: [], failed: [] };
+        const requested = uuids === undefined ? undefined : [...uuids];
+        const joined: Promise<DeviceEnrollOutcome>[] = [];
+        const pending = new Set<string>();
         let needsList = false;
+
         if (requested === undefined) {
             needsList = true;
         } else {
@@ -315,36 +356,59 @@ export class Session extends EventEmitter<SessionEvents> {
                 const inFlight = this.enrolling.get(uuid);
                 if (inFlight) {
                     joined.push(inFlight);
-                } else if (!this.devices.has(uuid)) {
+                } else if (this.devices.has(uuid)) {
+                    if (!report.enrolled.includes(uuid)) {
+                        report.enrolled.push(uuid);
+                    }
+                } else {
                     needsList = true;
+                    pending.add(uuid);
                 }
             }
         }
         if (!needsList) {
-            await Promise.all(joined);
+            await this.collectEnrollOutcomes(joined, report);
             this.throwIfNotConnected();
-            return;
+            return report;
         }
 
         this.enterListingPhase();
-        const passes: Promise<void>[] = [];
         try {
             const cloudDevices = await this.listCloudDevices();
             this.throwIfNotConnected();
-            for (const cloudDevice of cloudDevices) {
-                if (cloudDevice.onlineStatus !== 1) {
-                    continue;
+            if (requested === undefined) {
+                for (const cloudDevice of cloudDevices) {
+                    if (cloudDevice.onlineStatus !== 1) {
+                        continue;
+                    }
+                    joined.push(this.enrollDevice(cloudDevice));
                 }
-                if (requested !== undefined && !requested.has(cloudDevice.uuid)) {
-                    continue;
+            } else {
+                const byUuid = new Map(cloudDevices.map((row) => [row.uuid, row]));
+                const seen = new Set<string>();
+                for (const uuid of requested) {
+                    if (seen.has(uuid) || !pending.has(uuid)) {
+                        continue;
+                    }
+                    seen.add(uuid);
+                    const cloudDevice = byUuid.get(uuid);
+                    if (!cloudDevice) {
+                        report.skipped.push({ uuid, reason: 'unknown' });
+                        continue;
+                    }
+                    if (cloudDevice.onlineStatus !== 1) {
+                        report.skipped.push({ uuid, reason: 'offline' });
+                        continue;
+                    }
+                    joined.push(this.enrollDevice(cloudDevice));
                 }
-                passes.push(this.enrollDevice(cloudDevice));
             }
         } finally {
             this.releaseListingPhase();
         }
-        await Promise.all([...passes, ...joined]);
+        await this.collectEnrollOutcomes(joined, report);
         this.throwIfNotConnected();
+        return report;
     }
 
     /**
@@ -532,8 +596,27 @@ export class Session extends EventEmitter<SessionEvents> {
         await router?.disconnect();
     }
 
-    private emitWarning(error: unknown): void {
-        this.emit('warning', error instanceof Error ? error : new Error(String(error)));
+    private emitWarning(error: unknown, uuid?: string): void {
+        this.emit(
+            'warning',
+            error instanceof Error ? error : new Error(String(error)),
+            uuid
+        );
+    }
+
+    private async collectEnrollOutcomes(
+        joined: readonly Promise<DeviceEnrollOutcome>[],
+        report: MutableEnrollReport
+    ): Promise<void> {
+        for (const outcome of await Promise.all(joined)) {
+            if (outcome.status === 'enrolled') {
+                if (!report.enrolled.includes(outcome.uuid)) {
+                    report.enrolled.push(outcome.uuid);
+                }
+            } else if (outcome.status === 'failed') {
+                report.failed.push({ uuid: outcome.uuid, error: outcome.error });
+            }
+        }
     }
 
     /**
@@ -550,14 +633,14 @@ export class Session extends EventEmitter<SessionEvents> {
      * One pass per uuid. A repeat caller joins the in-flight promise, and an
      * already-enrolled uuid must not contact the device again.
      */
-    private enrollDevice(cloudDevice: CloudDevice): Promise<void> {
+    private enrollDevice(cloudDevice: CloudDevice): Promise<DeviceEnrollOutcome> {
         const uuid = cloudDevice.uuid;
         const inFlight = this.enrolling.get(uuid);
         if (inFlight) {
             return inFlight;
         }
         if (this.devices.has(uuid)) {
-            return Promise.resolve();
+            return Promise.resolve({ status: 'enrolled', uuid });
         }
         const pass = this.runEnroll(cloudDevice).finally(() => {
             this.enrolling.delete(uuid);
@@ -570,19 +653,25 @@ export class Session extends EventEmitter<SessionEvents> {
      * One Ability / System.All pass under the global slot limiter. Skips
      * materialize when {@link closing} so disconnect cannot leave a poller.
      */
-    private async runEnroll(cloudDevice: CloudDevice): Promise<void> {
-        await this.withEnrollSlot(async () => {
+    private async runEnroll(cloudDevice: CloudDevice): Promise<DeviceEnrollOutcome> {
+        return this.withEnrollSlot(async () => {
+            const uuid = cloudDevice.uuid;
             if (this.closing) {
-                return;
+                return { status: 'closed', uuid };
             }
             try {
                 const { reshaped } = await this.readDevice(cloudDevice);
                 if (this.closing) {
-                    return;
+                    return { status: 'closed', uuid };
                 }
-                this.materializeEndpoints(reshaped ? new Set([cloudDevice.uuid]) : new Set());
+                this.materializeEndpoints(reshaped ? new Set([uuid]) : new Set());
+                return { status: 'enrolled', uuid };
             } catch (error) {
-                this.emitWarning(error);
+                const err = error instanceof Error ? error : new Error(String(error));
+                if (!this.closing) {
+                    this.emitWarning(err, uuid);
+                }
+                return { status: 'failed', uuid, error: err };
             }
         });
     }
@@ -695,7 +784,7 @@ export class Session extends EventEmitter<SessionEvents> {
             } catch (error) {
                 // Leave subDevices undefined: digest children still enroll;
                 // only the cloud name overlay is lost.
-                this.emitWarning(error);
+                this.emitWarning(error, cloudDevice.uuid);
             }
         }
         return this.graph.enroll({

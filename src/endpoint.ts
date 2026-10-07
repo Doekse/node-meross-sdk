@@ -231,6 +231,13 @@ export class Endpoint extends EventEmitter<EndpointEvents> {
     private online: boolean;
     private currentProtocol: Protocol;
 
+    /**
+     * Hosts obtain endpoints from {@link Session.endpoint}. Tests and attach
+     * construct this directly.
+     *
+     * @internal
+     * @package
+     */
     constructor(options: EndpointOptions) {
         super();
         this.id = options.id;

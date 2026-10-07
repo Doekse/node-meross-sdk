@@ -49,6 +49,7 @@ export class OverTempTrait {
     private readonly namespaces: ReadonlySet<string>;
     private last: OverTempValues = {};
 
+    /** @internal */
     constructor(bind: OverTempTraitBind) {
         this.bind = bind;
         this.namespaces = bind.namespaces ?? new Set();
@@ -130,6 +131,12 @@ export class OverTempTrait {
         return values;
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         const { namespace } = message.header;
         if (namespace === CONFIG_OVERTEMP_NAMESPACE && this.has(CONFIG_OVERTEMP_NAMESPACE)) {

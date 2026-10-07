@@ -1,7 +1,7 @@
 import type { EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
 import { enrollBoardTimerTriggerExtra } from '../device/enroll-helpers';
 import type { TraitName } from '../endpoint';
-import { MerossError } from '../errors';
+import { CommandError, MerossError } from '../errors';
 import {
     CONTROL_TRIGGER_NAMESPACE,
     DIGEST_TRIGGERX_NAMESPACE,
@@ -78,6 +78,7 @@ export class TriggerTrait {
      */
     private legacyRead?: Promise<void>;
 
+    /** @internal */
     constructor(bind: TriggerTraitBind) {
         this.bind = bind;
     }
@@ -156,6 +157,12 @@ export class TriggerTrait {
         this.applyEntries(this.cached().filter((entry) => entry.id !== id));
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         if (message.header.namespace === CONTROL_TRIGGER_NAMESPACE && this.bind.generation === 'legacy') {
             // Classic Toggle only applies on channel 0; pre-X Trigger is the same device-wide list.
@@ -169,7 +176,9 @@ export class TriggerTrait {
             return;
         }
         if (message.header.namespace === DIGEST_TRIGGERX_NAMESPACE) {
-            void this.resolveFromDigest(message);
+            void this.resolveFromDigest(message).catch(() => {
+                // Keep the previous list; the next digest PUSH reads again.
+            });
             return;
         }
         if (message.header.namespace !== TRIGGERX_NAMESPACE) {
@@ -190,27 +199,30 @@ export class TriggerTrait {
         this.applyEntries(next);
     }
 
+    /** A non-5050 per-id failure rejects so the previous list stays. */
     private async resolveFromDigest(message: MerossMessage): Promise<void> {
+        const ids = decodeDigestTriggerXGetAck(message.payload)
+            .filter((row) => row.channel === this.bind.channel)
+            .map((row) => row.id);
+        const groups = await Promise.all(ids.map((id) => this.fetchById(id)));
+        this.applyEntries(groups.flat());
+    }
+
+    private async fetchById(id: string): Promise<TriggerEntry[]> {
         try {
-            const ids = decodeDigestTriggerXGetAck(message.payload)
-                .filter((row) => row.channel === this.bind.channel)
-                .map((row) => row.id);
-            const groups = await Promise.all(ids.map(async (id) => {
-                try {
-                    const reply = await this.bind.request({
-                        namespace: TRIGGERX_NAMESPACE,
-                        method: 'GET',
-                        payload: encodeTriggerXGet({ id })
-                    });
-                    return decodeTriggerXGetAck(reply.payload)
-                        .filter((entry) => entry.channel === this.bind.channel);
-                } catch {
-                    return [];
-                }
-            }));
-            this.applyEntries(groups.flat());
-        } catch {
-            // Next PUSH or setter call will recover.
+            const reply = await this.bind.request({
+                namespace: TRIGGERX_NAMESPACE,
+                method: 'GET',
+                payload: encodeTriggerXGet({ id })
+            });
+            return decodeTriggerXGetAck(reply.payload)
+                .filter((entry) => entry.channel === this.bind.channel);
+        } catch (error) {
+            // 5050 means this Digest id is already gone, so omit it.
+            if (error instanceof CommandError && error.deviceCode === 5050) {
+                return [];
+            }
+            throw error;
         }
     }
 

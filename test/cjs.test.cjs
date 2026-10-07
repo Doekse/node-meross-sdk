@@ -28,6 +28,15 @@ describe('CJS public surface', () => {
         assert.ok(new sdk.CommandError('x') instanceof sdk.MerossError);
     });
 
+    it('strips trait handlePush and Endpoint constructor from published types', () => {
+        const { readFileSync } = require('node:fs');
+        const { join } = require('node:path');
+        const switchDts = readFileSync(join(__dirname, '../dist/traits/switch.d.ts'), 'utf8');
+        assert.equal(switchDts.includes('handlePush'), false);
+        const endpointDts = readFileSync(join(__dirname, '../dist/endpoint.d.ts'), 'utf8');
+        assert.equal(/\bconstructor\s*\(/.test(endpointDts), false);
+    });
+
     it('does not export protocol or transport internals', () => {
         assert.equal(sdk.MqttManager, undefined);
         assert.equal(sdk.HttpManager, undefined);

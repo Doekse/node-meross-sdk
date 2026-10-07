@@ -54,6 +54,7 @@ export class AlarmTrait {
     /** MA151 GETACK/PUSH uses maSecurity; SET must match. */
     private maSecurity = false;
 
+    /** @internal */
     constructor(bind: AlarmTraitBind) {
         this.bind = bind;
         this.namespaces = bind.namespaces ?? new Set();
@@ -141,6 +142,12 @@ export class AlarmTrait {
         return { beep: on };
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         if (message.header.namespace === CONTROL_ALARM_NAMESPACE && this.has(CONTROL_ALARM_NAMESPACE)) {
             for (const entry of decodeAlarmPush(message.payload)) {

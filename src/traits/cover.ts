@@ -67,6 +67,7 @@ export class CoverTrait {
     private lastMultipleConfig: GarageMultipleConfigEntry | undefined;
     private lastShutterConfig: ShutterConfig | undefined;
 
+    /** @internal */
     constructor(bind: CoverTraitBind) {
         this.bind = bind;
         if (bind.initialOpen !== undefined) {
@@ -263,6 +264,12 @@ export class CoverTrait {
         });
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
 
         const ns = message.header.namespace;

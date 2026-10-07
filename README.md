@@ -167,7 +167,7 @@ Membership is additive. After `connect()` opens transports:
 
 ```javascript
 await session.connect();
-await session.enroll([uuid]);   // one physical device
+const { enrolled, skipped, failed } = await session.enroll([uuid]);
 await session.enroll();         // every online device not yet enrolled
 await session.unenroll(uuid);   // stop its runtime and drop its rows
 await session.disconnect();
@@ -175,7 +175,7 @@ await session.disconnect();
 
 `enroll` is idempotent per uuid: an already-enrolled or in-flight uuid does not list the account or contact the device again. Concurrent callers share one in-flight `devList` and one Ability / System.All pass per uuid; passes are bounded by `ENROLL_CONCURRENCY` across calls. Pass `[]` to enroll nothing.
 
-Offline rows (`onlineStatus !== 1`) and uuids absent from the account are skipped silently; a reachable device that fails is reported on `warning` and the rest continue. `session.endpoint(id)` still throws `ENDPOINT_NOT_FOUND` for anything that did not enroll.
+The promise fulfills with `{ enrolled, skipped, failed }`. Offline rows (`onlineStatus !== 1`) and uuids absent from the account are `skipped` (`offline` / `unknown`) with no event. A reachable device that fails is in `failed` and on `warning` (error plus uuid); the rest continue. Already-enrolled uuids are in `enrolled`. `session.endpoint(id)` still throws `ENDPOINT_NOT_FOUND` for anything that did not enroll.
 
 Hosts that pair devices one at a time (for example Homey `onInit` per outlet) call `enroll([uuid])` from each device and `unenroll(uuid)` when the last sibling for that physical plug is deleted. There is no need to resubmit the whole paired set.
 
@@ -221,9 +221,10 @@ session.on('ratelimit', (uuid, dropped) => {
   // cloud publish dropped for this device; dropped is the cumulative count
 });
 
-session.on('warning', (error) => {
-  // a single device that enroll() skipped, e.g. an Ability / System.All timeout,
-  // or a hub whose cloud subdevice list failed (digest children still enroll).
+session.on('warning', (error, uuid) => {
+  // a reachable device that enroll() could not finish, e.g. an Ability /
+  // System.All timeout, or a hub whose cloud subdevice list failed (digest
+  // children still enroll). uuid is the physical device when known.
   // Cloud-level failures reject enroll() itself instead of arriving here.
 });
 

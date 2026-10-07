@@ -60,6 +60,7 @@ export class PresenceTrait {
     private readonly bind: PresenceTraitBind;
     private last: PresenceValues = {};
 
+    /** @internal */
     constructor(bind: PresenceTraitBind) {
         this.bind = bind;
     }
@@ -76,6 +77,12 @@ export class PresenceTrait {
         return { ...this.last };
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         if (message.header.namespace === SENSOR_LATESTX_NAMESPACE) {
             for (const entry of decodeLatestXPush(message.payload)) {

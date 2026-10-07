@@ -164,6 +164,7 @@ export abstract class ClimateTraitBase {
     protected readonly emitChange: (values: ClimateValues) => void;
     protected last: ClimateValues = {};
 
+    /** @internal */
     protected constructor(
         namespaces: ReadonlySet<string> | undefined,
         request: DeviceRequest,
@@ -187,6 +188,12 @@ export abstract class ClimateTraitBase {
         return this.last.on;
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     abstract handlePush(message: MerossMessage): void;
 
     abstract setOn(on: boolean): Promise<{ on: boolean }>;

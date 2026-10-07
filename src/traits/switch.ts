@@ -69,6 +69,7 @@ export class SwitchTrait {
     private readonly bind: SwitchTraitBind;
     private last: SwitchValues = {};
 
+    /** @internal */
     constructor(bind: SwitchTraitBind) {
         this.bind = bind;
         if (bind.initialOn !== undefined) {
@@ -107,6 +108,12 @@ export class SwitchTrait {
         return { on };
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         if (this.bind.kind === 'hub') {
             const ns = message.header.namespace;

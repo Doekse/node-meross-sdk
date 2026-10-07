@@ -44,6 +44,7 @@ export class AlertTrait {
     private readonly namespaces: ReadonlySet<string>;
     private last: AlertValues = {};
 
+    /** @internal */
     constructor(bind: AlertTraitBind) {
         this.bind = bind;
         this.namespaces = bind.namespaces ?? new Set();
@@ -119,6 +120,12 @@ export class AlertTrait {
         return this.applyConfig(options);
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         const { namespace } = message.header;
         if (namespace === CONTROL_ALERT_CONFIG_NAMESPACE && this.has(CONTROL_ALERT_CONFIG_NAMESPACE)) {

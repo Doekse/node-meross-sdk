@@ -142,6 +142,7 @@ export class SensorTrait {
     /** Last Hub.Sensor.Smoke wire `status`; mute() maps from this. */
     private lastSmokeStatus: number | undefined;
 
+    /** @internal */
     constructor(bind: SensorTraitBind) {
         this.bind = bind;
         this.namespaces = bind.namespaces ?? new Set();
@@ -258,6 +259,12 @@ export class SensorTrait {
         return this.setSmokeConfig({ detectEnabled: enabled });
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         const ns = message.header.namespace;
         const payload = message.payload;

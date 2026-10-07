@@ -36,6 +36,7 @@ export class SprayTrait {
     private readonly bind: SprayTraitBind;
     private last: SprayValues = {};
 
+    /** @internal */
     constructor(bind: SprayTraitBind) {
         this.bind = bind;
     }
@@ -63,6 +64,12 @@ export class SprayTrait {
         return { mode };
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         if (message.header.namespace !== SPRAY_NAMESPACE) {
             return;

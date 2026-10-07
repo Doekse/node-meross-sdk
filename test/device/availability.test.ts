@@ -547,6 +547,32 @@ describe('DeviceAvailability', () => {
         monitor.stop();
     });
 
+    it('a live start counts as a sample so a failed first probe can go offline', async (t: TestContext) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let clock = 0;
+        const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
+        const seen: boolean[] = [];
+        endpoint.on('availability', (online) => seen.push(online));
+        const monitor = new DeviceAvailability({
+            uuid: UUID,
+            initialOnline: true,
+            endpoints: [endpoint],
+            heartbeatIntervalMs: INTERVAL_MS,
+            now(): number {
+                return clock;
+            },
+            request: unreachable
+        });
+        monitor.start();
+        seen.length = 0;
+        clock = INTERVAL_MS + 1;
+        t.mock.timers.tick(INTERVAL_MS + 1);
+        await settle(3);
+
+        assert.deepEqual(seen, [false]);
+        monitor.stop();
+    });
+
     it('recovers online on any inbound after silence offline', async (t: TestContext) => {
         const { endpoint, seen, monitor } = await runBoardSilence(t, unreachable);
 

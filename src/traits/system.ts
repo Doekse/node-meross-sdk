@@ -88,6 +88,7 @@ export class SystemTrait {
     /** System.Clock timestamp; preferred over Time for skew when present. */
     private clockTimestamp: number | undefined;
 
+    /** @internal */
     constructor(bind: SystemTraitBind) {
         this.bind = bind;
         this.now = bind.now ?? Date.now;
@@ -187,6 +188,12 @@ export class SystemTrait {
         return position;
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         const { namespace } = message.header;
         if (namespace === SYSTEM_ALL_NAMESPACE) {

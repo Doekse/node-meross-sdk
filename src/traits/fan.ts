@@ -70,6 +70,7 @@ export class FanTrait {
     /** True once Control.Fan reported a positive maxSpeed (Fan.Config must not override). */
     private fanReportedMaxSpeed = false;
 
+    /** @internal */
     constructor(bind: FanTraitBind) {
         this.bind = bind;
         this.namespaces = bind.namespaces ?? new Set();
@@ -166,6 +167,12 @@ export class FanTrait {
         });
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
 
         if (message.header.namespace === TOGGLEX_NAMESPACE && this.bind.hasToggleX) {

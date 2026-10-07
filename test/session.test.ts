@@ -925,9 +925,10 @@ describe('Session.enroll and unenroll', () => {
             enroll: []
         });
 
-        await session.enroll([UUID]);
+        const report = await session.enroll([UUID]);
         await waitMacrotask();
 
+        assert.deepEqual(report, { enrolled: [UUID], skipped: [], failed: [] });
         assert.deepEqual(
             session.inventory.endpoints().map((row) => row.id),
             [`${UUID}:0`]
@@ -946,9 +947,11 @@ describe('Session.enroll and unenroll', () => {
         const listedAfterConnect = cloudCallCount(calls, '/v1/Device/devList');
         const getsAfterConnect = abilityAllGets(client, UUID).length;
 
-        await session.enroll([UUID]);
-        await session.enroll([UUID, UUID]);
+        const report = await session.enroll([UUID]);
+        const again = await session.enroll([UUID, UUID]);
 
+        assert.deepEqual(report, { enrolled: [UUID], skipped: [], failed: [] });
+        assert.deepEqual(again, { enrolled: [UUID], skipped: [], failed: [] });
         assert.equal(cloudCallCount(calls, '/v1/Device/devList'), listedAfterConnect);
         assert.equal(abilityAllGets(client, UUID).length, getsAfterConnect);
         await session.disconnect();
@@ -1017,9 +1020,15 @@ describe('Session.enroll and unenroll', () => {
             enroll: []
         });
 
-        await session.enroll([UUID, shed.uuid, missingUuid]);
+        const report = await session.enroll([UUID, shed.uuid, missingUuid]);
         await waitMacrotask();
 
+        assert.deepEqual(report.enrolled, [UUID]);
+        assert.deepEqual(report.skipped, [
+            { uuid: shed.uuid, reason: 'offline' },
+            { uuid: missingUuid, reason: 'unknown' }
+        ]);
+        assert.deepEqual(report.failed, []);
         assert.deepEqual(
             session.inventory.endpoints().map((row) => row.id),
             [`${UUID}:0`]
@@ -1080,14 +1089,20 @@ describe('Session.enroll and unenroll', () => {
             devices: [DEVICE_ROW, LAMP_ROW],
             enroll: []
         });
-        const warnings: Error[] = [];
-        session.on('warning', (error) => warnings.push(error));
+        const warnings: Array<{ error: Error; uuid?: string }> = [];
+        session.on('warning', (error, uuid) => warnings.push({ error, uuid }));
 
         client.failUuid = LAMP_UUID;
-        await session.enroll([UUID, LAMP_UUID]);
+        const report = await session.enroll([UUID, LAMP_UUID]);
         await waitMacrotask();
 
         assert.equal(warnings.length, 1);
+        assert.equal(warnings[0]?.uuid, LAMP_UUID);
+        assert.deepEqual(report.enrolled, [UUID]);
+        assert.deepEqual(report.skipped, []);
+        assert.equal(report.failed.length, 1);
+        assert.equal(report.failed[0]?.uuid, LAMP_UUID);
+        assert.equal(report.failed[0]?.error, warnings[0]?.error);
         assert.deepEqual(
             session.inventory.endpoints().map((row) => row.id),
             [`${UUID}:0`]
@@ -1223,19 +1238,20 @@ describe('Session hub enroll', () => {
     const hubEndpointIds = [HUB_UUID, `${HUB_UUID}#${HUB_CHILD_ID}`];
 
     it('warns when getSubDevices fails but still enrolls digest children', async () => {
-        const warnings: Error[] = [];
+        const warnings: Array<{ error: Error; uuid?: string }> = [];
         const { session } = await loginConnected({
             devices: [HUB_ROW],
             ack: { hubSubdevice: hubDigestChild },
             beforeConnect: (next) => {
-                next.on('warning', (error) => warnings.push(error));
+                next.on('warning', (error, uuid) => warnings.push({ error, uuid }));
             }
         });
 
         assert.equal(warnings.length, 1);
-        const warning = warnings[0];
+        const warning = warnings[0]?.error;
         assert.ok(warning instanceof CloudError);
         assert.equal(warning.code, 'HTTP_ERROR');
+        assert.equal(warnings[0]?.uuid, HUB_UUID);
         assert.deepEqual(
             session.inventory.endpoints().map((row) => row.id),
             hubEndpointIds

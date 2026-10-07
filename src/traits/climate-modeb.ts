@@ -15,6 +15,7 @@ import type {
 export class ClimateModeBTrait extends ClimateBoardBase {
     readonly generation = 'modeB' as const;
 
+    /** @internal */
     constructor(bind: ClimateTraitBoardBind) {
         super(bind);
     }

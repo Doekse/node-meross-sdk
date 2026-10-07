@@ -69,6 +69,7 @@ export class LightTrait {
     private last: LightValues = {};
     private effectCatalog: LightEffectEntry[] = [];
 
+    /** @internal */
     constructor(bind: LightTraitBind) {
         this.bind = bind;
         this.lightCapacity = bind.lightCapacity;
@@ -200,6 +201,12 @@ export class LightTrait {
         return { rgb: this.last.rgb ?? rgb };
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
 
         if (message.header.namespace === TOGGLEX_NAMESPACE && this.bind.hasToggleX) {

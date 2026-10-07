@@ -52,6 +52,7 @@ export class DiffuserTrait {
     private readonly namespaces: ReadonlySet<string>;
     private last: DiffuserValues = {};
 
+    /** @internal */
     constructor(bind: DiffuserTraitBind) {
         this.bind = bind;
         this.namespaces = bind.namespaces ?? new Set();
@@ -154,6 +155,12 @@ export class DiffuserTrait {
         return { sprayMode };
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         const ns = message.header.namespace;
         if (ns === DIFFUSER_LIGHT_NAMESPACE) {

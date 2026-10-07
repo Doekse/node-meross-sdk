@@ -76,6 +76,7 @@ export class ClimateHubTrait extends ClimateTraitBase {
 
     private readonly subDeviceId: string;
 
+    /** @internal */
     constructor(bind: ClimateTraitHubBind) {
         super(bind.namespaces, bind.request, bind.emitChange);
         this.subDeviceId = bind.subDeviceId;
@@ -241,6 +242,12 @@ export class ClimateHubTrait extends ClimateTraitBase {
         return { superCtl };
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         this.handleHubPush(message.header.namespace, message.payload);
     }

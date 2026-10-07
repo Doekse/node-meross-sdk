@@ -79,6 +79,7 @@ export class TimerTrait {
      */
     private legacyRead?: Promise<void>;
 
+    /** @internal */
     constructor(bind: TimerTraitBind) {
         this.bind = bind;
     }
@@ -183,6 +184,12 @@ export class TimerTrait {
         this.applyEntries(this.cached().filter((entry) => entry.id !== id));
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         if (message.header.namespace === CONTROL_TIMER_NAMESPACE && this.bind.generation === 'legacy') {
             // Classic Toggle only applies on channel 0; pre-X Timer is the same device-wide list.

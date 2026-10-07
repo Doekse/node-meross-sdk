@@ -77,6 +77,7 @@ export class EnergyTrait {
     private readonly namespaces: ReadonlySet<string>;
     private last: EnergyValues = {};
 
+    /** @internal */
     constructor(bind: EnergyTraitBind) {
         this.bind = bind;
         this.namespaces = bind.namespaces ?? new Set();
@@ -157,6 +158,12 @@ export class EnergyTrait {
         this.applyConsumption([]);
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         if (message.header.namespace === ELECTRICITY_NAMESPACE && this.bind.hasElectricity) {
             // Board Electricity is not channel-scoped; do not drop the sample

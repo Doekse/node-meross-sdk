@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
-import { MerossError } from '../../src/errors';
+import { CommandError, MerossError } from '../../src/errors';
 import {
     CONTROL_TRIGGER_NAMESPACE,
     DIGEST_TRIGGERX_NAMESPACE,
@@ -131,6 +131,50 @@ async function seedFromDigest(
 }
 
 describe('TriggerTrait', () => {
+    it('a failed per-id read does not replace the list with empty', async () => {
+        let reads = 0;
+        const { requests, request } = createRequestRecorder({
+            uuid: UUID,
+            key: KEY,
+            ack: (requestOptions, sent) => {
+                if (requestOptions.namespace === DIGEST_TRIGGERX_NAMESPACE) {
+                    return traitAck(sent, {
+                        key: KEY,
+                        method: 'GETACK',
+                        payload: {
+                            digest: [{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]
+                        }
+                    });
+                }
+                reads += 1;
+                if (reads > 1) {
+                    throw new CommandError('read failed', 'COMMAND_TIMEOUT');
+                }
+                return traitAck(sent, {
+                    key: KEY,
+                    method: 'GETACK',
+                    payload: { triggerx: WIRE_ENTRY }
+                });
+            }
+        });
+        const trait = new TriggerTrait({
+            channel: CHANNEL,
+            generation: 'x',
+            namespaces: new Set([TRIGGERX_NAMESPACE, DIGEST_TRIGGERX_NAMESPACE]),
+            request,
+            emitChange: () => {}
+        });
+        trait.handlePush(digestGetAck([{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]));
+        await flush();
+        assert.equal(trait.list()[0]?.id, WIRE_ENTRY.id);
+
+        requests.length = 0;
+        trait.handlePush(digestGetAck([{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]));
+        await flush();
+        assert.equal(trait.list()[0]?.id, WIRE_ENTRY.id);
+        assert.equal(requests[0]?.header.namespace, TRIGGERX_NAMESPACE);
+    });
+
     it('resolves GET by id from Digest GETACK', async () => {
         const { trait, requests, changes } = createHarness();
 

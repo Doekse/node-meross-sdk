@@ -84,6 +84,9 @@ export class DeviceAvailability {
         for (const endpoint of this.children.values()) {
             endpoint.setAvailability(this.online && endpoint.isOnline(), true);
         }
+        if (this.online) {
+            this.heartbeat.recordResponse();
+        }
         this.heartbeat.start();
     }
 

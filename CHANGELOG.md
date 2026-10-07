@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Climate is a generation-discriminated union (`mode` / `modeB` / `modeC` / `hub` on `endpoint.climate.generation`). ModeC-only methods (`setFanSpeed`) and hub-only methods (`setConfig`, `setSuperCtl`) are not on the other instances. Ability-gated extras throw `MerossError` `NAMESPACE_NOT_ADVERTISED` instead of succeeding as a no-op. Hub `setMode('manual')` is not in the hub mode union. Mode `setOn` writes `onoff` only (schedule/eco/manual survive). ModeC `setTargetTemperature` throws `UNSUPPORTED` unless current mode is heat or cool. ModeC `setFanSpeed(..., null)` disables fan hold (`hTime=99999`).
 - `Session.connect()` opens transports only and takes no options. Membership is `enroll` / `unenroll`. `Session.sync()` and `SyncOptions` are removed. After `logout()`, `connect()` rejects with `AuthError` (same as `getToken()`).
+- `Session.enroll()` returns `{ enrolled, skipped, failed }` (`EnrollReport` on the public barrel). Offline / unknown uuids are `skipped`; reachable Ability / System.All failures are `failed` and on `warning` with that uuid as the second argument. The promise still fulfills. Trait `handlePush` / constructors and the `Endpoint` / `Inventory` constructors are `@internal` (stripped from published `.d.ts`).
 
 ### Changed
 
@@ -18,11 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `Session.enroll(uuids?)` and `Session.unenroll(uuid)` for additive membership. `enroll` is idempotent per uuid (an already-enrolled or in-flight uuid does not list the account or contact the device again), concurrent callers share one in-flight `devList` and one Ability / System.All pass per uuid, and passes are bounded by `ENROLL_CONCURRENCY` across calls. Omit `uuids` to enroll every online device not yet enrolled; pass `[]` to enroll nothing. Offline rows and uuids absent from the account are skipped silently; a reachable device that fails is reported on `warning`. `unenroll` awaits an in-flight enroll for that uuid first, then stops its runtime and drops its rows. `disconnect` waits for in-flight enrolls so none can start a poller after teardown.
+- `Session.enroll(uuids?)` and `Session.unenroll(uuid)` for additive membership. `enroll` is idempotent per uuid (an already-enrolled or in-flight uuid does not list the account or contact the device again), concurrent callers share one in-flight `devList` and one Ability / System.All pass per uuid, and passes are bounded by `ENROLL_CONCURRENCY` across calls. Omit `uuids` to enroll every online device not yet enrolled; pass `[]` to enroll nothing. `unenroll` awaits an in-flight enroll for that uuid first, then stops its runtime and drops its rows. `disconnect` waits for in-flight enrolls so none can start a poller after teardown.
 
 ### Fixed
 
 - `disconnect` during an in-flight enroll no longer starts pollers after transports close.
+- A board that enrolled successfully is treated as already sampled by heartbeat, so a failed first silence probe can mark it offline.
+- TriggerX digest GET-by-id failures no longer replace the cached list with empty (same 5050-only omit as TimerX).
 
 ## [0.5.0-alpha] - 2026-10-01
 

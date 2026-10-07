@@ -101,11 +101,18 @@ export abstract class ClimateBoardBase extends ClimateTraitBase {
     protected readonly channel: number;
     protected lastSystem: ClimateSystem | undefined;
 
+    /** @internal */
     protected constructor(bind: ClimateTraitBoardBind) {
         super(bind.namespaces, bind.request, bind.emitChange);
         this.channel = bind.channel;
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         this.handleBoardPush(message.header.namespace, message.payload);
     }

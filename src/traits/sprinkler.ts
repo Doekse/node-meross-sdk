@@ -82,6 +82,7 @@ export class SprinklerTrait {
     private readonly namespaces: ReadonlySet<string>;
     private last: SprinklerValues = {};
 
+    /** @internal */
     constructor(bind: SprinklerTraitBind) {
         this.bind = bind;
         this.namespaces = bind.namespaces ?? new Set();
@@ -180,6 +181,12 @@ export class SprinklerTrait {
         return payload;
     }
 
+    /**
+     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     *
+     * @internal
+     * @package
+     */
     handlePush(message: MerossMessage): void {
         const ns = message.header.namespace;
         const payload = message.payload;

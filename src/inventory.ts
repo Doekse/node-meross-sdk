@@ -21,6 +21,12 @@ export interface InventoryRow {
 export class Inventory {
     private rows: readonly InventoryRow[] = [];
 
+    /**
+     * Session owns the live catalog. Hosts read {@link endpoints}.
+     *
+     * @internal
+     * @package
+     */
     constructor(rows: readonly InventoryRow[] = []) {
         this.rows = rows;
     }
