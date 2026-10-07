@@ -267,24 +267,27 @@ export class DeviceGraph {
         return undefined;
     }
 
-    /**
-     * Drops trait-less rows (unclassified hub children). The hub parent stays
-     * visible when it carries system / alarm / dnd.
-     */
     inventoryRows(): InventoryRow[] {
-        return [...this.physical.values()].flatMap((device) =>
-            device.endpoints
-                .filter((endpoint) => endpoint.traits.length > 0)
-                .map((endpoint) => ({
-                    id: endpoint.id,
-                    name: endpoint.name,
-                    model: endpoint.model,
-                    classHint: endpoint.classHint,
-                    traits: [...endpoint.traits],
-                    ...(endpoint.parentId ? { parentId: endpoint.parentId } : {})
-                }))
-        );
+        return [...this.physical.values()].flatMap(projectInventoryRows);
     }
+}
+
+/**
+ * Drops trait-less rows (unclassified hub children). The hub parent stays
+ * visible when it carries system / alarm / dnd. Shared so Board and DeviceGraph
+ * do not each copy the filter.
+ */
+export function projectInventoryRows(device: PhysicalDevice): InventoryRow[] {
+    return device.endpoints
+        .filter((endpoint) => endpoint.traits.length > 0)
+        .map((endpoint) => ({
+            id: endpoint.id,
+            name: endpoint.name,
+            model: endpoint.model,
+            classHint: endpoint.classHint,
+            traits: [...endpoint.traits],
+            ...(endpoint.parentId ? { parentId: endpoint.parentId } : {})
+        }));
 }
 
 /**
