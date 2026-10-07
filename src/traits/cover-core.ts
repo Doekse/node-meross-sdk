@@ -55,7 +55,7 @@ export abstract class CoverTraitBase {
     abstract close(): Promise<{ open: boolean }>;
 
     /**
-     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     * PUSH/GETACK from Runtime. Hosts subscribe to Endpoint `change`.
      *
      * @internal
      * @package

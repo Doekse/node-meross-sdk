@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 
-import type { TraitInstances, TraitName } from '../endpoint';
+import type { TraitInstances, TraitName } from '../device/endpoint';
 import type { TraitDescriptor } from './descriptor';
 
 /**

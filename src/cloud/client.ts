@@ -97,25 +97,30 @@ export class CloudClient {
     }
 
     /**
-     * Exchanges email/password (and optional MFA) for a client that can
-     * list devices.
+     * Constructs a client and exchanges email/password (and optional MFA)
+     * for credentials that can list devices.
      */
     static async login(options: LoginOptions, clientOptions?: CloudClientInitOptions): Promise<CloudClient> {
         const client = new CloudClient(clientOptions);
-        await client.login(options);
+        await client.authenticate(options);
         return client;
     }
 
     /**
-     * Rebuilds an HTTP client from a stored token without a password.
+     * Constructs a client from a stored token without a password.
      */
     static restore(token: TokenData, clientOptions?: CloudClientInitOptions): CloudClient {
         const client = new CloudClient(clientOptions);
-        client.restore(token);
+        client.applyToken(token);
         return client;
     }
 
-    async login(options: LoginOptions): Promise<TokenData> {
+    /**
+     * Exchanges email/password (and optional MFA) for credentials, replacing
+     * any previously stored token. Used by {@link login} and by Session
+     * reauthentication.
+     */
+    async authenticate(options: LoginOptions): Promise<TokenData> {
         if (!options.email || !options.password) {
             throw new AuthError(!options.email ? 'Email missing' : 'Password missing');
         }
@@ -147,7 +152,11 @@ export class CloudClient {
         return { ...this.creds };
     }
 
-    restore(token: TokenData): void {
+    /**
+     * Hydrates credentials from a persisted token. Private so only
+     * {@link restore} can construct a client without a password exchange.
+     */
+    private applyToken(token: TokenData): void {
         if (!token.token || !token.key || !token.userId || !token.domain) {
             throw new AuthError('Token data is incomplete');
         }

@@ -3,7 +3,7 @@
  * enroll does not load those classes, and so their published `.d.ts` is
  * only the host class.
  */
-import type { TraitName } from '../endpoint';
+import type { TraitName } from './endpoint';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import {
     CONFIG_OVERTEMP_NAMESPACE,
@@ -36,7 +36,7 @@ import {
     TOGGLEX_NAMESPACE,
     TRIGGERX_NAMESPACE
 } from '../protocol/namespaces';
-import type { GraphEndpoint } from './index';
+import type { EnrolledEndpoint } from './index';
 import type { EnrollBoardContext, EnrollBoardExtraInput } from './enroll-context';
 import {
     enrollBoardExtra,
@@ -196,7 +196,7 @@ export function enrollHubUntypedOnoff(input: {
     readonly model?: string;
     readonly online: boolean;
     readonly on?: boolean;
-}): GraphEndpoint | undefined {
+}): EnrolledEndpoint | undefined {
     if (input.on === undefined) {
         return undefined;
     }

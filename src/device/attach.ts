@@ -5,11 +5,11 @@ import {
     type TraitInstances,
     type TraitName,
     type TraitValues
-} from '../endpoint';
+} from './endpoint';
 import type { DeviceRequest } from '../request';
 import { loadTrait } from '../traits/load';
 import type { TraitAttachContext } from './enroll-context';
-import type { GraphEndpoint, PhysicalDevice } from './index';
+import type { EnrolledEndpoint, PhysicalDevice } from './index';
 
 /**
  * Constructs trait instances for one enrolled endpoint.
@@ -26,7 +26,7 @@ import type { GraphEndpoint, PhysicalDevice } from './index';
  * endpoints instead of copying ability keys here.
  */
 export function attachEndpoint(
-    graphEndpoint: GraphEndpoint,
+    graphEndpoint: EnrolledEndpoint,
     request: DeviceRequest,
     physical: PhysicalDevice,
     namespaces: ReadonlySet<string>

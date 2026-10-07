@@ -1,4 +1,4 @@
-import type { TraitName } from '../endpoint';
+import type { TraitName } from '../device/endpoint';
 import type { MerossPayload } from '../protocol/message';
 import { TOGGLEX_ALL_CHANNELS } from '../protocol/namespaces';
 

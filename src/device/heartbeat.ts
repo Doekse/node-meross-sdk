@@ -73,7 +73,7 @@ export class Heartbeat {
             clearTimeout(this.timer);
         }
         const delay = delayMs ?? (this.isOnline() ? this.intervalMs : this.pollingDelay);
-        // Do not unref: see DevicePoller.schedule — hosts like Homey can drop
+        // Do not unref: see Poller.schedule — hosts like Homey can drop
         // unref'd timers while the app process remains alive.
         this.timer = setTimeout(() => {
             void this.perform();
@@ -84,7 +84,7 @@ export class Heartbeat {
         if (!this.running) {
             return;
         }
-        // Clear the timer before awaiting, like DevicePoller.perform: a
+        // Clear the timer before awaiting, like Poller.perform: a
         // stop()+start() mid-check then arms its own timer instead of this
         // call's eventual finally racing (and duplicating) it.
         this.timer = undefined;

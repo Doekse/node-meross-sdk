@@ -1,4 +1,4 @@
-import type { TraitName } from '../endpoint';
+import type { TraitName } from '../device/endpoint';
 import type { TraitCatalog } from './descriptor';
 import { AlarmCatalog } from './alarm.catalog';
 import { AlertCatalog } from './alert.catalog';

@@ -42,7 +42,7 @@ export interface RequestGetsOptions {
      */
     maxCmdNum?: number;
     /**
-     * Called after a truncated Multiple so DevicePoller can shrink the HTTP
+     * Called after a truncated Multiple so Poller can shrink the HTTP
      * packing budget for the next cycle.
      */
     onPackedFallback?: () => void;
@@ -92,7 +92,7 @@ export class TransportRouter {
     }
 
     /**
-     * DevicePoller uses this for cloud smart/once caps: no IP, or HTTP marked
+     * Poller uses this for cloud smart/once caps: no IP, or HTTP marked
      * down.
      */
     isCloudPath(uuid: string, ip?: string | null): boolean {

@@ -1,4 +1,4 @@
-import type { TraitName } from './endpoint';
+import type { TraitName } from './device/endpoint';
 
 export type ClassHint =
     | 'socket' | 'light' | 'climate' | 'cover' | 'hub' | 'sensor'

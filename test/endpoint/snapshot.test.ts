@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint } from '../../src/device/endpoint';
 import { TOGGLEX_NAMESPACE } from '../../src/protocol';
 import { DndTrait } from '../../src/traits/dnd';
 import { EnergyTrait } from '../../src/traits/energy';

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint } from '../../src/device/endpoint';
 import { CommandError, MerossError } from '../../src/errors';
 import {
     CONTROL_TIMER_NAMESPACE,
@@ -126,7 +126,7 @@ function digestGetAck(digest: Array<Record<string, unknown>>): MerossMessage {
     });
 }
 
-/** DevicePoller GETACK path: Digest resolve then Control.TimerX GET-by-id. */
+/** Poller GETACK path: Digest resolve then Control.TimerX GET-by-id. */
 async function seedFromDigest(
     trait: TimerTrait,
     digest: Array<Record<string, unknown>> = [{ channel: CHANNEL, id: WIRE_ENTRY.id, count: 1 }]

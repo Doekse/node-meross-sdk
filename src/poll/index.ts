@@ -6,10 +6,10 @@
  */
 export {
     DEFAULT_POLL_INTERVAL_MS,
-    DevicePoller,
+    Poller,
     POLL_START_STAGGER_MS
 } from './poller';
-export type { DevicePollerOptions, PollJob, PollStrategy } from './poller';
+export type { PollerOptions, PollJob, PollStrategy } from './poller';
 export {
     CLOUDMQTT_PERIOD_MS,
     ENERGY_CLOUD_PERIOD_MS,

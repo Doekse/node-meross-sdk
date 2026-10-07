@@ -471,7 +471,7 @@ describe('Session.connect', () => {
         const availability: boolean[] = [];
         endpoint.on('availability', (online) => availability.push(online));
 
-        // Broker session state — dropped before recordPush / handleMessage.
+        // Broker session state — dropped before markMqttActive / observeInbound.
         client.deliver(encodeMessage({
             namespace: ONLINE_NAMESPACE,
             method: 'PUSH',
@@ -495,7 +495,7 @@ describe('Session.connect', () => {
         assert.deepEqual(availability, []);
         assert.equal(endpoint.isOnline(), true);
 
-        // PUSH status 1 reaches handleMessage; already-live board stays live.
+        // PUSH status 1 reaches observeInbound; already-live board stays live.
         // Dead-board online from this path is covered in availability.test.ts.
         client.deliver(encodeMessage({
             namespace: ONLINE_NAMESPACE,
@@ -514,7 +514,7 @@ describe('Session.connect', () => {
     it('applies LAN System.Online GETACK with POST uuid', async () => {
         const lanFetch: typeof fetch = async (_url, init) => {
             const sent = decodeMessage(String(init?.body), KEY);
-            // Inject Online GETACK on a host SET so handleInbound sees originUuid.
+            // Inject Online GETACK on a host SET so observeInbound sees originUuid.
             if (
                 sent.header.namespace === TOGGLEX_NAMESPACE
                 && sent.header.method === 'SET'
@@ -541,7 +541,7 @@ describe('Session.connect', () => {
         endpoint.on('availability', (online) => availability.push(online));
 
         // PendingRequests settles SETACK/GETACK; Online GETACK status 2 still
-        // reaches handleMessage and must not offline a live board.
+        // reaches observeInbound and must not offline a live board.
         await endpoint.switch!.setOn(false);
 
         assert.deepEqual(availability, []);

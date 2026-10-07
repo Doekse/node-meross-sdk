@@ -33,7 +33,7 @@ describe('CJS public surface', () => {
         const { join } = require('node:path');
         const switchDts = readFileSync(join(__dirname, '../dist/traits/switch.d.ts'), 'utf8');
         assert.equal(switchDts.includes('handlePush'), false);
-        const endpointDts = readFileSync(join(__dirname, '../dist/endpoint.d.ts'), 'utf8');
+        const endpointDts = readFileSync(join(__dirname, '../dist/device/endpoint.d.ts'), 'utf8');
         assert.equal(/\bconstructor\s*\(/.test(endpointDts), false);
         const leaked = [];
         const dir = join(__dirname, '../dist/traits');

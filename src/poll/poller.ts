@@ -43,7 +43,7 @@ export interface PollJob {
     payload?: MerossPayload;
     /**
      * Estimated GETACK bytes used when packing Control.Multiple. When omitted,
-     * DevicePoller estimates from the namespace table (ConsumptionX starts at
+     * Poller estimates from the namespace table (ConsumptionX starts at
      * 30 days).
      */
     responseSize?: number;
@@ -53,7 +53,7 @@ export interface PollJob {
     method?: 'GET' | 'PUSH';
 }
 
-export interface DevicePollerOptions {
+export interface PollerOptions {
     isOnline: () => boolean;
     /**
      * True when the next batch will go over cloud MQTT (no LAN IP, or HTTP
@@ -141,12 +141,12 @@ function isUnscoped(job: JobState): boolean {
  * One loop per physical device: MQTT skip, cloud rate limit, and leftover
  * Multiple batch room for jobs that can wait.
  */
-export class DevicePoller {
+export class Poller {
     private readonly isOnline: () => boolean;
     private readonly isCloudPath: () => boolean;
     private readonly httpDown: () => boolean;
     private readonly maxCmdNum: () => number;
-    private readonly requestGets: DevicePollerOptions['requestGets'];
+    private readonly requestGets: PollerOptions['requestGets'];
     private readonly onAck: (message: MerossMessage) => void;
     private readonly intervalMs: number;
     private readonly startDelayMs: number;
@@ -154,7 +154,7 @@ export class DevicePoller {
 
     private readonly jobs = new Map<string, JobState>();
     /** Broker has delivered traffic for this uuid; default/All can ride PUSH. */
-    private mqttLive = false;
+    private mqttActive = false;
     /**
      * Last poll send / receive. `null` rather than `0` because epoch 0 is a
      * valid test clock.
@@ -188,7 +188,7 @@ export class DevicePoller {
     private tickBufferSize = POLL_RESPONSE_HEADER_SIZE;
     private readonly tickLazy: JobState[] = [];
 
-    constructor(options: DevicePollerOptions) {
+    constructor(options: PollerOptions) {
         this.isOnline = options.isOnline;
         this.isCloudPath = options.isCloudPath;
         this.httpDown = options.httpDown ?? (() => false);
@@ -199,23 +199,12 @@ export class DevicePoller {
         this.startDelayMs = options.startDelayMs ?? 0;
         this.now = options.now ?? Date.now;
         this.offlineDelayMs = this.intervalMs;
-        if (options.jobs) {
-            this.setJobs(options.jobs);
-        }
-    }
-
-    /**
-     * Replaces the job table, preserving schedule state for namespaces that
-     * stay registered so a re-materialize does not storm the device.
-     */
-    setJobs(jobs: readonly PollJob[]): void {
-        const previous = new Map(this.jobs);
-        this.jobs.clear();
-        for (const job of jobs) {
+        // First entry wins per namespace so a multi-gang strip does not GET the
+        // same Electricity (or other) namespace once per channel.
+        for (const job of options.jobs ?? []) {
             if (this.jobs.has(job.namespace)) {
                 continue;
             }
-            const prior = previous.get(job.namespace);
             const payload = job.payload ?? EMPTY_PAYLOAD;
             this.jobs.set(job.namespace, {
                 namespace: job.namespace,
@@ -224,12 +213,10 @@ export class DevicePoller {
                 periodCloudMs: job.periodCloudMs,
                 payload,
                 method: job.method ?? 'GET',
-                responseSize: job.responseSize
-                    ?? prior?.responseSize
-                    ?? estimateResponseSize(job.namespace, payload),
+                responseSize: job.responseSize ?? estimateResponseSize(job.namespace, payload),
                 calibrate: job.calibrate,
-                nextMs: prior?.nextMs ?? null,
-                lastRequestMs: prior?.lastRequestMs ?? null
+                nextMs: null,
+                lastRequestMs: null
             });
         }
     }
@@ -254,8 +241,8 @@ export class DevicePoller {
      * Any MQTT traffic from this device, held until broker drop or offline.
      * Default/All then ride PUSH instead of GET.
      */
-    recordPush(): void {
-        this.mqttLive = true;
+    markMqttActive(): void {
+        this.mqttActive = true;
         this.lastResponseMs = this.now();
     }
 
@@ -263,8 +250,8 @@ export class DevicePoller {
      * Broker drop: stop treating PUSH as a substitute for GET without implying
      * the device is unreachable over HTTP.
      */
-    clearMqtt(): void {
-        this.mqttLive = false;
+    clearMqttActive(): void {
+        this.mqttActive = false;
     }
 
     /**
@@ -284,7 +271,7 @@ export class DevicePoller {
             }
             return;
         }
-        this.mqttLive = false;
+        this.mqttActive = false;
     }
 
     /**
@@ -409,7 +396,7 @@ export class DevicePoller {
         this.tickMaxCmdNum = this.maxCmdNum();
         this.tickBatchSize = this.tickMaxCmdNum >= 2 ? this.tickMaxCmdNum : 1;
         this.tickSizeMax = this.getResponseSizeMax();
-        this.tickMqttActive = this.mqttLive;
+        this.tickMqttActive = this.mqttActive;
         this.tickQueuedCloud = 0;
         this.tickBuffer.length = 0;
         this.tickBufferSize = POLL_RESPONSE_HEADER_SIZE;

@@ -1,5 +1,5 @@
 import type { CloudDevice, CloudSubDevice } from '../cloud';
-import type { TraitName } from '../endpoint';
+import type { TraitName } from './endpoint';
 import type { ClassHint, InventoryRow } from '../inventory';
 import type {
     SystemFirmwareState,
@@ -89,7 +89,7 @@ export interface EnrollInput {
  * One user-visible row plus the ToggleX/hub bind the switch trait will use.
  * Ids are `{uuid}:{channel}` or `{uuid}#{subDeviceId}` so they stay stable across reconnects.
  */
-export interface GraphEndpoint {
+export interface EnrolledEndpoint {
     id: string;
     uuid: string;
     channel?: number;
@@ -111,7 +111,7 @@ export interface GraphEndpoint {
 
 /**
  * Physical device after Ability + System.All enrollment. Session keeps this
- * for LAN IP / Multiple packing; inventory only sees {@link GraphEndpoint}.
+ * for LAN IP / Multiple packing; inventory only sees {@link EnrolledEndpoint}.
  */
 export interface PhysicalDevice {
     uuid: string;
@@ -121,7 +121,7 @@ export interface PhysicalDevice {
     maxCmdNum: number;
     innerIp?: string;
     macAddress?: string;
-    /** Digest/cloud snapshot so DeviceAvailability can start before the first Online PUSH. */
+    /** Digest/cloud snapshot so Availability can start before the first Online PUSH. */
     online: boolean;
     /**
      * System.All device snapshot so SystemTrait can start before the first poll.
@@ -133,11 +133,11 @@ export interface PhysicalDevice {
         time?: SystemTimeState;
     };
     /**
-     * Namespaces carried in the System.All digest so DevicePoller GETs them
+     * Namespaces carried in the System.All digest so Poller GETs them
      * only as the All fallback, not beside it.
      */
     digestNamespaces: ReadonlySet<string>;
-    endpoints: readonly GraphEndpoint[];
+    endpoints: readonly EnrolledEndpoint[];
 }
 
 /**
@@ -174,108 +174,9 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
     };
 }
 
-/** Order-insensitive, because neither abilities nor traits carry an order. */
-function sameMembers(a: readonly string[], b: readonly string[]): boolean {
-    if (a.length !== b.length) {
-        return false;
-    }
-    const seen = new Set(a);
-    return b.every((value) => seen.has(value));
-}
-
-/**
- * Whether two enrollments are interchangeable. Traits capture an ability
- * snapshot and a channel at construction. A change to abilities, digest
- * membership, or endpoint traits needs the device's endpoints rebuilt against
- * the new shape.
- */
-function sameShape(a: PhysicalDevice, b: PhysicalDevice): boolean {
-    if (!sameMembers(Object.keys(a.ability), Object.keys(b.ability))) {
-        return false;
-    }
-    if (!sameMembers([...a.digestNamespaces], [...b.digestNamespaces])) {
-        return false;
-    }
-    if (a.endpoints.length !== b.endpoints.length) {
-        return false;
-    }
-    const byId = new Map(a.endpoints.map((endpoint) => [endpoint.id, endpoint]));
-    return b.endpoints.every((endpoint) => {
-        const previous = byId.get(endpoint.id);
-        return previous !== undefined && sameMembers(previous.traits, endpoint.traits);
-    });
-}
-
-export interface EnrollResult {
-    device: PhysicalDevice;
-    /** True when the caller must rebuild this device's endpoints. */
-    reshaped: boolean;
-}
-
-/**
- * Collects protocol-enrolled devices so Session can project inventory rows.
- */
-export class DeviceGraph {
-    private readonly physical = new Map<string, PhysicalDevice>();
-
-    /**
-     * An unchanged shape refreshes the stored device in place and keeps its
-     * object identity, because Session's pollers and availability probes read
-     * live fields (innerIp, maxCmdNum) straight off it.
-     */
-    enroll(input: EnrollInput): EnrollResult {
-        const device = enrollPhysicalDevice(input);
-        const existing = this.physical.get(device.uuid);
-        if (!existing || !sameShape(existing, device)) {
-            this.physical.set(device.uuid, device);
-            return { device, reshaped: true };
-        }
-        return { device: Object.assign(existing, device), reshaped: false };
-    }
-
-    /**
-     * Session needs the device (LAN IP, ability, maxCmdNum), not the inventory row.
-     */
-    getPhysical(uuid: string): PhysicalDevice | undefined {
-        return this.physical.get(uuid);
-    }
-
-    /** Enrolled device ids, for reconciling against a fresh cloud device list. */
-    uuids(): string[] {
-        return [...this.physical.keys()];
-    }
-
-    /**
-     * Drops a device that left the account. Session stops its poller and
-     * availability separately; this only clears the projection source.
-     */
-    remove(uuid: string): void {
-        this.physical.delete(uuid);
-    }
-
-    /**
-     * Inventory ids are `{uuid}:{channel}` or `{uuid}#{subDeviceId}`; lookup
-     * walks devices because those ids are not the physical map key.
-     */
-    getEndpoint(id: string): GraphEndpoint | undefined {
-        for (const device of this.physical.values()) {
-            const endpoint = device.endpoints.find((entry) => entry.id === id);
-            if (endpoint) {
-                return endpoint;
-            }
-        }
-        return undefined;
-    }
-
-    inventoryRows(): InventoryRow[] {
-        return [...this.physical.values()].flatMap(projectInventoryRows);
-    }
-}
-
 /**
  * Drops trait-less rows (unclassified hub children). The hub parent stays
- * visible when it carries system / alarm / dnd. Shared so Board and DeviceGraph
- * do not each copy the filter.
+ * visible when it carries system / alarm / dnd.
  */
 export function projectInventoryRows(device: PhysicalDevice): InventoryRow[] {
     return device.endpoints
@@ -348,8 +249,8 @@ function enrollBoard(
     ability: AbilityMap,
     all: SystemAll,
     cloud: CloudDevice | undefined
-): GraphEndpoint[] {
-    const endpoints: GraphEndpoint[] = [];
+): EnrolledEndpoint[] {
+    const endpoints: EnrolledEndpoint[] = [];
     const taken = new Set<number>();
     // Once per board so add() does not loadTrait on leftover channels when
     // Ability never advertised that extra.
@@ -529,7 +430,7 @@ function enrollHub(
     ability: AbilityMap,
     all: SystemAll,
     cloudSubs: CloudSubDevice[]
-): GraphEndpoint[] {
+): EnrolledEndpoint[] {
     const hubTraits: TraitName[] = ['system'];
     if (CONTROL_ALARM_NAMESPACE in ability || CONTROL_BEEP_NAMESPACE in ability) {
         hubTraits.push(...enrollHubAlarmExtra(ability));
@@ -540,7 +441,7 @@ function enrollHub(
     if (CONFIG_OVERTEMP_NAMESPACE in ability) {
         hubTraits.push(...enrollHubOverTempExtra(ability));
     }
-    const endpoints: GraphEndpoint[] = [{
+    const endpoints: EnrolledEndpoint[] = [{
         id: uuid,
         uuid,
         name,

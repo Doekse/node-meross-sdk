@@ -88,7 +88,7 @@ export interface MqttTransportOptions {
     onConnectionChange?: (connected: boolean) => void;
     /**
      * Session re-emits this as `ratelimit` so hosts see drops that
-     * DevicePoller's bare catch would otherwise swallow.
+     * Poller's bare catch would otherwise swallow.
      */
     onRateLimit?: (uuid: string, dropped: number) => void;
 }

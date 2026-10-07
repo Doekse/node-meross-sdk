@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { CloudClient } from './cloud';
 import type { CloudClientOptions, CloudDevice } from './cloud';
 import { Board } from './device/board';
-import { Endpoint } from './endpoint';
+import { Endpoint } from './device/endpoint';
 import { AuthError, MerossError } from './errors';
 import { Inventory } from './inventory';
 import type { LogLevel, SessionLogger } from './log';
@@ -282,7 +282,7 @@ export class Session extends EventEmitter<SessionEvents> {
      */
     async reauthenticate(options: LoginOptions): Promise<TokenData> {
         const previous = this.token;
-        this.token = await this.cloud.login(options);
+        this.token = await this.cloud.authenticate(options);
         this.credentialsValid = true;
         const stale = this.router;
         if (!stale || !this.brokerChanged(previous)) {
@@ -542,9 +542,9 @@ export class Session extends EventEmitter<SessionEvents> {
 
     private createRouter(): TransportRouter {
         const dispatcher = new ProtocolDispatcher({
-            onPush: (message) => this.boardForMessage(message)?.handlePush(message),
+            onPush: (message) => this.boardForMessage(message)?.applyUpdate(message),
             onInbound: (message, originUuid) => {
-                this.boardForMessage(message, originUuid)?.handleInbound(message, originUuid);
+                this.boardForMessage(message, originUuid)?.observeInbound(message, originUuid);
             }
         });
         const mqtt = new MqttTransport({
@@ -558,7 +558,7 @@ export class Session extends EventEmitter<SessionEvents> {
             onConnectionChange: (connected) => {
                 if (!connected) {
                     for (const board of this.boards.values()) {
-                        board.clearMqtt();
+                        board.clearMqttActive();
                     }
                 }
                 this.emit('connection', connected);

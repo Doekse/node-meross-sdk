@@ -1,5 +1,5 @@
 import type { TraitAttachContext } from '../device/enroll-context';
-import type { TraitName } from '../endpoint';
+import type { TraitName } from '../device/endpoint';
 import type { ClassHint } from '../inventory';
 import type { PollSpec } from '../poll/spec';
 

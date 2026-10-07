@@ -4,7 +4,15 @@ import { PendingRequests } from './pending';
 export type DispatchResult = 'reply' | 'push' | 'stale' | 'ignored';
 
 export interface DispatcherHandlers {
+    /**
+     * Accepted unsolicited PUSH after the stale gate. Apply device state here;
+     * do not also apply from {@link onInbound}.
+     */
     onPush?: (message: MerossMessage) => void;
+    /**
+     * Every decoded frame before pending settlement. Observe liveness here;
+     * payload application belongs on {@link onPush} or the caller's GETACK path.
+     */
     onInbound?: (message: MerossMessage, originUuid?: string) => void;
 }
 

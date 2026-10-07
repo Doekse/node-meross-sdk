@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint } from '../../src/device/endpoint';
 import {
     SYSTEM_ALL_NAMESPACE,
     SYSTEM_CLOCK_NAMESPACE,
@@ -57,7 +57,7 @@ function pushMessage(namespace: string, payload: Record<string, unknown>): Meros
 }
 
 /**
- * Poller delivers Runtime via GETACK; DeviceRuntime.handlePush routes both
+ * Poller delivers Runtime via GETACK; Runtime.handlePush routes both
  * GETACK and PUSH through the same trait handler.
  */
 function runtimeGetAck(runtime: Record<string, unknown>): MerossMessage {

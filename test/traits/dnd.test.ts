@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint } from '../../src/device/endpoint';
 import { TransportError } from '../../src/errors';
 import {
     DND_MODE_NAMESPACE,

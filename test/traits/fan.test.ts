@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint } from '../../src/device/endpoint';
 import {
     FAN_BTN_CONFIG_NAMESPACE,
     FAN_CONFIG_NAMESPACE,
@@ -125,7 +125,7 @@ function getAck(namespace: string, payload: Record<string, unknown>): MerossMess
     });
 }
 
-/** Seeds Control.Fan maxSpeed/speed the way DevicePoller GETACK would. */
+/** Seeds Control.Fan maxSpeed/speed the way Poller GETACK would. */
 function seedFan(
     trait: FanTrait,
     payload: Record<string, unknown> = { fan: [{ channel: CHANNEL, speed: 3, maxSpeed: 4 }] }

@@ -7,11 +7,11 @@ import type { CloudDevice, CloudSubDevice } from '../../src/cloud';
 import { ProtocolError } from '../../src/errors';
 import { Inventory } from '../../src/inventory';
 import {
-    DeviceGraph,
     abilityMaxCmdNum,
     decodeAbilityGetAck,
     decodeSystemAllGetAck,
-    enrollPhysicalDevice
+    enrollPhysicalDevice,
+    projectInventoryRows
 } from '../../src/device';
 import { buildPollJobs } from '../../src/poll';
 import { decodeMessage } from '../../src/protocol/message';
@@ -82,11 +82,10 @@ function enrollHubSubdevices(
 
 /**
  * Hub parent extras (dnd / overtemp / alarm) share one digest child; only Ability
- * keys differ. Returns the graph so inventoryRows can assert parent traits.
+ * keys differ. Returns the device so projected rows can assert parent traits.
  */
 function enrollHubParentExtras(extraAbility: Record<string, Record<string, unknown>>) {
-    const graph = new DeviceGraph();
-    const { device } = graph.enroll({
+    return enrollPhysicalDevice({
         abilityPayload: {
             ability: {
                 'Appliance.Hub.SubdeviceList': {},
@@ -110,7 +109,6 @@ function enrollHubParentExtras(extraAbility: Record<string, Record<string, unkno
             }
         }
     });
-    return { graph, device };
 }
 
 describe('Ability GETACK', () => {
@@ -402,8 +400,7 @@ describe('enrollPhysicalDevice', () => {
     });
 
     it('does not add alert to the hub parent', () => {
-        const graph = new DeviceGraph();
-        const { device } = graph.enroll({
+        const device = enrollPhysicalDevice({
             abilityPayload: {
                 ability: {
                     'Appliance.Hub.SubdeviceList': {},
@@ -490,8 +487,7 @@ describe('enrollPhysicalDevice', () => {
     });
 
     it('does not add standbykiller to the hub parent', () => {
-        const graph = new DeviceGraph();
-        const { device } = graph.enroll({
+        const device = enrollPhysicalDevice({
             abilityPayload: {
                 ability: {
                     'Appliance.Hub.SubdeviceList': {},
@@ -1243,8 +1239,7 @@ describe('enrollPhysicalDevice', () => {
                 subDeviceName: 'Hall sensor'
             }
         ];
-        const graph = new DeviceGraph();
-        const { device } = graph.enroll({
+        const device = enrollPhysicalDevice({
             abilityPayload: {
                 ability: {
                     'Appliance.Hub.SubdeviceList': {},
@@ -1308,29 +1303,28 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(sensor?.name, 'Hall sensor');
         assert.equal(sensor?.online, false);
 
-        const rows = graph.inventoryRows();
+        const rows = projectInventoryRows(device);
         assert.equal(rows.length, 3);
         assert.deepEqual(rows.map((row) => row.id).sort(), [
             HUB_UUID,
             `${HUB_UUID}#01008C11`,
             `${HUB_UUID}#120027D21C19`
         ]);
-        assert.equal(graph.getPhysical(HUB_UUID)?.endpoints.length, 3);
     });
 
     it('pairs the hub parent with dnd when System.DNDMode is advertised', () => {
-        const { graph, device } = enrollHubParentExtras({
+        const device = enrollHubParentExtras({
             'Appliance.System.DNDMode': {}
         });
 
         const hub = device.endpoints[0];
         assert.equal(hub?.classHint, 'hub');
         assert.deepEqual(hub?.traits, ['system', 'dnd']);
-        assert.ok(graph.inventoryRows().some((row) => row.id === HUB_UUID && row.traits.includes('dnd')));
+        assert.ok(projectInventoryRows(device).some((row) => row.id === HUB_UUID && row.traits.includes('dnd')));
     });
 
     it('pairs the hub parent with overtemp when Config.OverTemp is advertised', () => {
-        const { graph, device } = enrollHubParentExtras({
+        const device = enrollHubParentExtras({
             'Appliance.Config.OverTemp': {}
         });
 
@@ -1338,14 +1332,14 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(hub?.classHint, 'hub');
         assert.deepEqual(hub?.traits, ['system', 'overtemp']);
         assert.ok(
-            graph.inventoryRows().some(
+            projectInventoryRows(device).some(
                 (row) => row.id === HUB_UUID && row.traits.includes('overtemp')
             )
         );
     });
 
     it('pairs the hub parent with alarm when Control.Alarm is advertised', () => {
-        const { graph, device } = enrollHubParentExtras({
+        const device = enrollHubParentExtras({
             'Appliance.Control.Alarm': {},
             'Appliance.System.DNDMode': {}
         });
@@ -1353,7 +1347,7 @@ describe('enrollPhysicalDevice', () => {
         const hub = device.endpoints[0];
         assert.equal(hub?.classHint, 'hub');
         assert.deepEqual(hub?.traits, ['system', 'alarm', 'dnd']);
-        assert.ok(graph.inventoryRows().some(
+        assert.ok(projectInventoryRows(device).some(
             (row) => row.id === HUB_UUID && row.traits.includes('alarm')
         ));
         assert.equal(
@@ -1474,40 +1468,37 @@ describe('enrollPhysicalDevice', () => {
     });
 });
 
-describe('DeviceGraph and Inventory', () => {
-    it('reshapes when digest membership changes so poll scheduling is refreshed', () => {
-        const graph = new DeviceGraph();
-        const first = graph.enroll({
+describe('enrollment and Inventory', () => {
+    it('schedules ToggleX as digest when present and default when digest omits it', () => {
+        const withDigest = enrollPhysicalDevice({
             abilityPayload: socketAbility(),
             allPayload: payload('system-all-getack.json')
         });
-        const firstToggleJob = buildPollJobs(
-            first.device.ability, first.device.endpoints, first.device.digestNamespaces
-        ).find((job) => job.namespace === 'Appliance.Control.ToggleX');
-
-        const second = graph.enroll({
+        const withoutDigest = enrollPhysicalDevice({
             abilityPayload: socketAbility(),
             allPayload: systemAllWithDigest({})
         });
-        const secondToggleJob = buildPollJobs(
-            second.device.ability, second.device.endpoints, second.device.digestNamespaces
+        const digestJob = buildPollJobs(
+            withDigest.ability, withDigest.endpoints, withDigest.digestNamespaces
+        ).find((job) => job.namespace === 'Appliance.Control.ToggleX');
+        const defaultJob = buildPollJobs(
+            withoutDigest.ability, withoutDigest.endpoints, withoutDigest.digestNamespaces
         ).find((job) => job.namespace === 'Appliance.Control.ToggleX');
 
-        assert.equal(firstToggleJob?.strategy, 'digest');
-        assert.equal(second.reshaped, true);
-        assert.equal(secondToggleJob?.strategy, 'default');
+        assert.equal(digestJob?.strategy, 'digest');
+        assert.equal(defaultJob?.strategy, 'default');
     });
 
-    it('keeps endpoint id across re-enroll when Ability grows', () => {
-        const graph = new DeviceGraph();
-        const { device: first } = graph.enroll({
+    it('keeps a stable endpoint id and projects cloud overlay into inventory rows', () => {
+        const base = enrollPhysicalDevice({
             abilityPayload: socketAbility(),
             allPayload: payload('system-all-getack.json')
         });
-        const id = first.endpoints[0]?.id;
-        assert.equal(graph.getEndpoint(id!)?.channel, 0);
+        const id = base.endpoints[0]?.id;
+        assert.equal(base.endpoints[0]?.channel, 0);
+        assert.equal(id, `${UUID}:0`);
 
-        graph.enroll({
+        const overlaid = enrollPhysicalDevice({
             abilityPayload: socketAbility({ 'Appliance.Control.Electricity': {} }),
             allPayload: payload('system-all-getack.json'),
             cloud: {
@@ -1519,7 +1510,8 @@ describe('DeviceGraph and Inventory', () => {
             }
         });
 
-        const rows = graph.inventoryRows();
+        assert.equal(overlaid.endpoints[0]?.id, id);
+        const rows = projectInventoryRows(overlaid);
         assert.equal(rows.length, 1);
         assert.equal(rows[0]?.id, id);
         assert.equal(rows[0]?.name, 'Kitchen plug');

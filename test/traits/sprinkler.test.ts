@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { CommandError } from '../../src/errors';
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint } from '../../src/device/endpoint';
 import {
     CONTROL_WATER_EVENT_NAMESPACE,
     CONTROL_WATER_NAMESPACE,

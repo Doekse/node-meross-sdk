@@ -1,4 +1,4 @@
-import type { Endpoint } from '../endpoint';
+import type { Endpoint } from './endpoint';
 import type { MerossMessage, MerossPayload } from '../protocol/message';
 import { HUB_ONLINE_NAMESPACE, decodeHubOnline } from '../protocol/codecs/online';
 import { SYSTEM_ALL_NAMESPACE, decodeSystemAllGetAck } from '../protocol/codecs/system-all';
@@ -8,7 +8,7 @@ function isPushOrGetAck(method: string): boolean {
     return method === 'PUSH' || method === 'GETACK';
 }
 
-export interface DeviceAvailabilityOptions {
+export interface AvailabilityOptions {
     uuid: string;
     initialOnline: boolean;
     endpoints: readonly Endpoint[];
@@ -17,10 +17,10 @@ export interface DeviceAvailabilityOptions {
         method: 'GET',
         payload?: MerossPayload
     ) => Promise<MerossMessage>;
-    /** Notifies DevicePoller so cold-start / MQTT-active reset stay in sync. */
+    /** Notifies Poller so cold-start / MQTT-active reset stay in sync. */
     onOnlineChange?: (online: boolean) => void;
-    /** Same identifier as DevicePoller.clearMqtt — All status !== 1 drops MQTT-active. */
-    clearMqtt?: () => void;
+    /** Same identifier as Poller.clearMqttActive — All status !== 1 drops MQTT-active. */
+    clearMqttActive?: () => void;
     /** System.All `firmware.innerIp` can change after DHCP. */
     onInnerIp?: (innerIp: string | undefined) => void;
     /**
@@ -37,22 +37,22 @@ export interface DeviceAvailabilityOptions {
  * hub can still have an out-of-range sensor. `{uuid}#{subDeviceId}` rows follow
  * Hub.Online and System.All digest; a dead hub still forces every child offline.
  */
-export class DeviceAvailability {
+export class Availability {
     private readonly board: Endpoint[] = [];
     private readonly children = new Map<string, Endpoint>();
-    private readonly request: DeviceAvailabilityOptions['request'];
+    private readonly request: AvailabilityOptions['request'];
     private readonly onOnlineChange?: (online: boolean) => void;
-    private readonly clearMqtt?: () => void;
+    private readonly clearMqttActive?: () => void;
     private readonly onInnerIp?: (innerIp: string | undefined) => void;
     private readonly onAck?: (message: MerossMessage) => void;
     private readonly heartbeat: Heartbeat;
 
     private online: boolean;
 
-    constructor(options: DeviceAvailabilityOptions) {
+    constructor(options: AvailabilityOptions) {
         this.request = options.request;
         this.onOnlineChange = options.onOnlineChange;
-        this.clearMqtt = options.clearMqtt;
+        this.clearMqttActive = options.clearMqttActive;
         this.onInnerIp = options.onInnerIp;
         this.onAck = options.onAck;
         this.online = options.initialOnline;
@@ -98,12 +98,23 @@ export class DeviceAvailability {
         return this.online;
     }
 
-    handleMessage(message: MerossMessage): void {
+    /**
+     * Heartbeat/liveness only. Payload state (Hub.Online, System.All) is
+     * {@link applyUpdate} so a frame that is both observed and applied does
+     * not decode twice.
+     */
+    observeInbound(_message: MerossMessage): void {
         this.heartbeat.recordResponse();
         // setOnline no-ops when already true; recordResponse first so an
         // inbound while offline still resets the probe backoff.
         this.setOnline(true);
+    }
 
+    /**
+     * Hub.Online and System.All payload state. Does not record liveness —
+     * callers that also saw the frame on the wire call {@link observeInbound}.
+     */
+    applyUpdate(message: MerossMessage): void {
         const { namespace, method } = message.header;
         if (namespace === HUB_ONLINE_NAMESPACE && isPushOrGetAck(method)) {
             try {
@@ -128,12 +139,13 @@ export class DeviceAvailability {
 
     /**
      * Firmware liveness is System.All; System.Online is not used as the probe.
-     * Decode errors reject so Heartbeat.perform marks offline.
+     * Decode errors reject so Heartbeat.perform marks offline. Application of
+     * the GETACK is {@link onAck} (Runtime `applyUpdate`); this only validates.
      */
     private async pollOnline(): Promise<void> {
         const reply = await this.request(SYSTEM_ALL_NAMESPACE, 'GET', {});
         this.onAck?.(reply);
-        this.applySystemAll(reply);
+        decodeSystemAllGetAck(reply.payload);
     }
 
     /**
@@ -145,7 +157,7 @@ export class DeviceAvailability {
     private applySystemAll(message: MerossMessage): void {
         const all = decodeSystemAllGetAck(message.payload);
         if (all.online.status !== 1) {
-            this.clearMqtt?.();
+            this.clearMqttActive?.();
         }
         this.onInnerIp?.(all.firmware.innerIp);
         for (const sub of all.digest.hub?.subdevice ?? []) {

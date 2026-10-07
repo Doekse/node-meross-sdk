@@ -1,4 +1,4 @@
-import type { TraitName } from '../endpoint';
+import type { TraitName } from '../device/endpoint';
 import { EMPTY_LIST, EMPTY_PAYLOAD, type MerossPayload } from '../protocol/message';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import { CONSUMPTIONX_NAMESPACE } from '../protocol/namespaces';

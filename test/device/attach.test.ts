@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { AbilityMap, GraphEndpoint, PhysicalDevice } from '../../src/device';
+import type { AbilityMap, EnrolledEndpoint, PhysicalDevice } from '../../src/device';
 import { attachEndpoint } from '../../src/device/attach';
-import type { Endpoint, EndpointChange, TraitName } from '../../src/endpoint';
+import type { Endpoint, EndpointChange, TraitName } from '../../src/device/endpoint';
 import { MerossError } from '../../src/errors';
 import {
     CONTROL_TIMER_NAMESPACE,
@@ -79,7 +79,7 @@ function physical(ability: AbilityMap, model: string): PhysicalDevice {
 /**
  * Hub children are identified by `subDeviceId`; attach does not read classHint.
  */
-function graphEndpoint({
+function enrolledEndpoint({
     traits,
     channel = CHANNEL,
     subDeviceId,
@@ -89,7 +89,7 @@ function graphEndpoint({
     channel?: number;
     subDeviceId?: string;
     model?: string;
-}): GraphEndpoint {
+}): EnrolledEndpoint {
     const isHubChild = subDeviceId !== undefined;
     return {
         id: isHubChild ? `${UUID}#${subDeviceId}` : `${UUID}:${channel}`,
@@ -114,7 +114,7 @@ function createHarness(options: {
     endpoint: Endpoint;
     requests: MerossMessage[];
 } {
-    const graph = graphEndpoint({
+    const graph = enrolledEndpoint({
         traits: options.traits,
         subDeviceId: options.subDeviceId,
         model: options.model
@@ -168,13 +168,13 @@ describe('attachEndpoint shared request and namespaces', () => {
         const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
 
         const channel0 = attachEndpoint(
-            graphEndpoint({ traits: ['switch'], channel: CHANNEL }),
+            enrolledEndpoint({ traits: ['switch'], channel: CHANNEL }),
             request,
             physicalDevice,
             namespaces
         );
         const channel1 = attachEndpoint(
-            graphEndpoint({ traits: ['switch'], channel: 1 }),
+            enrolledEndpoint({ traits: ['switch'], channel: 1 }),
             request,
             physicalDevice,
             namespaces
@@ -196,7 +196,7 @@ describe('attachEndpoint shared request and namespaces', () => {
         const ability = { [CONFIG_OVERTEMP_NAMESPACE]: {} };
         const { requests, request } = createRequestRecorder({ uuid: UUID, key: KEY });
         const endpoint = attachEndpoint(
-            graphEndpoint({ traits: ['overtemp'] }),
+            enrolledEndpoint({ traits: ['overtemp'] }),
             request,
             physical(ability, 'mss110'),
             new Set()

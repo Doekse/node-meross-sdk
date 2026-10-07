@@ -1,6 +1,6 @@
 /**
  * Package entry: Session, Endpoint, Inventory, public errors, and trait types.
- * Transports, namespace codecs, the device graph, and trait constructors
+ * Transports, namespace codecs, device internals, and trait constructors
  * are not exported.
  */
 export {
@@ -31,8 +31,8 @@ export type {
 } from './log';
 export { Inventory } from './inventory';
 export type { ClassHint, InventoryRow } from './inventory';
-export { Endpoint } from './endpoint';
-export type { EndpointChange, Protocol, TraitName } from './endpoint';
+export { Endpoint } from './device/endpoint';
+export type { EndpointChange, Protocol, TraitName } from './device/endpoint';
 export type {
     SwitchTrait,
     SwitchValues,

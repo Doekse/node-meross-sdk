@@ -89,7 +89,7 @@ export class TimerTrait {
     /**
      * On-demand read of the schedule. TimerX GETs Digest.TimerX, then each id;
      * legacy GETs Control.Timer. Rejects with `CommandError` /
-     * `TransportError` / `ProtocolError` like `set`. DevicePoller swallows the
+     * `TransportError` / `ProtocolError` like `set`. Poller swallows the
      * same failures on its path.
      */
     async poll(): Promise<TimerValues> {
@@ -168,7 +168,7 @@ export class TimerTrait {
     }
 
     /**
-     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     * PUSH/GETACK from Runtime. Hosts subscribe to Endpoint `change`.
      *
      * @internal
      * @package

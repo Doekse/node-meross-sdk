@@ -12,13 +12,13 @@ import {
     SYSTEM_ALL_PERIOD_MS
 } from '../../src/poll/jobs';
 import {
-    DevicePoller,
+    Poller,
     DEFAULT_POLL_INTERVAL_MS,
     type PollJob
 } from '../../src/poll/poller';
-import { DeviceRuntime } from '../../src/device/runtime';
+import { Runtime } from '../../src/device/runtime';
 import { SYSTEM_ALL_NAMESPACE } from '../../src/protocol/codecs/system-all';
-import { Endpoint } from '../../src/endpoint';
+import { Endpoint } from '../../src/device/endpoint';
 import { CTL_RANGE_NAMESPACE } from '../../src/protocol/codecs/climate';
 import { CONSUMPTIONX_NAMESPACE } from '../../src/protocol/codecs/consumptionx';
 import { DND_MODE_NAMESPACE } from '../../src/protocol/codecs/dnd';
@@ -51,7 +51,7 @@ function flushMicrotasks(): Promise<void> {
 }
 
 interface Harness {
-    poller: DevicePoller;
+    poller: Poller;
     requestGets: ReturnType<TestContext['mock']['fn']>;
     acks: MerossMessage[];
     getsHistory: GetCommand[][];
@@ -95,7 +95,7 @@ function createHarness(
         acks.push(message);
     });
 
-    const poller = new DevicePoller({
+    const poller = new Poller({
         isOnline: () => online,
         isCloudPath: () => cloudPath,
         httpDown: () => options.httpDown ?? false,
@@ -136,7 +136,7 @@ function createHarness(
     };
 }
 
-describe('DevicePoller', () => {
+describe('Poller', () => {
     it('skips default jobs when MQTT PUSH is active after the cold start', async (t) => {
         const harness = createHarness(t, {
             jobs: [{
@@ -155,7 +155,7 @@ describe('DevicePoller', () => {
             ['Appliance.Control.ToggleX']
         );
 
-        harness.poller.recordPush();
+        harness.poller.markMqttActive();
         await harness.advance(INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
@@ -179,7 +179,7 @@ describe('DevicePoller', () => {
             ['Appliance.Control.ToggleX']
         );
 
-        harness.poller.recordPush();
+        harness.poller.markMqttActive();
         await harness.advance(INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
@@ -200,7 +200,7 @@ describe('DevicePoller', () => {
         });
 
         harness.poller.start();
-        harness.poller.recordPush();
+        harness.poller.markMqttActive();
         await harness.advance(0);
         await harness.advance(INTERVAL_MS);
         await harness.advance(INTERVAL_MS);
@@ -630,7 +630,7 @@ describe('DevicePoller', () => {
             jobs
         });
 
-        harness.poller.recordPush();
+        harness.poller.markMqttActive();
         harness.poller.start();
         await harness.advance(0);
         await harness.advance(3_600_000);
@@ -903,7 +903,7 @@ describe('DevicePoller', () => {
             ]
         });
 
-        harness.poller.recordPush();
+        harness.poller.markMqttActive();
         harness.poller.start();
         await harness.advance(0);
         // System.All has no nesting restriction, so onlining packs it with
@@ -939,7 +939,7 @@ describe('DevicePoller', () => {
             ]
         });
 
-        harness.poller.recordPush();
+        harness.poller.markMqttActive();
         harness.poller.start();
         await harness.advance(0);
         // Cold start still GETs default jobs; MQTT skip only applies after nextMs is set.
@@ -951,7 +951,7 @@ describe('DevicePoller', () => {
         await harness.advance(INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
-        harness.poller.recordPush();
+        harness.poller.markMqttActive();
         await harness.advance(SYSTEM_ALL_PERIOD_MS - INTERVAL_MS);
         // ToggleX is not due this tick (MQTT active, already polled), so the
         // heartbeat System.All goes out alone.
@@ -982,7 +982,7 @@ describe('DevicePoller', () => {
             ]
         });
 
-        harness.poller.recordPush();
+        harness.poller.markMqttActive();
         harness.poller.start();
         await harness.advance(0);
         // Cold start still GETs default jobs; MQTT skip only applies after nextMs is set.
@@ -994,36 +994,45 @@ describe('DevicePoller', () => {
         await harness.advance(INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
-        harness.poller.recordPush();
+        harness.poller.markMqttActive();
         await harness.advance(SYSTEM_ALL_PERIOD_MS - INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
         harness.poller.stop();
     });
 
-    it('deduplicates jobs by namespace', async (t) => {
+    it('initializes constructor jobs once with first-entry namespace dedupe', async (t) => {
         const harness = createHarness(t, {
             jobs: [
                 {
-                    namespace: 'Appliance.Control.Electricity',
+                    namespace: ELECTRICITY_NAMESPACE,
                     strategy: 'smart',
                     periodMs: 0,
                     periodCloudMs: 180_000
                 },
                 {
-                    namespace: 'Appliance.Control.Electricity',
+                    namespace: ELECTRICITY_NAMESPACE,
                     strategy: 'smart',
                     periodMs: 0,
                     periodCloudMs: 180_000,
                     payload: { electricity: [{ channel: 1 }] }
+                },
+                {
+                    namespace: TOGGLEX_NAMESPACE,
+                    strategy: 'default',
+                    periodMs: 0,
+                    periodCloudMs: 0
                 }
             ]
         });
 
         harness.poller.start();
         await harness.advance(0);
+        // Cold nextMs/lastRequestMs: both distinct namespaces fire once; the
+        // duplicate Electricity entry keeps the first empty payload.
         assert.deepEqual(harness.getsHistory[0], [
-            { namespace: 'Appliance.Control.Electricity', payload: {} }
+            { namespace: ELECTRICITY_NAMESPACE, payload: {} },
+            { namespace: TOGGLEX_NAMESPACE, payload: {} }
         ]);
         harness.poller.stop();
     });
@@ -1062,9 +1071,9 @@ describe('DevicePoller', () => {
             electricity: { channel: 0, power: 11_000, current: 53, voltage: 2274 }
         };
         // Handler table is built in the constructor; this poller is never
-        // started. GETACKs apply through handlePush so a thrown trait cannot
+        // started. GETACKs apply through applyUpdate so a thrown trait cannot
         // skip later namespaces.
-        const runtime = new DeviceRuntime({
+        const runtime = new Runtime({
             uuid: UUID,
             initialOnline: true,
             endpoints: [endpoint],
@@ -1076,7 +1085,7 @@ describe('DevicePoller', () => {
         });
         const harness = createHarness(t, {
             maxCmdNum: 5,
-            onAck: (message) => runtime.handlePush(message),
+            onAck: (message) => runtime.applyUpdate(message),
             jobs: [
                 {
                     namespace: CONFIG_STANDBY_KILLER_NAMESPACE,
@@ -1235,11 +1244,11 @@ describe('DevicePoller', () => {
             [TOGGLEX_NAMESPACE]
         );
 
-        harness.poller.recordPush();
+        harness.poller.markMqttActive();
         await harness.advance(INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
-        harness.poller.clearMqtt();
+        harness.poller.clearMqttActive();
         await harness.advance(INTERVAL_MS);
         assert.deepEqual(
             harness.getsHistory[1]?.map((get) => get.namespace),

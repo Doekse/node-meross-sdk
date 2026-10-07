@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it, type TestContext } from 'node:test';
 
-import { DeviceRuntime, type DeviceRuntimeOptions } from '../../src/device/runtime';
-import { Endpoint, type Protocol } from '../../src/endpoint';
+import { Runtime, type RuntimeOptions } from '../../src/device/runtime';
+import { Endpoint, type Protocol } from '../../src/device/endpoint';
 import {
     SYSTEM_RUNTIME_NAMESPACE,
     encodeMessage,
@@ -69,14 +69,14 @@ function togglePush(): MerossMessage {
 }
 
 interface Harness {
-    runtime: DeviceRuntime;
+    runtime: Runtime;
     endpoint: Endpoint;
     requestGets: ReturnType<TestContext['mock']['fn']>;
     request: ReturnType<TestContext['mock']['fn']>;
     advance: (ms: number) => Promise<void>;
 }
 
-function createHarness(t: TestContext, overrides: Partial<DeviceRuntimeOptions> = {}): Harness {
+function createHarness(t: TestContext, overrides: Partial<RuntimeOptions> = {}): Harness {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     let clock = 0;
     const endpoint = new Endpoint({ id: `${UUID}:0`, traits: ['switch'], initialOnline: true });
@@ -96,7 +96,7 @@ function createHarness(t: TestContext, overrides: Partial<DeviceRuntimeOptions> 
 
     const request = t.mock.fn(async () => systemAllGetAck());
 
-    const runtime = new DeviceRuntime({
+    const runtime = new Runtime({
         uuid: UUID,
         initialOnline: true,
         endpoints: [endpoint],
@@ -140,18 +140,21 @@ function createHarness(t: TestContext, overrides: Partial<DeviceRuntimeOptions> 
 }
 
 interface SystemRuntimeHarness {
-    runtime: DeviceRuntime;
+    runtime: Runtime;
     endpoint: Endpoint;
     warnings: { error: Error; trait: string }[];
 }
 
-function createSystemRuntime(overrides: Partial<DeviceRuntimeOptions> = {}): SystemRuntimeHarness {
-    const endpoint = new Endpoint({
+function createSystemRuntime(overrides: Partial<RuntimeOptions> = {}): SystemRuntimeHarness {
+    let endpoint!: Endpoint;
+    endpoint = new Endpoint({
         id: `${UUID}:0`,
         traits: ['system'],
         system: new SystemTrait({
             request: unreachable,
-            emitChange: () => {}
+            emitChange: (values) => {
+                endpoint.emit('change', { trait: 'system', values: { ...values } });
+            }
         }),
         initialOnline: true
     });
@@ -159,7 +162,7 @@ function createSystemRuntime(overrides: Partial<DeviceRuntimeOptions> = {}): Sys
     endpoint.on('warning', (error, traitName) => {
         warnings.push({ error, trait: traitName });
     });
-    const runtime = new DeviceRuntime({
+    const runtime = new Runtime({
         uuid: UUID,
         initialOnline: true,
         endpoints: [endpoint],
@@ -179,7 +182,7 @@ function assertSystemAllWarning(warnings: { error: Error; trait: string }[]): vo
     assert.match(warnings[0]?.error.message ?? '', /System\.All/);
 }
 
-describe('DeviceRuntime', () => {
+describe('Runtime', () => {
     it('start() starts polling and the heartbeat; stop() halts both', async (t: TestContext) => {
         const harness = createHarness(t, { heartbeatIntervalMs: 2_000 });
 
@@ -206,25 +209,25 @@ describe('DeviceRuntime', () => {
         await harness.advance(0);
         const pollsWhileOffline = harness.requestGets.mock.callCount();
 
-        harness.runtime.handleMessage(togglePush());
+        harness.runtime.observeInbound(togglePush());
         await harness.advance(0);
 
         assert.equal(harness.requestGets.mock.callCount(), pollsWhileOffline + 1);
         harness.runtime.stop();
     });
 
-    it('forwards recordPush() and clearMqtt() to the poller', async (t: TestContext) => {
+    it('forwards markMqttActive() and clearMqttActive() to the poller', async (t: TestContext) => {
         const harness = createHarness(t);
 
         harness.runtime.start();
         await harness.advance(0);
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
-        harness.runtime.recordPush();
+        harness.runtime.markMqttActive();
         await harness.advance(INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 1);
 
-        harness.runtime.clearMqtt();
+        harness.runtime.clearMqttActive();
         await harness.advance(INTERVAL_MS);
         assert.equal(harness.requestGets.mock.callCount(), 2);
 
@@ -272,18 +275,18 @@ describe('DeviceRuntime', () => {
         harness.runtime.stop();
     });
 
-    it('still warns from SystemTrait when availability swallowed the same malformed All', () => {
+    it('warns from SystemTrait once when availability swallows malformed All on apply', () => {
         const { runtime, warnings } = createSystemRuntime();
         const bad = systemAllGetAck({});
-        runtime.handleMessage(bad);
+        runtime.observeInbound(bad);
         assert.equal(warnings.length, 0);
-        runtime.handlePush(bad);
+        runtime.applyUpdate(bad);
         assertSystemAllWarning(warnings);
     });
 
     it('routes System.Runtime GETACK through SystemDescriptor.push to getRuntime', () => {
         const { runtime, endpoint } = createSystemRuntime();
-        runtime.handlePush(runtimeGetAck({
+        runtime.applyUpdate(runtimeGetAck({
             signal: 50,
             netType: 2,
             iotStatus: 2,
@@ -300,7 +303,7 @@ describe('DeviceRuntime', () => {
         runtime.stop();
     });
 
-    it('applies packed All GETACK to availability from handlePush', async (t: TestContext) => {
+    it('applies packed All GETACK to availability from applyUpdate', async (t: TestContext) => {
         const ips: Array<string | undefined> = [];
         const harness = createHarness(t, {
             onInnerIp(innerIp: string | undefined): void {
@@ -309,8 +312,8 @@ describe('DeviceRuntime', () => {
         });
         harness.runtime.start();
         await harness.advance(0);
-        harness.runtime.recordPush();
-        harness.runtime.handlePush(systemAllGetAck({
+        harness.runtime.markMqttActive();
+        harness.runtime.applyUpdate(systemAllGetAck({
             all: {
                 system: {
                     hardware: { type: 'mss110', uuid: UUID },
@@ -327,7 +330,7 @@ describe('DeviceRuntime', () => {
         harness.runtime.stop();
     });
 
-    it('applies packed All hub digest from handlePush', () => {
+    it('applies packed All hub digest from applyUpdate', () => {
         const hubUuid = '9109182170548290880048b1a9522933';
         const sensorId = '120027D21C19';
         const hub = new Endpoint({ id: hubUuid, traits: ['dnd'], initialOnline: true });
@@ -338,7 +341,7 @@ describe('DeviceRuntime', () => {
         });
         const sensorSeen: boolean[] = [];
         sensor.on('availability', (online) => sensorSeen.push(online));
-        const runtime = new DeviceRuntime({
+        const runtime = new Runtime({
             uuid: hubUuid,
             initialOnline: true,
             endpoints: [hub, sensor],
@@ -348,7 +351,7 @@ describe('DeviceRuntime', () => {
             requestGets: async () => [],
             onAck: () => {}
         });
-        runtime.handlePush(systemAllGetAck({
+        runtime.applyUpdate(systemAllGetAck({
             all: {
                 system: {
                     hardware: { type: 'msh300', uuid: hubUuid },
@@ -380,7 +383,7 @@ describe('DeviceRuntime', () => {
         const seen: boolean[] = [];
         endpoint.on('availability', (online) => seen.push(online));
         runtime.start();
-        runtime.handleMessage(togglePush());
+        runtime.observeInbound(togglePush());
         seen.length = 0;
         warnings.length = 0;
         clock = INTERVAL_MS + 1;
@@ -389,6 +392,165 @@ describe('DeviceRuntime', () => {
 
         assert.deepEqual(seen, [false]);
         assertSystemAllWarning(warnings);
+        runtime.stop();
+    });
+
+    it('applies MQTT System.All PUSH availability and SystemTrait once', () => {
+        const ips: Array<string | undefined> = [];
+        const changes: unknown[] = [];
+        const { runtime, endpoint } = createSystemRuntime({
+            onInnerIp(innerIp: string | undefined): void {
+                ips.push(innerIp);
+            }
+        });
+        endpoint.on('change', (change) => changes.push(change));
+        const all = systemAllGetAck({
+            all: {
+                system: {
+                    hardware: { type: 'mss110', uuid: UUID },
+                    firmware: { version: '8.0.0', innerIp: '10.0.0.9' },
+                    online: { status: 1 }
+                },
+                digest: {}
+            }
+        });
+
+        // Dispatcher route: observe every frame, then apply accepted PUSH.
+        runtime.observeInbound(all);
+        runtime.applyUpdate(all);
+
+        assert.deepEqual(ips, ['10.0.0.9']);
+        assert.equal(changes.length, 1);
+        assert.equal(endpoint.system?.getFirmware()?.version, '8.0.0');
+        runtime.stop();
+    });
+
+    it('applies poller System.All GETACK availability and SystemTrait once', () => {
+        const ips: Array<string | undefined> = [];
+        const changes: unknown[] = [];
+        const { runtime, endpoint } = createSystemRuntime({
+            onInnerIp(innerIp: string | undefined): void {
+                ips.push(innerIp);
+            }
+        });
+        endpoint.on('change', (change) => changes.push(change));
+        const all = systemAllGetAck({
+            all: {
+                system: {
+                    hardware: { type: 'mss110', uuid: UUID },
+                    firmware: { version: '8.1.0', innerIp: '10.0.0.10' },
+                    online: { status: 1 }
+                },
+                digest: {}
+            }
+        });
+
+        // Dispatcher observes the GETACK; poller onAck applies once.
+        runtime.observeInbound(all);
+        runtime.applyUpdate(all);
+
+        assert.deepEqual(ips, ['10.0.0.10']);
+        assert.equal(changes.length, 1);
+        assert.equal(endpoint.system?.getFirmware()?.version, '8.1.0');
+        runtime.stop();
+    });
+
+    it('applies each packed inner System.All GETACK once', () => {
+        const ips: Array<string | undefined> = [];
+        const changes: unknown[] = [];
+        const { runtime, endpoint } = createSystemRuntime({
+            onInnerIp(innerIp: string | undefined): void {
+                ips.push(innerIp);
+            }
+        });
+        endpoint.on('change', (change) => changes.push(change));
+        const outer = encodeMessage({
+            namespace: 'Appliance.Control.Multiple',
+            method: 'GETACK',
+            key: KEY,
+            from: `/appliance/${UUID}/publish`,
+            uuid: UUID,
+            payload: {}
+        });
+        const inner = systemAllGetAck({
+            all: {
+                system: {
+                    hardware: { type: 'mss110', uuid: UUID },
+                    firmware: { version: '8.2.0', innerIp: '10.0.0.11' },
+                    online: { status: 1 }
+                },
+                digest: {}
+            }
+        });
+
+        // Outer frame is observed only; poller applies each unpacked reply.
+        runtime.observeInbound(outer);
+        runtime.applyUpdate(inner);
+
+        assert.deepEqual(ips, ['10.0.0.11']);
+        assert.equal(changes.length, 1);
+        assert.equal(endpoint.system?.getFirmware()?.version, '8.2.0');
+        runtime.stop();
+    });
+
+    it('heartbeat success applies System.All once; failure marks offline after validate', async (t: TestContext) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let clock = 0;
+        const ips: Array<string | undefined> = [];
+        let probe: MerossMessage = systemAllGetAck({
+            all: {
+                system: {
+                    hardware: { type: 'mss110', uuid: UUID },
+                    firmware: { version: '9.0.0', innerIp: '10.0.0.12' },
+                    online: { status: 1 }
+                },
+                digest: {}
+            }
+        });
+        const { runtime, endpoint, warnings } = createSystemRuntime({
+            heartbeatIntervalMs: INTERVAL_MS,
+            now(): number {
+                return clock;
+            },
+            request: async () => probe,
+            onInnerIp(innerIp: string | undefined): void {
+                ips.push(innerIp);
+            },
+            pollIntervalMs: 60_000,
+            startDelayMs: 60_000
+        });
+        const changes: unknown[] = [];
+        const seen: boolean[] = [];
+        endpoint.on('change', (change) => changes.push(change));
+        endpoint.on('availability', (online) => seen.push(online));
+        runtime.start();
+        runtime.observeInbound(togglePush());
+        seen.length = 0;
+        changes.length = 0;
+        ips.length = 0;
+        warnings.length = 0;
+
+        clock = INTERVAL_MS + 1;
+        t.mock.timers.tick(INTERVAL_MS + 1);
+        await flushMicrotasks(3);
+
+        assert.deepEqual(ips, ['10.0.0.12']);
+        assert.equal(changes.length, 1);
+        assert.deepEqual(seen, []);
+        assert.equal(endpoint.isOnline(), true);
+
+        probe = systemAllGetAck({});
+        changes.length = 0;
+        ips.length = 0;
+        warnings.length = 0;
+        clock = INTERVAL_MS * 2 + 1;
+        t.mock.timers.tick(INTERVAL_MS);
+        await flushMicrotasks(3);
+
+        assert.deepEqual(seen, [false]);
+        assertSystemAllWarning(warnings);
+        assert.equal(ips.length, 0);
+        assert.equal(changes.length, 0);
         runtime.stop();
     });
 });

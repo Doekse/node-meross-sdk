@@ -1,5 +1,5 @@
 import type { CloudDevice, CloudSubDevice } from '../cloud';
-import { Endpoint } from '../endpoint';
+import { Endpoint } from './endpoint';
 import { MerossError } from '../errors';
 import type { InventoryRow } from '../inventory';
 import { buildPollJobs } from '../poll';
@@ -25,7 +25,7 @@ import {
     projectInventoryRows,
     type PhysicalDevice
 } from './index';
-import { DeviceRuntime } from './runtime';
+import { Runtime } from './runtime';
 
 /**
  * Transport and session hooks Board needs without owning the router or cloud
@@ -69,7 +69,7 @@ export class Board {
     private readonly lanKeys = new LanEncryptionKeys();
     private readonly endpoints = new Map<string, Endpoint>();
     private physical: PhysicalDevice | undefined;
-    private runtime: DeviceRuntime | undefined;
+    private runtime: Runtime | undefined;
     /** After {@link stop}, {@link request} rejects like an unenrolled device. */
     private stopped = false;
 
@@ -145,16 +145,13 @@ export class Board {
         return endpoint;
     }
 
-    handlePush(message: MerossMessage): void {
-        this.runtime?.handlePush(message);
-    }
-
     /**
-     * MQTT (`originUuid` omitted) records liveness, except System.Online that
-     * is not PUSH with status 1. LAN (POST uuid) applies handleMessage without
-     * recording liveness.
+     * MQTT (`originUuid` omitted) records MQTT activity and liveness, except
+     * System.Online that is not PUSH with status 1. LAN (POST uuid) observes
+     * liveness without recording MQTT activity. Payload state is
+     * {@link applyUpdate}.
      */
-    handleInbound(message: MerossMessage, originUuid?: string): void {
+    observeInbound(message: MerossMessage, originUuid?: string): void {
         if (!this.runtime) {
             return;
         }
@@ -169,13 +166,21 @@ export class Board {
             return;
         }
         if (originUuid === undefined) {
-            this.runtime.recordPush();
+            this.runtime.markMqttActive();
         }
-        this.runtime.handleMessage(message);
+        this.runtime.observeInbound(message);
     }
 
-    clearMqtt(): void {
-        this.runtime?.clearMqtt();
+    /**
+     * Availability payload and trait state for an accepted PUSH or unpacked
+     * GETACK. Observation of the same frame is {@link observeInbound}.
+     */
+    applyUpdate(message: MerossMessage): void {
+        this.runtime?.applyUpdate(message);
+    }
+
+    clearMqttActive(): void {
+        this.runtime?.clearMqttActive();
     }
 
     /**
@@ -206,7 +211,7 @@ export class Board {
         }
 
         const startDelayMs = this.deps.nextStartDelayMs();
-        this.runtime = new DeviceRuntime({
+        this.runtime = new Runtime({
             uuid: this.uuid,
             initialOnline: physical.online,
             endpoints: attached,
@@ -229,7 +234,7 @@ export class Board {
                 ...this.lanBind(physical),
                 onPackedFallback
             }),
-            onAck: (message) => this.handlePush(message),
+            onAck: (message) => this.applyUpdate(message),
             jobs: buildPollJobs(physical.ability, physical.endpoints, physical.digestNamespaces),
             startDelayMs
         });
@@ -263,7 +268,7 @@ export class Board {
                 ...this.lanBind(physical),
                 ...options
             }).finally(() => {
-                this.runtime?.publishProtocol();
+                this.runtime?.refreshProtocol();
             });
         };
     }

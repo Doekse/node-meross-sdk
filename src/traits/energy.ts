@@ -52,7 +52,7 @@ export interface EnergyValues {
 export type { ElectricityConfig };
 
 /**
- * Power plus consumption samples for one enrolled endpoint. DevicePoller owns
+ * Power plus consumption samples for one enrolled endpoint. Poller owns
  * the schedule; this trait applies GETACK/PUSH and exposes on-demand `poll()`.
  */
 export class EnergyTrait {
@@ -83,7 +83,7 @@ export class EnergyTrait {
      * On-demand GET of advertised energy namespaces. Rejects with
      * `CommandError` / `TransportError` / `ProtocolError` like `setOn`.
      * Earlier GETs in this call may already be applied to `last` and emitted.
-     * DevicePoller swallows the same failures on its path.
+     * Poller swallows the same failures on its path.
      */
     async poll(): Promise<EnergyValues> {
         if (this.bind.hasElectricity || this.bind.hasElectricityX) {
@@ -143,7 +143,7 @@ export class EnergyTrait {
     }
 
     /**
-     * PUSH/GETACK from DeviceRuntime. Hosts subscribe to Endpoint `change`.
+     * PUSH/GETACK from Runtime. Hosts subscribe to Endpoint `change`.
      *
      * @internal
      * @package

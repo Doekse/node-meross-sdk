@@ -1,10 +1,10 @@
 import type { CloudDevice } from '../cloud';
-import type { TraitName, TraitValues } from '../endpoint';
+import type { TraitName, TraitValues } from './endpoint';
 import type { ClassHint } from '../inventory';
 import type { AbilityMap } from '../protocol/codecs/ability';
 import type { SystemAll } from '../protocol/codecs/system-all';
 import type { DeviceRequest } from '../request';
-import type { GraphEndpoint, PhysicalDevice } from './index';
+import type { EnrolledEndpoint, PhysicalDevice } from './index';
 
 /**
  * Board enroll surface shared by trait helpers. `add` stays implemented in
@@ -52,7 +52,7 @@ export interface EnrollBoardExtraInput {
  * passes values and does not build the `change` union itself.
  */
 export interface TraitAttachContext<K extends TraitName> {
-    readonly graphEndpoint: GraphEndpoint;
+    readonly graphEndpoint: EnrolledEndpoint;
     readonly physical: PhysicalDevice;
     readonly request: DeviceRequest;
     readonly channel: number;
