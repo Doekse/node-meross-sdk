@@ -10,7 +10,7 @@ import type { ClimateModeMode, ClimateTraitBoardBind } from './climate-core';
  * fanSpeed do not.
  */
 export class ClimateModeTrait extends ClimateBoardBase {
-    readonly generation = 'mode' as const;
+    readonly kind = 'mode' as const;
 
     /** @internal */
     constructor(bind: ClimateTraitBoardBind) {

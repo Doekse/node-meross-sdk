@@ -113,9 +113,9 @@ function push(namespace: string, payload: MerossMessage['payload']): MerossMessa
 }
 
 describe('ClimateTrait board Mode generation', () => {
-    it('exposes generation mode', () => {
+    it('exposes kind mode', () => {
         const { trait } = createBoardHarness('mode');
-        assert.equal(trait.generation, 'mode');
+        assert.equal(trait.kind, 'mode');
     });
     it('setOn(true) sends Thermostat.Mode SET', async () => {
         const { trait, requests } = createBoardHarness('mode');
@@ -191,9 +191,9 @@ describe('ClimateTrait board Mode generation', () => {
 });
 
 describe('ClimateTrait board ModeB generation', () => {
-    it('exposes generation modeB', () => {
+    it('exposes kind modeB', () => {
         const { trait } = createBoardHarness('modeB');
-        assert.equal(trait.generation, 'modeB');
+        assert.equal(trait.kind, 'modeB');
     });
     it('setOn(false) sends ModeB SET with onoff=2', async () => {
         const { trait, requests } = createBoardHarness('modeB');
@@ -232,9 +232,9 @@ describe('ClimateTrait board ModeB generation', () => {
 });
 
 describe('ClimateTrait board ModeC generation', () => {
-    it('exposes generation modeC', () => {
+    it('exposes kind modeC', () => {
         const { trait } = createBoardHarness('modeC');
-        assert.equal(trait.generation, 'modeC');
+        assert.equal(trait.kind, 'modeC');
     });
     it('setOn(true) uses ModeC SET with last non-off mode (auto when unknown)', async () => {
         const { trait, requests } = createBoardHarness('modeC');
@@ -373,9 +373,9 @@ describe('ClimateTrait board ModeC generation', () => {
 });
 
 describe('ClimateTrait hub valve', () => {
-    it('exposes generation hub', () => {
+    it('exposes kind hub', () => {
         const { trait } = createHubHarness();
-        assert.equal(trait.generation, 'hub');
+        assert.equal(trait.kind, 'hub');
     });
     it('setOn sends Hub.ToggleX SET', async () => {
         const { trait, requests } = createHubHarness();

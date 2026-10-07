@@ -18,7 +18,7 @@ import {
 import type { DeviceRequest } from '../../src/request';
 import { ClimateHubTrait } from '../../src/traits/climate';
 import { LightTrait } from '../../src/traits/light';
-import { SensorTrait } from '../../src/traits/sensor';
+import { SensorContactTrait, SensorTempHumTrait, type SensorTrait, type SensorTraitBind } from '../../src/traits/sensor';
 import { SwitchTrait } from '../../src/traits/switch';
 import { SystemTrait } from '../../src/traits/system';
 import { createRequestRecorder } from '../helpers/request';
@@ -137,13 +137,17 @@ function sensorTrait(
     family: 'tempHum' | 'contact',
     emit: EmitChange
 ): SensorTrait {
-    return new SensorTrait({
+    const bind: SensorTraitBind = {
         subDeviceId,
-        family,
         namespaces: new Set([HUB_SENSOR_TEMPHUM_NAMESPACE, HUB_SENSOR_ALL_NAMESPACE]),
         request: deviceRequest(),
-        emitChange: (values) => emit({ trait: 'sensor', values })
-    });
+        emitChange: (values) => {
+            emit({ trait: 'sensor', values });
+        }
+    };
+    return family === 'contact'
+        ? new SensorContactTrait(bind)
+        : new SensorTempHumTrait(bind);
 }
 
 function climateTrait(emit: EmitChange): ClimateHubTrait {

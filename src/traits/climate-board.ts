@@ -81,7 +81,7 @@ import {
     ClimateTraitBase,
     sensorLatestToClimatePatch,
     systemToClimateValues,
-    type ClimateBoardGeneration,
+    type ClimateBoardKind,
     type ClimateHoldMode,
     type ClimateSchedule,
     type ClimateSensorMode,
@@ -92,11 +92,11 @@ import {
 } from './climate-core';
 
 /**
- * Board extras (HoldAction, Frost, …) are Ability-gated, not generation-gated.
- * Generation SET/PUSH stay on the concrete Mode/ModeB/ModeC classes.
+ * Board extras (HoldAction, Frost, …) are Ability-gated, not kind-gated.
+ * Kind-specific SET/PUSH stay on the concrete Mode/ModeB/ModeC classes.
  */
 export abstract class ClimateBoardBase extends ClimateTraitBase {
-    abstract override readonly generation: ClimateBoardGeneration;
+    abstract override readonly kind: ClimateBoardKind;
 
     protected readonly channel: number;
     protected lastSystem: ClimateSystem | undefined;
@@ -420,17 +420,17 @@ export abstract class ClimateBoardBase extends ClimateTraitBase {
     }
 
     private handleBoardPush(ns: string, payload: MerossPayload): void {
-        const generation = this.generation;
+        const kind = this.kind;
         const id = { channel: this.channel };
-        if (ns === THERMOSTAT_MODE_NAMESPACE && generation === 'mode') {
+        if (ns === THERMOSTAT_MODE_NAMESPACE && kind === 'mode') {
             this.applyMatching(decodeThermostatModePush(payload), id);
             return;
         }
-        if (ns === THERMOSTAT_MODEB_NAMESPACE && generation === 'modeB') {
+        if (ns === THERMOSTAT_MODEB_NAMESPACE && kind === 'modeB') {
             this.applyMatching(decodeThermostatModeBPush(payload), id);
             return;
         }
-        if (ns === THERMOSTAT_MODEC_NAMESPACE && generation === 'modeC') {
+        if (ns === THERMOSTAT_MODEC_NAMESPACE && kind === 'modeC') {
             this.applyMatching(decodeThermostatModeCPush(payload), id);
             return;
         }
@@ -543,6 +543,6 @@ export abstract class ClimateBoardBase extends ClimateTraitBase {
     }
 
     protected boardScale(): number {
-        return this.generation === 'mode' ? 10 : 100;
+        return this.kind === 'mode' ? 10 : 100;
     }
 }

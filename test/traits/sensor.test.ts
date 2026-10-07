@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
+import { MerossError } from '../../src/errors';
 import {
     CONFIG_SENSOR_ASSOCIATION_NAMESPACE,
     HUB_BATTERY_NAMESPACE,
@@ -20,8 +21,15 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
-import { SENSOR_FAMILY_MAP, SensorTrait } from '../../src/traits/sensor';
-import type { SensorFamily, SensorTraitBind } from '../../src/traits/sensor';
+import {
+    SENSOR_FAMILY_MAP,
+    SensorContactTrait,
+    SensorLeakTrait,
+    SensorMotionTrait,
+    SensorSmokeTrait,
+    SensorTempHumTrait
+} from '../../src/traits/sensor';
+import type { SensorKind, SensorTrait, SensorTraitBind } from '../../src/traits/sensor';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
@@ -46,7 +54,57 @@ const HUB_SENSOR_NAMESPACES = new Set([
 ]);
 
 function createHarness(
-    family: SensorFamily,
+    family: 'tempHum',
+    getAckPayload?: Record<string, unknown>,
+    namespaces?: ReadonlySet<string>
+): {
+    endpoint: Endpoint;
+    trait: SensorTempHumTrait;
+    requests: MerossMessage[];
+    changes: Record<string, unknown>[];
+};
+function createHarness(
+    family: 'contact',
+    getAckPayload?: Record<string, unknown>,
+    namespaces?: ReadonlySet<string>
+): {
+    endpoint: Endpoint;
+    trait: SensorContactTrait;
+    requests: MerossMessage[];
+    changes: Record<string, unknown>[];
+};
+function createHarness(
+    family: 'leak',
+    getAckPayload?: Record<string, unknown>,
+    namespaces?: ReadonlySet<string>
+): {
+    endpoint: Endpoint;
+    trait: SensorLeakTrait;
+    requests: MerossMessage[];
+    changes: Record<string, unknown>[];
+};
+function createHarness(
+    family: 'motion',
+    getAckPayload?: Record<string, unknown>,
+    namespaces?: ReadonlySet<string>
+): {
+    endpoint: Endpoint;
+    trait: SensorMotionTrait;
+    requests: MerossMessage[];
+    changes: Record<string, unknown>[];
+};
+function createHarness(
+    family: 'smoke',
+    getAckPayload?: Record<string, unknown>,
+    namespaces?: ReadonlySet<string>
+): {
+    endpoint: Endpoint;
+    trait: SensorSmokeTrait;
+    requests: MerossMessage[];
+    changes: Record<string, unknown>[];
+};
+function createHarness(
+    kind: SensorKind,
     getAckPayload: Record<string, unknown> = {},
     namespaces: ReadonlySet<string> = HUB_SENSOR_NAMESPACES
 ): {
@@ -64,7 +122,6 @@ function createHarness(
     });
     const bind: SensorTraitBind = {
         subDeviceId: SUB_DEVICE_ID,
-        family,
         namespaces,
         request,
         emitChange: (values) => {
@@ -72,7 +129,29 @@ function createHarness(
             endpoint.emit('change', { trait: 'sensor', values: { ...values } });
         }
     };
-    return { endpoint, trait: new SensorTrait(bind), requests, changes };
+    return { endpoint, trait: sensorFor(kind, bind), requests, changes };
+}
+
+function sensorFor(kind: SensorKind, bind: SensorTraitBind): SensorTrait {
+    switch (kind) {
+        case 'tempHum':
+            return new SensorTempHumTrait(bind);
+        case 'contact':
+            return new SensorContactTrait(bind);
+        case 'leak':
+            return new SensorLeakTrait(bind);
+        case 'motion':
+            return new SensorMotionTrait(bind);
+        case 'smoke':
+            return new SensorSmokeTrait(bind);
+    }
+}
+
+function notAdvertised(run: () => Promise<unknown>): Promise<void> {
+    return assert.rejects(
+        run,
+        (error: unknown) => error instanceof MerossError && error.code === 'NAMESPACE_NOT_ADVERTISED'
+    );
 }
 
 function pushMessage(namespace: string, payload: Record<string, unknown>): MerossMessage {
@@ -537,15 +616,17 @@ describe('SensorTrait — extras', () => {
         assert.equal(entry.status, 21);
     });
 
-    it('mute() is a no-op when status is not mutable', async () => {
+    it('mute() throws when status is not mutable', async () => {
         const { trait, requests } = createHarness('smoke');
         trait.handlePush(pushMessage(HUB_SENSOR_SMOKE_NAMESPACE, {
             smokeAlarm: [{ id: SUB_DEVICE_ID, status: 170, timestamp: 1000 }]
         }));
         requests.length = 0;
-        const result = await trait.mute();
+        await assert.rejects(
+            () => trait.mute(),
+            (error: unknown) => error instanceof MerossError && error.code === 'UNSUPPORTED'
+        );
         assert.equal(requests.length, 0);
-        assert.deepEqual(result, {});
     });
 
     it('test() SETs smoke status 23', async () => {
@@ -574,27 +655,15 @@ describe('SensorTrait — extras', () => {
         assert.equal(changes[0].smokeDetect, false);
     });
 
-    it('setCalibration is a no-op on contact sensors', async () => {
-        const { trait, requests } = createHarness('contact');
-        await trait.setCalibration({ temperature: 1 });
-        assert.equal(requests.length, 0);
-    });
-
-    it('setCalibration is a no-op when Adjust is not advertised', async () => {
+    it('setCalibration throws when Adjust is not advertised', async () => {
         const { trait, requests } = createHarness('tempHum', {}, new Set());
-        await trait.setCalibration({ temperature: 1 });
+        await notAdvertised(() => trait.setCalibration({ temperature: 1 }));
         assert.equal(requests.length, 0);
     });
 
-    it('setSmokeDnd is a no-op on contact sensors', async () => {
-        const { trait, requests } = createHarness('contact');
-        await trait.setSmokeDnd(true);
-        assert.equal(requests.length, 0);
-    });
-
-    it('setSmokeDnd is a no-op when Smoke.Config is not advertised', async () => {
+    it('setSmokeDnd throws when Smoke.Config is not advertised', async () => {
         const { trait, requests } = createHarness('smoke', {}, new Set([HUB_SENSOR_SMOKE_NAMESPACE]));
-        await trait.setSmokeDnd(true);
+        await notAdvertised(() => trait.setSmokeDnd(true));
         assert.equal(requests.length, 0);
     });
 

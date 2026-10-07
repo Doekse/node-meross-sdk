@@ -310,7 +310,7 @@ describe('attachEndpoint sensor', () => {
             ability: { [HUB_SENSOR_ALL_NAMESPACE]: {} }
         });
 
-        assert.ok(endpoint.sensor);
+        assert.equal(endpoint.sensor?.kind, 'tempHum');
     });
 });
 
@@ -465,6 +465,7 @@ describe('attachEndpoint cover', () => {
             })
         });
 
+        assert.equal(endpoint.cover!.kind, 'garage');
         await endpoint.cover!.open();
 
         assert.equal(requests[0]?.header.namespace, GARAGE_STATE_NAMESPACE);
@@ -476,6 +477,7 @@ describe('attachEndpoint cover', () => {
             ability: { [SHUTTER_STATE_NAMESPACE]: {}, [SHUTTER_POSITION_NAMESPACE]: {} }
         });
 
+        assert.equal(endpoint.cover!.kind, 'shutter');
         await endpoint.cover!.open();
 
         assert.equal(requests[0]?.header.namespace, SHUTTER_POSITION_NAMESPACE);
@@ -517,7 +519,7 @@ describe('attachEndpoint climate', () => {
             ability: { [THERMOSTAT_MODEC_NAMESPACE]: {} }
         });
 
-        assert.equal(endpoint.climate!.generation, 'modeC');
+        assert.equal(endpoint.climate!.kind, 'modeC');
         await endpoint.climate!.setOn(true);
 
         assert.equal(requests[0]?.header.namespace, THERMOSTAT_MODEC_NAMESPACE);
@@ -533,7 +535,7 @@ describe('attachEndpoint climate', () => {
             }
         });
 
-        assert.equal(endpoint.climate!.generation, 'modeC');
+        assert.equal(endpoint.climate!.kind, 'modeC');
         await endpoint.climate!.setOn(true);
 
         assert.equal(requests[0]?.header.namespace, THERMOSTAT_MODEC_NAMESPACE);
@@ -545,7 +547,7 @@ describe('attachEndpoint climate', () => {
             ability: { [THERMOSTAT_MODEB_NAMESPACE]: {} }
         });
 
-        assert.equal(endpoint.climate!.generation, 'modeB');
+        assert.equal(endpoint.climate!.kind, 'modeB');
         await endpoint.climate!.setOn(true);
 
         assert.equal(requests[0]?.header.namespace, THERMOSTAT_MODEB_NAMESPACE);
@@ -560,7 +562,7 @@ describe('attachEndpoint climate', () => {
             }
         });
 
-        assert.equal(endpoint.climate!.generation, 'modeB');
+        assert.equal(endpoint.climate!.kind, 'modeB');
         await endpoint.climate!.setOn(true);
 
         assert.equal(requests[0]?.header.namespace, THERMOSTAT_MODEB_NAMESPACE);
@@ -572,7 +574,7 @@ describe('attachEndpoint climate', () => {
             ability: { [THERMOSTAT_MODE_NAMESPACE]: {} }
         });
 
-        assert.equal(endpoint.climate!.generation, 'mode');
+        assert.equal(endpoint.climate!.kind, 'mode');
         await endpoint.climate!.setOn(true);
 
         assert.equal(requests[0]?.header.namespace, THERMOSTAT_MODE_NAMESPACE);

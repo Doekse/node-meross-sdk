@@ -32,12 +32,12 @@ export type {
 };
 
 /**
- * Firmware generation bound at enroll. Hosts narrow the climate instance
- * on this field so ModeC-only methods are not callable on a valve.
+ * Bound at enroll. Hosts narrow the climate instance on this field so
+ * ModeC-only methods are not callable on a valve.
  */
-export type ClimateGeneration = 'mode' | 'modeB' | 'modeC' | 'hub';
+export type ClimateKind = 'mode' | 'modeB' | 'modeC' | 'hub';
 
-export type ClimateBoardGeneration = 'mode' | 'modeB' | 'modeC';
+export type ClimateBoardKind = 'mode' | 'modeB' | 'modeC';
 
 /** Thermostat.Mode `mode` values. */
 export type ClimateModeMode = 'off' | 'heat' | 'cool' | 'auto' | 'eco' | 'manual';
@@ -125,8 +125,8 @@ export interface ClimateValues {
 export type ClimatePatch = ClimateValues & { channel?: number; id?: string };
 
 /**
- * Transport + channel bind for a board thermostat. Generation is the
- * concrete class, not a field here, so a ModeC construct cannot call
+ * Transport + channel bind for a board thermostat. Mode / ModeB / ModeC
+ * is the class, not a field here, so a ModeC construct cannot call
  * Mode-only setters.
  */
 export interface ClimateTraitBoardBind {
@@ -153,11 +153,11 @@ export interface ClimateTraitHubBind {
 export type ClimateTraitBind = ClimateTraitBoardBind | ClimateTraitHubBind;
 
 /**
- * Shared cache and Ability checks. Generation-specific SET/PUSH live on
+ * Shared cache and Ability checks. Kind-specific SET/PUSH live on
  * the concrete classes so unsupported commands are not on the type.
  */
 export abstract class ClimateTraitBase {
-    abstract readonly generation: ClimateGeneration;
+    abstract readonly kind: ClimateKind;
 
     protected readonly namespaces: ReadonlySet<string>;
     protected readonly request: DeviceRequest;

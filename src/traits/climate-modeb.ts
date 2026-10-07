@@ -13,7 +13,7 @@ import type {
  * Thermostat.ModeB. Working is heat/cool; workMode includes timer.
  */
 export class ClimateModeBTrait extends ClimateBoardBase {
-    readonly generation = 'modeB' as const;
+    readonly kind = 'modeB' as const;
 
     /** @internal */
     constructor(bind: ClimateTraitBoardBind) {

@@ -72,7 +72,7 @@ const HUB_MODE_TO_WIRE: Partial<Record<ClimateHubMode, number>> = {
  * Temperature slots. Board extras (fan, HoldAction, history) are not here.
  */
 export class ClimateHubTrait extends ClimateTraitBase {
-    readonly generation = 'hub' as const;
+    readonly kind = 'hub' as const;
 
     private readonly subDeviceId: string;
 

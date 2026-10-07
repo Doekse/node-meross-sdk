@@ -307,9 +307,9 @@ Traits are present only when the device advertised the matching ability. Use opt
 | `switch`         | Plugs, strips, wall switches       | `isOn()`, `setOn(boolean)`                                                            |
 | `light`          | Bulbs and light strips             | `setOn`, `setBrightness` / `setTemperature` (`0..1`), `setRgb`, `setEffect`           |
 | `energy`         | Metered plugs and strips           | `poll()` (power / current / voltage), `getHourlyConsumption()`, `deleteConsumption()` |
-| `cover`          | Garage doors, roller shutters      | `open()`, `close()`, `stop()`, `setPosition()`                                        |
-| `climate`        | Thermostats and hub valves         | Narrow `generation` (`mode` / `modeB` / `modeC` / `hub`). Shared: `setOn`, `setTargetTemperature`. ModeC: `setFanSpeed` (`null` hold disables); `setTargetTemperature` only in heat/cool. Hub: `setConfig` / `setSuperCtl`. Missing Ability throws `NAMESPACE_NOT_ADVERTISED`. |
-| `sensor`         | Hub temp/hum, contact, leak, motion, smoke | Live values on `change`; `setCalibration`, `setAlerts`, smoke `mute` / `test`         |
+| `cover`          | Garage doors, roller shutters      | Narrow `kind` (`garage` / `shutter`). Shared: `open`, `close`. Shutter: `stop`, `setPosition`, `calibrate`. Garage: `setConfig`. Missing Ability throws `NAMESPACE_NOT_ADVERTISED`. |
+| `climate`        | Thermostats and hub valves         | Narrow `kind` (`mode` / `modeB` / `modeC` / `hub`). Shared: `setOn`, `setTargetTemperature`. ModeC: `setFanSpeed` (`null` hold disables); `setTargetTemperature` only in heat/cool. Hub: `setConfig` / `setSuperCtl`. Missing Ability throws `NAMESPACE_NOT_ADVERTISED`. |
+| `sensor`         | Hub temp/hum, contact, leak, motion, smoke | Narrow `kind` (`tempHum` / `contact` / `leak` / `motion` / `smoke`). Live values on `change`. TempHum: `setCalibration`, `setAlerts`. Smoke: `mute` / `test`. Missing Ability throws `NAMESPACE_NOT_ADVERTISED`. |
 | `presence`       | Wi-Fi presence sensors             | `change` values; `getConfig()`, `setConfig()`, `startStudy()`                         |
 | `fan`            | Fans                               | `setOn`, `setSpeed`, `getButtonConfig` / `setButtonConfig`                            |
 | `spray`          | Humidifiers                        | `getMode()`, `setMode('off'                                                           |

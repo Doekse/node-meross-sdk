@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Endpoint } from '../../src/endpoint';
+import { MerossError } from '../../src/errors';
 import {
     GARAGE_CONFIG_NAMESPACE,
     GARAGE_MULTIPLE_CONFIG_NAMESPACE,
@@ -17,7 +18,7 @@ import {
     encodeShutterPositionSet,
     type MerossMessage
 } from '../../src/protocol';
-import { CoverTrait } from '../../src/traits/cover';
+import { CoverGarageTrait, CoverShutterTrait, type CoverTraitBind } from '../../src/traits/cover';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';
@@ -25,12 +26,30 @@ const UUID = '2206138957096651080248e1e99705a4';
 const CHANNEL = 0;
 
 function createCoverHarness(
+    kind: 'garage',
+    namespaces?: ReadonlySet<string>,
+    getAckPayloads?: Record<string, MerossMessage['payload']>
+): {
+    endpoint: Endpoint;
+    trait: CoverGarageTrait;
+    requests: MerossMessage[];
+};
+function createCoverHarness(
+    kind: 'shutter',
+    namespaces?: ReadonlySet<string>,
+    getAckPayloads?: Record<string, MerossMessage['payload']>
+): {
+    endpoint: Endpoint;
+    trait: CoverShutterTrait;
+    requests: MerossMessage[];
+};
+function createCoverHarness(
     kind: 'garage' | 'shutter',
     namespaces?: ReadonlySet<string>,
     getAckPayloads: Record<string, MerossMessage['payload']> = {}
 ): {
     endpoint: Endpoint;
-    trait: CoverTrait;
+    trait: CoverGarageTrait | CoverShutterTrait;
     requests: MerossMessage[];
 } {
     const endpoint = new Endpoint({
@@ -49,14 +68,25 @@ function createCoverHarness(
             return traitAck(sent, { key: KEY, payload: ackPayload });
         }
     });
-    const trait = new CoverTrait({
+    const bind: CoverTraitBind = {
         channel: CHANNEL,
-        kind,
         namespaces,
         request,
-        emitChange: (values) => endpoint.emit('change', { trait: 'cover', values: { ...values } })
-    });
+        emitChange: (values) => {
+            endpoint.emit('change', { trait: 'cover', values: { ...values } });
+        }
+    };
+    const trait = kind === 'shutter'
+        ? new CoverShutterTrait(bind)
+        : new CoverGarageTrait(bind);
     return { endpoint, trait, requests };
+}
+
+function notAdvertised(run: () => Promise<unknown>): Promise<void> {
+    return assert.rejects(
+        run,
+        (error: unknown) => error instanceof MerossError && error.code === 'NAMESPACE_NOT_ADVERTISED'
+    );
 }
 
 function push(namespace: string, payload: MerossMessage['payload']): MerossMessage {
@@ -99,18 +129,6 @@ describe('CoverTrait.open/close', () => {
 
         assert.deepEqual(await trait.close(), { open: false });
         assert.deepEqual(requests[0]?.payload, encodeGarageSet({ channel: CHANNEL, open: false }));
-    });
-
-    it('stop() is a no-op for garage', async () => {
-        const { trait, requests } = createCoverHarness('garage');
-        await trait.stop();
-        assert.equal(requests.length, 0);
-    });
-
-    it('setPosition() is a no-op for garage', async () => {
-        const { trait, requests } = createCoverHarness('garage');
-        await trait.setPosition(0.5);
-        assert.equal(requests.length, 0);
     });
 
     it('emits a change patch on the endpoint after SETACK', async () => {
@@ -233,9 +251,8 @@ describe('CoverTrait initial state', () => {
         const changes: unknown[] = [];
         endpoint.on('change', (change) => changes.push(change));
 
-        const trait = new CoverTrait({
+        const trait = new CoverGarageTrait({
             channel: CHANNEL,
-            kind: 'garage',
             initialOpen: true,
             request,
             emitChange: (values) => endpoint.emit('change', { trait: 'cover', values: { ...values } })
@@ -340,12 +357,9 @@ describe('CoverTrait.getConfig / setConfig (GarageDoor.Config)', () => {
         assert.equal(requests.length, 0);
     });
 
-    it('setConfig() is a no-op on shutters', async () => {
-        const { trait, requests } = createCoverHarness(
-            'shutter',
-            new Set([GARAGE_CONFIG_NAMESPACE])
-        );
-        await trait.setConfig({ signalDuration: 1000 });
+    it('setConfig() throws when no config namespace is advertised', async () => {
+        const { trait, requests } = createCoverHarness('garage');
+        await notAdvertised(() => trait.setConfig({ signalDuration: 1000 }));
         assert.equal(requests.length, 0);
     });
 });
@@ -462,15 +476,6 @@ describe('CoverTrait.getShutterConfig / setTravelTimes / setDirection', () => {
         assert.equal(requests.length, 0);
     });
 
-    it('getShutterConfig() returns undefined for garage kind', () => {
-        const { trait, requests } = createCoverHarness(
-            'garage',
-            new Set([SHUTTER_CONFIG_NAMESPACE])
-        );
-        assert.equal(trait.getShutterConfig(), undefined);
-        assert.equal(requests.length, 0);
-    });
-
     it('setTravelTimes() sends RollerShutter.Config SET with travel times', async () => {
         const { trait, requests } = createCoverHarness(
             'shutter',
@@ -500,18 +505,9 @@ describe('CoverTrait.getShutterConfig / setTravelTimes / setDirection', () => {
         );
     });
 
-    it('setTravelTimes() is a no-op on garages', async () => {
-        const { trait, requests } = createCoverHarness(
-            'garage',
-            new Set([SHUTTER_CONFIG_NAMESPACE])
-        );
-        await trait.setTravelTimes({ signalOpen: 15000, signalClose: 12000 });
-        assert.equal(requests.length, 0);
-    });
-
-    it('setTravelTimes() is a no-op when namespace is not advertised', async () => {
+    it('setTravelTimes() throws when namespace is not advertised', async () => {
         const { trait, requests } = createCoverHarness('shutter');
-        await trait.setTravelTimes({ signalOpen: 15000, signalClose: 12000 });
+        await notAdvertised(() => trait.setTravelTimes({ signalOpen: 15000, signalClose: 12000 }));
         assert.equal(requests.length, 0);
     });
 
@@ -568,18 +564,9 @@ describe('CoverTrait.calibrate', () => {
         assert.deepEqual(requests[0]?.payload, encodeShutterAdjustSet(CHANNEL, 4));
     });
 
-    it('calibrate() is a no-op on garages', async () => {
-        const { trait, requests } = createCoverHarness(
-            'garage',
-            new Set([SHUTTER_ADJUST_NAMESPACE])
-        );
-        await trait.calibrate('auto');
-        assert.equal(requests.length, 0);
-    });
-
-    it('calibrate() is a no-op when namespace is not advertised', async () => {
+    it('calibrate() throws when namespace is not advertised', async () => {
         const { trait, requests } = createCoverHarness('shutter');
-        await trait.calibrate('auto');
+        await notAdvertised(() => trait.calibrate('auto'));
         assert.equal(requests.length, 0);
     });
 });

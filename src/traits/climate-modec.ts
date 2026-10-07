@@ -17,7 +17,7 @@ import type {
  * ModeC `work` has no timer wire value.
  */
 export class ClimateModeCTrait extends ClimateBoardBase {
-    readonly generation = 'modeC' as const;
+    readonly kind = 'modeC' as const;
 
     /**
      * Off is a ModeC mode, so last.mode becomes 'off'. Restore this on setOn(true).

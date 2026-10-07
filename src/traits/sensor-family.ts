@@ -1,14 +1,14 @@
 /**
- * Hub child sensor SKU → family map. Lives outside {@link ./sensor} so
+ * Hub child sensor SKU → kind map. Lives outside {@link ./sensor} so
  * {@link ../device/hub-child} can classify children without loading the
  * sensor trait or codec modules.
  */
 
-/** Hub child sensor families. Digest type strings do not match cloud subDeviceType. */
-export type SensorFamily = 'tempHum' | 'contact' | 'leak' | 'motion' | 'smoke';
+/** Hub child sensor kinds. Digest type strings do not match cloud subDeviceType. */
+export type SensorKind = 'tempHum' | 'contact' | 'leak' | 'motion' | 'smoke';
 
-/** Canonical lowercase model → family. Digest aliases live on SENSOR_HUB_CHILD. */
-export const SENSOR_FAMILY_MAP: ReadonlyMap<string, SensorFamily> = new Map([
+/** Canonical lowercase model → kind. Digest aliases live on SENSOR_HUB_CHILD. */
+export const SENSOR_FAMILY_MAP: ReadonlyMap<string, SensorKind> = new Map([
     ['ms100', 'tempHum'],
     ['ms100f', 'tempHum'],
     ['ms130', 'tempHum'],

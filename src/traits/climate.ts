@@ -13,9 +13,9 @@ import { ClimateModeCTrait } from './climate-modec';
 
 export type {
     ClimateAlarmKind,
-    ClimateBoardGeneration,
+    ClimateBoardKind,
     ClimateFanSpeed,
-    ClimateGeneration,
+    ClimateKind,
     ClimateHoldMode,
     ClimateHubMode,
     ClimateMode,
@@ -41,7 +41,7 @@ export { ClimateModeBTrait } from './climate-modeb';
 export { ClimateModeCTrait } from './climate-modec';
 
 /**
- * One enrolled thermostat or hub valve. Narrow on `generation` before calling
+ * One enrolled thermostat or hub valve. Narrow on `kind` before calling
  * ModeC-only (`setFanSpeed`) or hub-only (`setConfig`) methods.
  */
 export type ClimateTrait =
