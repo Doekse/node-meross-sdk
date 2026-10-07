@@ -268,7 +268,7 @@ export class Session extends EventEmitter<SessionEvents> {
         try {
             await this.connecting;
         } catch (error) {
-            await this.teardownRouter();
+            await this.disconnectRouter();
             throw error;
         }
     }
@@ -285,7 +285,14 @@ export class Session extends EventEmitter<SessionEvents> {
         this.token = await this.cloud.authenticate(options);
         this.credentialsValid = true;
         const stale = this.router;
-        if (!stale || !this.brokerChanged(previous)) {
+        if (
+            !stale
+            || (
+                this.token.key === previous.key
+                && this.token.userId === previous.userId
+                && this.token.mqttDomain === previous.mqttDomain
+            )
+        ) {
             return this.getToken();
         }
 
@@ -329,99 +336,67 @@ export class Session extends EventEmitter<SessionEvents> {
         this.throwIfNotConnected();
 
         const report: MutableEnrollReport = { enrolled: [], skipped: [], failed: [] };
-        const requested = uuids === undefined ? undefined : [...uuids];
+        const requested = uuids === undefined ? undefined : new Set(uuids);
         const joined: Promise<DeviceEnrollOutcome>[] = [];
         const pending = new Set<string>();
-        let needsList = false;
 
-        if (requested === undefined) {
-            needsList = true;
-        } else {
+        if (requested !== undefined) {
             for (const uuid of requested) {
                 const inFlight = this.enrolling.get(uuid);
                 if (inFlight) {
                     joined.push(inFlight);
                 } else if (this.boards.has(uuid)) {
-                    if (!report.enrolled.includes(uuid)) {
-                        report.enrolled.push(uuid);
-                    }
+                    report.enrolled.push(uuid);
                 } else {
-                    needsList = true;
                     pending.add(uuid);
                 }
             }
         }
-        if (!needsList) {
-            await this.collectEnrollOutcomes(joined, report);
-            this.throwIfNotConnected();
-            return report;
-        }
-
-        this.enterListingPhase();
-        try {
-            const cloudDevices = await this.listCloudDevices();
-            this.throwIfNotConnected();
-            if (requested === undefined) {
-                for (const cloudDevice of cloudDevices) {
-                    if (cloudDevice.onlineStatus !== 1) {
-                        continue;
+        if (requested === undefined || pending.size > 0) {
+            this.enterListingPhase();
+            try {
+                const cloudDevices = await this.listCloudDevices();
+                this.throwIfNotConnected();
+                if (requested === undefined) {
+                    for (const cloudDevice of cloudDevices) {
+                        if (cloudDevice.onlineStatus !== 1) {
+                            continue;
+                        }
+                        joined.push(this.enrollDevice(cloudDevice));
                     }
-                    joined.push(this.enrollDevice(cloudDevice));
+                } else {
+                    const byUuid = new Map(cloudDevices.map((row) => [row.uuid, row]));
+                    for (const uuid of pending) {
+                        const cloudDevice = byUuid.get(uuid);
+                        if (!cloudDevice) {
+                            report.skipped.push({ uuid, reason: 'unknown' });
+                            continue;
+                        }
+                        if (cloudDevice.onlineStatus !== 1) {
+                            report.skipped.push({ uuid, reason: 'offline' });
+                            continue;
+                        }
+                        joined.push(this.enrollDevice(cloudDevice));
+                    }
                 }
-            } else {
-                const byUuid = new Map(cloudDevices.map((row) => [row.uuid, row]));
-                const seen = new Set<string>();
-                for (const uuid of requested) {
-                    if (seen.has(uuid) || !pending.has(uuid)) {
-                        continue;
-                    }
-                    seen.add(uuid);
-                    const cloudDevice = byUuid.get(uuid);
-                    if (!cloudDevice) {
-                        report.skipped.push({ uuid, reason: 'unknown' });
-                        continue;
-                    }
-                    if (cloudDevice.onlineStatus !== 1) {
-                        report.skipped.push({ uuid, reason: 'offline' });
-                        continue;
-                    }
-                    joined.push(this.enrollDevice(cloudDevice));
-                }
+            } finally {
+                this.releaseListingPhase();
             }
-        } finally {
-            this.releaseListingPhase();
         }
-        await this.collectEnrollOutcomes(joined, report);
+        await this.applyEnrollOutcomes(joined, report);
         this.throwIfNotConnected();
         return report;
     }
 
     /**
-     * Joins the phase {@link listingBarrier} covers. Called before `devList`
-     * so {@link unenroll} cannot finish before {@link enrollDevice} stores passes.
+     * Looks up an enrolled endpoint by inventory row id.
      */
-    private enterListingPhase(): void {
-        if (this.listingBarrier === undefined) {
-            this.listingBarrier = new Promise<void>((resolve) => {
-                this.releaseListingBarrier = resolve;
-            });
+    endpoint(id: string): Endpoint {
+        const board = this.boards.get(uuidFromInventoryId(id));
+        if (!board) {
+            throw new MerossError(`Unknown endpoint: ${id}`, 'ENDPOINT_NOT_FOUND');
         }
-        this.listingPending += 1;
-    }
-
-    /**
-     * Leaves the list-or-register phase. The last caller opens
-     * {@link listingBarrier}. Runs after passes are stored, and also when
-     * listing fails, so {@link unenroll} cannot wait forever.
-     */
-    private releaseListingPhase(): void {
-        this.listingPending -= 1;
-        if (this.listingPending > 0) {
-            return;
-        }
-        this.releaseListingBarrier?.();
-        this.releaseListingBarrier = undefined;
-        this.listingBarrier = undefined;
+        return board.endpoint(id);
     }
 
     /**
@@ -431,16 +406,8 @@ export class Session extends EventEmitter<SessionEvents> {
      * Safe when the session is not connected.
      */
     async unenroll(uuid: string): Promise<void> {
-        await this.listingBarrier?.catch(() => undefined);
-        await this.dropDevice(uuid);
-    }
-
-    /**
-     * Waiting out the in-flight pass first keeps that pass from starting a
-     * poller after the row is gone.
-     */
-    private async dropDevice(uuid: string): Promise<void> {
-        await this.enrolling.get(uuid)?.catch(() => undefined);
+        await this.listingBarrier;
+        await this.enrolling.get(uuid);
         this.router?.forget(uuid);
         const board = this.boards.get(uuid);
         if (board) {
@@ -453,52 +420,21 @@ export class Session extends EventEmitter<SessionEvents> {
     /**
      * Closes transports without discarding the stored token. Sets
      * {@link closing}, stops pollers, waits for in-flight enrolls (which skip
-     * materialize when closing), drops enrollment again, then tears down
-     * transports. Overlapping callers share one teardown.
+     * materialize when closing), then tears down transports. Overlapping callers
+     * share one teardown.
      */
     async disconnect(): Promise<void> {
         if (this.disconnectPromise) {
             return this.disconnectPromise;
         }
         this.closing = true;
-        this.dropEnrollment();
-        this.disconnectPromise = this.finishDisconnect();
+        this.clearEnrollment();
+        this.disconnectPromise = this.performDisconnect();
         try {
             await this.disconnectPromise;
         } finally {
             this.disconnectPromise = undefined;
             this.closing = false;
-        }
-    }
-
-    /**
-     * In-flight enrolls may finish their cloud / Ability reads; materialize is
-     * skipped via {@link closing}. Enrollment is dropped again in case a device
-     * was still written into the map.
-     */
-    private async finishDisconnect(): Promise<void> {
-        await Promise.allSettled(this.enrolling.values());
-        this.dropEnrollment();
-        await this.teardownRouter();
-    }
-
-    /** Stops boards and clears membership without touching transports. */
-    private dropEnrollment(): void {
-        for (const [uuid, board] of this.boards) {
-            this.router?.forget(uuid);
-            board.stop();
-        }
-        this.boards.clear();
-        this.inventory.replace([]);
-    }
-
-    /**
-     * {@link disconnect} rejects new work while {@link closing} is set. After
-     * it finishes, {@link closing} is clear and {@link router} is gone.
-     */
-    private throwIfNotConnected(): void {
-        if (this.closing || !this.router) {
-            throw new MerossError('Session is not connected', 'NOT_CONNECTED');
         }
     }
 
@@ -518,14 +454,13 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Looks up an enrolled endpoint by inventory row id.
+     * {@link disconnect} rejects new work while {@link closing} is set. After
+     * it finishes, {@link closing} is clear and {@link router} is gone.
      */
-    endpoint(id: string): Endpoint {
-        const board = this.boards.get(uuidFromInventoryId(id));
-        if (!board) {
-            throw new MerossError(`Unknown endpoint: ${id}`, 'ENDPOINT_NOT_FOUND');
+    private throwIfNotConnected(): void {
+        if (this.closing || !this.router) {
+            throw new MerossError('Session is not connected', 'NOT_CONNECTED');
         }
-        return board.endpoint(id);
     }
 
     /**
@@ -542,9 +477,9 @@ export class Session extends EventEmitter<SessionEvents> {
 
     private createRouter(): TransportRouter {
         const dispatcher = new ProtocolDispatcher({
-            onPush: (message) => this.boardForMessage(message)?.applyUpdate(message),
+            onPush: (message) => this.findBoardForMessage(message)?.applyUpdate(message),
             onInbound: (message, originUuid) => {
-                this.boardForMessage(message, originUuid)?.observeInbound(message, originUuid);
+                this.findBoardForMessage(message, originUuid)?.observeInbound(message, originUuid);
             }
         });
         const mqtt = new MqttTransport({
@@ -576,29 +511,80 @@ export class Session extends EventEmitter<SessionEvents> {
         return new TransportRouter({ mqtt, lan });
     }
 
-    /** MQTT credentials and topics; a change means the transports are stale. */
-    private brokerChanged(previous: TokenData): boolean {
-        return this.token.key !== previous.key
-            || this.token.userId !== previous.userId
-            || this.token.mqttDomain !== previous.mqttDomain;
+    /**
+     * Board for a non-empty `originUuid` when set, otherwise for the uuid
+     * in the message header/`from`.
+     */
+    private findBoardForMessage(
+        message: MerossMessage,
+        originUuid?: string
+    ): Board | undefined {
+        const uuid = originUuid || uuidFromHeader(message.header);
+        return uuid ? this.boards.get(uuid) : undefined;
     }
 
-    private async teardownRouter(): Promise<void> {
+    private async disconnectRouter(): Promise<void> {
         const router = this.router;
         this.router = undefined;
         this.connecting = undefined;
         await router?.disconnect();
     }
 
-    private emitWarning(error: unknown, uuid?: string): void {
-        this.emit(
-            'warning',
-            error instanceof Error ? error : new Error(String(error)),
-            uuid
-        );
+    /** Waits for in-flight reads before tearing down their transports. */
+    private async performDisconnect(): Promise<void> {
+        await Promise.allSettled(this.enrolling.values());
+        await this.disconnectRouter();
     }
 
-    private async collectEnrollOutcomes(
+    /** Stops boards and clears membership without touching transports. */
+    private clearEnrollment(): void {
+        for (const [uuid, board] of this.boards) {
+            this.router?.forget(uuid);
+            board.stop();
+        }
+        this.boards.clear();
+        this.inventory.replace([]);
+    }
+
+    /**
+     * Joins the phase {@link listingBarrier} covers. Called before `devList`
+     * so {@link unenroll} cannot finish before {@link enrollDevice} stores passes.
+     */
+    private enterListingPhase(): void {
+        if (this.listingBarrier === undefined) {
+            this.listingBarrier = new Promise<void>((resolve) => {
+                this.releaseListingBarrier = resolve;
+            });
+        }
+        this.listingPending += 1;
+    }
+
+    /**
+     * Leaves the list-or-register phase. The last caller opens
+     * {@link listingBarrier}. Runs after passes are stored, and also when
+     * listing fails, so {@link unenroll} cannot wait forever.
+     */
+    private releaseListingPhase(): void {
+        this.listingPending -= 1;
+        if (this.listingPending > 0) {
+            return;
+        }
+        this.releaseListingBarrier?.();
+        this.releaseListingBarrier = undefined;
+        this.listingBarrier = undefined;
+    }
+
+    /**
+     * Shared `devList` so concurrent {@link enroll} calls do not list twice.
+     */
+    private listCloudDevices(): Promise<CloudDevice[]> {
+        this.listing ??= this.cloud.listDevices().finally(() => {
+            this.listing = undefined;
+        });
+        return this.listing;
+    }
+
+    private async applyEnrollOutcomes(
         joined: readonly Promise<DeviceEnrollOutcome>[],
         report: MutableEnrollReport
     ): Promise<void> {
@@ -614,16 +600,6 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     /**
-     * Shared `devList` so concurrent {@link enroll} calls do not list twice.
-     */
-    private listCloudDevices(): Promise<CloudDevice[]> {
-        this.listing ??= this.cloud.listDevices().finally(() => {
-            this.listing = undefined;
-        });
-        return this.listing;
-    }
-
-    /**
      * One pass per uuid. A repeat caller joins the in-flight promise, and an
      * already-enrolled uuid must not contact the device again.
      */
@@ -636,7 +612,7 @@ export class Session extends EventEmitter<SessionEvents> {
         if (this.boards.has(uuid)) {
             return Promise.resolve({ status: 'enrolled', uuid });
         }
-        const pass = this.runEnroll(cloudDevice).finally(() => {
+        const pass = this.performEnrollPass(cloudDevice).finally(() => {
             this.enrolling.delete(uuid);
         });
         this.enrolling.set(uuid, pass);
@@ -647,7 +623,9 @@ export class Session extends EventEmitter<SessionEvents> {
      * One Ability / System.All pass under the global slot limiter. Skips
      * materialize when {@link closing} so disconnect cannot leave a poller.
      */
-    private async runEnroll(cloudDevice: CloudDevice): Promise<DeviceEnrollOutcome> {
+    private async performEnrollPass(
+        cloudDevice: CloudDevice
+    ): Promise<DeviceEnrollOutcome> {
         return this.withEnrollSlot(async () => {
             const uuid = cloudDevice.uuid;
             if (this.closing) {
@@ -719,16 +697,12 @@ export class Session extends EventEmitter<SessionEvents> {
         }
     }
 
-    /**
-     * Board for a non-empty `originUuid` when set, otherwise for the uuid
-     * in the message header/`from`.
-     */
-    private boardForMessage(
-        message: MerossMessage,
-        originUuid?: string
-    ): Board | undefined {
-        const uuid = originUuid || uuidFromHeader(message.header);
-        return uuid ? this.boards.get(uuid) : undefined;
+    private emitWarning(error: unknown, uuid?: string): void {
+        this.emit(
+            'warning',
+            error instanceof Error ? error : new Error(String(error)),
+            uuid
+        );
     }
 
     private refreshInventory(): void {
