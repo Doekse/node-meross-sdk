@@ -234,7 +234,6 @@ export class Board {
                 ...this.lanBind(physical),
                 onPackedFallback
             }),
-            onAck: (message) => this.applyUpdate(message),
             jobs: buildPollJobs(physical.ability, physical.endpoints, physical.digestNamespaces),
             startDelayMs
         });

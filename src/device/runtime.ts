@@ -24,11 +24,6 @@ export interface RuntimeOptions {
      * poller itself.
      */
     requestGets: (gets: GetCommand[], maxCmdNum: number, onPackedFallback: () => void) => Promise<MerossMessage[]>;
-    /**
-     * GETACK is a pending reply, not PUSH, so the dispatcher will not call
-     * onPush. The caller still applies the payload on this device.
-     */
-    onAck: (message: MerossMessage) => void;
     jobs?: readonly PollJob[];
     pollIntervalMs?: number;
     /** Delay before the first poll tick; see Poller's POLL_START_STAGGER_MS. */
@@ -103,7 +98,7 @@ export class Runtime {
             ).finally(() => {
                 this.refreshProtocol();
             }),
-            onAck: options.onAck,
+            onAck: (message) => this.applyUpdate(message),
             jobs: options.jobs,
             intervalMs: options.pollIntervalMs,
             startDelayMs: options.startDelayMs,

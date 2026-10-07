@@ -1080,8 +1080,7 @@ describe('Poller', () => {
             request: async () => ack(SYSTEM_ALL_NAMESPACE),
             isCloudPath: () => false,
             maxCmdNum: () => 5,
-            requestGets: async () => [],
-            onAck: () => {}
+            requestGets: async () => []
         });
         const harness = createHarness(t, {
             maxCmdNum: 5,

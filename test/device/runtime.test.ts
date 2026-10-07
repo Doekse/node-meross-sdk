@@ -104,7 +104,6 @@ function createHarness(t: TestContext, overrides: Partial<RuntimeOptions> = {}):
         isCloudPath: () => false,
         maxCmdNum: () => 3,
         requestGets,
-        onAck: () => {},
         jobs: [{
             namespace: 'Appliance.Control.ToggleX',
             strategy: 'default',
@@ -170,7 +169,6 @@ function createSystemRuntime(overrides: Partial<RuntimeOptions> = {}): SystemRun
         isCloudPath: () => false,
         maxCmdNum: () => 1,
         requestGets: async () => [],
-        onAck: () => {},
         ...overrides
     });
     return { runtime, endpoint, warnings };
@@ -284,14 +282,28 @@ describe('Runtime', () => {
         assertSystemAllWarning(warnings);
     });
 
-    it('routes System.Runtime GETACK through SystemDescriptor.push to getRuntime', () => {
-        const { runtime, endpoint } = createSystemRuntime();
-        runtime.applyUpdate(runtimeGetAck({
+    it('applies poller System.Runtime GETACK through SystemDescriptor.push', async (t: TestContext) => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        const reply = runtimeGetAck({
             signal: 50,
             netType: 2,
             iotStatus: 2,
             ssid: 'test'
-        }));
+        });
+        const { runtime, endpoint } = createSystemRuntime({
+            requestGets: async () => [reply],
+            jobs: [{
+                namespace: SYSTEM_RUNTIME_NAMESPACE,
+                strategy: 'default',
+                periodMs: 0,
+                periodCloudMs: 0
+            }],
+            pollIntervalMs: INTERVAL_MS,
+            startDelayMs: 0
+        });
+        runtime.start();
+        t.mock.timers.tick(0);
+        await flushMicrotasks(2);
 
         const snapshot = endpoint.system?.getRuntime();
         assert.deepEqual(snapshot, {
@@ -348,8 +360,7 @@ describe('Runtime', () => {
             request: unreachable,
             isCloudPath: () => false,
             maxCmdNum: () => 1,
-            requestGets: async () => [],
-            onAck: () => {}
+            requestGets: async () => []
         });
         runtime.applyUpdate(systemAllGetAck({
             all: {

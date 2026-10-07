@@ -58,15 +58,10 @@ function togglexPush(on: boolean): MerossMessage {
     });
 }
 
-function ignoreAck(): void {}
-
 /**
  * Runtime for applyUpdate-only tests; poller/availability stay idle without start().
  */
-function createRuntime(
-    endpoints: readonly Endpoint[],
-    onAck: (message: MerossMessage) => void = ignoreAck
-): Runtime {
+function createRuntime(endpoints: readonly Endpoint[]): Runtime {
     return new Runtime({
         uuid: UUID,
         initialOnline: true,
@@ -74,8 +69,7 @@ function createRuntime(
         request: async () => deviceMessage('Appliance.System.All', 'GETACK', {}),
         isCloudPath: () => false,
         maxCmdNum: () => 3,
-        requestGets: async () => [],
-        onAck
+        requestGets: async () => []
     });
 }
 
@@ -235,25 +229,21 @@ describe('Runtime.applyUpdate', () => {
         runtime.stop();
     });
 
-    it('(d) ToggleX GETACK via onAck updates switch; ERROR is skipped', () => {
+    it('(d) ToggleX GETACK updates switch; ERROR is skipped', () => {
         const { endpoint, switch: sw } = wiredEndpoint(
             `${UUID}:0`,
             ['switch'],
             (emit) => ({ switch: boardSwitch(emit) })
         );
 
-        let runtime!: Runtime;
-        function onAck(message: MerossMessage): void {
-            runtime.applyUpdate(message);
-        }
-        runtime = createRuntime([endpoint], onAck);
+        const runtime = createRuntime([endpoint]);
 
-        onAck(deviceMessage(TOGGLEX_NAMESPACE, 'GETACK', {
+        runtime.applyUpdate(deviceMessage(TOGGLEX_NAMESPACE, 'GETACK', {
             togglex: [{ channel: CHANNEL, onoff: 1, entity: 1, lmTime: 1 }]
         }));
         assert.equal(sw.isOn(), true);
 
-        onAck(deviceMessage(TOGGLEX_NAMESPACE, 'ERROR', {
+        runtime.applyUpdate(deviceMessage(TOGGLEX_NAMESPACE, 'ERROR', {
             togglex: [{ channel: CHANNEL, onoff: 0, entity: 1, lmTime: 2 }]
         }));
         assert.equal(sw.isOn(), true);
