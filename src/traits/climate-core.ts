@@ -72,7 +72,7 @@ export interface ClimateValues {
     workMode?: ClimateWorkMode;
     humidity?: number;
     fanSpeed?: ClimateFanSpeed;
-    fanHoldMinutes?: number;
+    fanHoldMinutes?: number | null;
     heating?: boolean;
     minTemperature?: number;
     maxTemperature?: number;

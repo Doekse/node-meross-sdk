@@ -8,6 +8,7 @@ import {
     encodeThermostatModeSet,
     encodeThermostatModeBSet,
     encodeThermostatModeCSet,
+    MODEC_FAN_HOLD_DISABLED,
     decodeHubToggleXGetAck,
     decodeHubMts100ModeGetAck,
     decodeHubMts100TemperatureGetAck,
@@ -105,6 +106,11 @@ describe('Thermostat.Mode codec', () => {
     it('encodes SET for mode=off with onoff=0', () => {
         const payload = encodeThermostatModeSet({ channel: 0, mode: 'off' });
         assert.deepEqual(payload, { mode: [{ channel: 0, onoff: 0, mode: 0 }] });
+    });
+
+    it('encodes SET for onoff without mode', () => {
+        const payload = encodeThermostatModeSet({ channel: 0, on: false });
+        assert.deepEqual(payload, { mode: [{ channel: 0, onoff: 0 }] });
     });
 });
 
@@ -232,6 +238,28 @@ describe('Thermostat.ModeC codec', () => {
     it('encodes SET for heat setpoint only', () => {
         const payload = encodeThermostatModeCSet({ channel: 0, heatTemperature: 21 });
         assert.deepEqual(payload, { control: [{ channel: 0, targetTemp: { heat: 2100 } }] });
+    });
+
+    it('encodes fan hold disable as hTime=99999', () => {
+        const payload = encodeThermostatModeCSet({
+            channel: 0,
+            fanSpeed: 'auto',
+            fanHoldMinutes: null
+        });
+        assert.deepEqual(payload, {
+            control: [{ channel: 0, fan: { speed: 0, fMode: 0, hTime: MODEC_FAN_HOLD_DISABLED } }]
+        });
+    });
+
+    it('decodes fan hold disable to null', () => {
+        const [entry] = decodeThermostatModeCGetAck({
+            control: [{
+                channel: 0,
+                mode: 1,
+                fan: { speed: 0, hTime: MODEC_FAN_HOLD_DISABLED }
+            }]
+        });
+        assert.equal(entry?.fanHoldMinutes, null);
     });
 });
 

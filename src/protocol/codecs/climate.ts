@@ -49,6 +49,8 @@ export type { HubSubdeviceGetOptions, HubToggleXSetOptions } from './hub';
 export type ClimateMode = 'off' | 'heat' | 'cool' | 'auto' | 'eco' | 'manual' | 'custom';
 export type ClimateWorkMode = 'manual' | 'schedule' | 'timer';
 export type ClimateFanSpeed = 'auto' | 'low' | 'medium' | 'high';
+/** ModeC fan.hold disabled. Omit hTime to leave hold; send this to clear it. */
+export const MODEC_FAN_HOLD_DISABLED = 99999;
 
 export interface ThermostatState {
     channel: number;
@@ -63,7 +65,7 @@ export interface ThermostatState {
     workMode?: ClimateWorkMode;
     humidity?: number;
     fanSpeed?: ClimateFanSpeed;
-    fanHoldMinutes?: number;
+    fanHoldMinutes?: number | null;
     heating?: boolean;
     minTemperature?: number;
     maxTemperature?: number;
@@ -75,6 +77,7 @@ export interface ThermostatGetOptions {
 
 export interface ThermostatModeSetOptions {
     channel: number;
+    on?: boolean;
     mode?: ClimateMode;
     targetTemperature?: number;
     heatTemperature?: number;
@@ -83,7 +86,7 @@ export interface ThermostatModeSetOptions {
     manualTemperature?: number;
     workMode?: ClimateWorkMode;
     fanSpeed?: ClimateFanSpeed;
-    fanHoldMinutes?: number;
+    fanHoldMinutes?: number | null;
 }
 
 export interface ThermostatModeBSetOptions {
@@ -115,7 +118,9 @@ export function encodeThermostatModeGet(options: ThermostatGetOptions): MerossPa
 
 /**
  * SET array under `mode`. Temps ×10; onoff 0/1.
- * Wire mode: 0=heat, 1=cool, 2=eco, 3=auto, 4=manual; off drives onoff=0.
+ * Wire mode: 0=heat, 1=cool, 2=eco, 3=auto, 4=manual.
+ * `setOn` sends onoff without mode so auto/eco/manual survive. `mode: 'off'`
+ * still writes mode=0 for hosts that mean that SET.
  */
 export function encodeThermostatModeSet(options: ThermostatModeSetOptions): MerossPayload {
     const entry: Record<string, unknown> = { channel: options.channel };
@@ -127,6 +132,8 @@ export function encodeThermostatModeSet(options: ThermostatModeSetOptions): Mero
                     : options.mode === 'auto' ? 3
                         : options.mode === 'manual' ? 4
                             : 0;
+    } else if (options.on !== undefined) {
+        entry.onoff = options.on ? 1 : 0;
     }
     if (options.targetTemperature !== undefined) {
         entry.targetTemp = Math.round(options.targetTemperature * 10);
@@ -287,9 +294,15 @@ export function encodeThermostatModeCSet(options: ThermostatModeSetOptions): Mer
     }
     if (options.fanSpeed !== undefined || options.fanHoldMinutes !== undefined) {
         const speed = options.fanSpeed === 'low' ? 1 : options.fanSpeed === 'medium' ? 2 : options.fanSpeed === 'high' ? 3 : 0;
+        let hTime: number | undefined;
+        if (options.fanHoldMinutes === null) {
+            hTime = MODEC_FAN_HOLD_DISABLED;
+        } else if (options.fanHoldMinutes !== undefined) {
+            hTime = options.fanHoldMinutes;
+        }
         entry.fan = {
             ...(options.fanSpeed !== undefined ? { speed, fMode: speed === 0 ? 0 : 1 } : {}),
-            ...(options.fanHoldMinutes !== undefined ? { hTime: options.fanHoldMinutes } : {})
+            ...(hTime !== undefined ? { hTime } : {})
         };
     }
     return { control: [entry] };
@@ -329,6 +342,14 @@ function decodeThermostatModeC(payload: MerossPayload): ThermostatState[] {
             : fanObj.speed === 1 ? 'low' : fanObj.speed === 2 ? 'medium' : fanObj.speed === 3 ? 'high' : 'auto';
         const hostMode: ClimateMode = mode === 0 ? 'off' : mode === 2 ? 'cool' : mode === 3 ? 'auto' : 'heat';
         const targetTemperature = hostMode === 'cool' ? coolTemperature : heatTemperature;
+        let fanHoldMinutes: number | null | undefined;
+        if (typeof fanObj.hTime === 'number') {
+            if (fanObj.hTime === MODEC_FAN_HOLD_DISABLED) {
+                fanHoldMinutes = null;
+            } else {
+                fanHoldMinutes = fanObj.hTime;
+            }
+        }
         return {
             channel,
             on,
@@ -340,7 +361,7 @@ function decodeThermostatModeC(payload: MerossPayload): ThermostatState[] {
             ...(typeof currentTemp === 'number' ? { currentTemperature: currentTemp / 100 } : {}),
             ...(typeof moreObj.humi === 'number' ? { humidity: moreObj.humi / 10 } : {}),
             ...(fanSpeed !== undefined ? { fanSpeed } : {}),
-            ...(typeof fanObj.hTime === 'number' ? { fanHoldMinutes: fanObj.hTime } : {})
+            ...(fanHoldMinutes !== undefined ? { fanHoldMinutes } : {})
         };
     });
 }

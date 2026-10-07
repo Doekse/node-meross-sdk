@@ -125,15 +125,19 @@ describe('ClimateTrait board Mode generation', () => {
         assert.equal(requests.length, 1);
         assert.equal(requests[0]?.header.namespace, THERMOSTAT_MODE_NAMESPACE);
         assert.equal(requests[0]?.header.method, 'SET');
+        const payload = requests[0]?.payload as { mode: Array<{ onoff: number; mode?: number }> };
+        assert.equal(payload.mode[0]?.onoff, 1);
+        assert.equal(payload.mode[0]?.mode, undefined);
     });
 
-    it('setOn(false) sends off mode', async () => {
+    it('setOn(false) sends onoff only', async () => {
         const { trait, requests } = createBoardHarness('mode');
 
         await trait.setOn(false);
 
-        const payload = requests[0]?.payload as { mode: Array<{ onoff: number }> };
+        const payload = requests[0]?.payload as { mode: Array<{ onoff: number; mode?: number }> };
         assert.equal(payload.mode[0]?.onoff, 0);
+        assert.equal(payload.mode[0]?.mode, undefined);
     });
 
     it('setMode sends Thermostat.Mode SET', async () => {
@@ -232,14 +236,14 @@ describe('ClimateTrait board ModeC generation', () => {
         const { trait } = createBoardHarness('modeC');
         assert.equal(trait.generation, 'modeC');
     });
-    it('setOn(true) uses ModeC SET with mode=heat', async () => {
+    it('setOn(true) uses ModeC SET with last non-off mode (auto when unknown)', async () => {
         const { trait, requests } = createBoardHarness('modeC');
 
         await trait.setOn(true);
 
         assert.equal(requests[0]?.header.namespace, THERMOSTAT_MODEC_NAMESPACE);
         const payload = requests[0]?.payload as { control: Array<{ mode: number }> };
-        assert.equal(payload.control[0]?.mode, 1);
+        assert.equal(payload.control[0]?.mode, 3);
     });
 
     it('setOn(false) uses ModeC SET with mode=0 (off)', async () => {
@@ -251,15 +255,43 @@ describe('ClimateTrait board ModeC generation', () => {
         assert.equal(payload.control[0]?.mode, 0);
     });
 
-    it('setTargetTemperature sends {heat, cold} ×100', async () => {
+    it('setOn(true) restores heat after off', async () => {
         const { trait, requests } = createBoardHarness('modeC');
+        trait.handlePush(push(THERMOSTAT_MODEC_NAMESPACE, {
+            control: [{ channel: CHANNEL, mode: 1, targetTemp: { heat: 2100, cold: 2400 } }]
+        }));
+
+        await trait.setOn(false);
+        await trait.setOn(true);
+
+        const payload = requests[1]?.payload as { control: Array<{ mode: number }> };
+        assert.equal(payload.control[0]?.mode, 1);
+    });
+
+    it('setTargetTemperature in heat writes the heat slot', async () => {
+        const { trait, requests } = createBoardHarness('modeC');
+        trait.handlePush(push(THERMOSTAT_MODEC_NAMESPACE, {
+            control: [{ channel: CHANNEL, mode: 1, targetTemp: { heat: 2000, cold: 2400 } }]
+        }));
 
         await trait.setTargetTemperature(21);
 
         const payload = requests[0]?.payload as {
-            control: Array<{ targetTemp: { heat: number; cold: number } }>
+            control: Array<{ targetTemp: { heat?: number; cold?: number } }>
         };
-        assert.deepEqual(payload.control[0]?.targetTemp, { heat: 2100, cold: 2100 });
+        assert.deepEqual(payload.control[0]?.targetTemp, { heat: 2100 });
+    });
+
+    it('setTargetTemperature in auto throws UNSUPPORTED', async () => {
+        const { trait } = createBoardHarness('modeC');
+        trait.handlePush(push(THERMOSTAT_MODEC_NAMESPACE, {
+            control: [{ channel: CHANNEL, mode: 3, targetTemp: { heat: 2100, cold: 2400 } }]
+        }));
+
+        await assert.rejects(
+            () => trait.setTargetTemperature(21),
+            (error: unknown) => error instanceof MerossError && error.code === 'UNSUPPORTED'
+        );
     });
 
     it('handlePush applies ModeC PUSH with nested targetTemp', () => {
@@ -551,6 +583,18 @@ describe('ClimateTrait extras', () => {
         };
         assert.equal(payload.control[0]?.fan?.speed, 1);
         assert.equal(payload.control[0]?.fan?.hTime, 30);
+    });
+
+    it('setFanSpeed(null hold) sends hTime=99999', async () => {
+        const { trait, requests } = createBoardHarness('modeC');
+
+        await trait.setFanSpeed('auto', null);
+
+        const payload = requests[0]?.payload as {
+            control: Array<{ fan?: { speed: number; hTime: number } }>
+        };
+        assert.equal(payload.control[0]?.fan?.speed, 0);
+        assert.equal(payload.control[0]?.fan?.hTime, 99999);
     });
 
     it('setWorkMode(schedule) sends ModeC control.work=2', async () => {

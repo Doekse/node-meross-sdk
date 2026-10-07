@@ -1,3 +1,4 @@
+import { MerossError } from '../errors';
 import {
     THERMOSTAT_MODEC_NAMESPACE,
     encodeThermostatModeCSet
@@ -5,8 +6,10 @@ import {
 import { ClimateBoardBase } from './climate-board';
 import type {
     ClimateFanSpeed,
+    ClimateMode,
     ClimateModeCMode,
-    ClimateTraitBoardBind
+    ClimateTraitBoardBind,
+    ClimateValues
 } from './climate-core';
 
 /**
@@ -16,25 +19,34 @@ import type {
 export class ClimateModeCTrait extends ClimateBoardBase {
     readonly generation = 'modeC' as const;
 
+    /**
+     * Off is a ModeC mode, so last.mode becomes 'off'. Restore this on setOn(true).
+     */
+    private lastOnMode: Exclude<ClimateModeCMode, 'off'> = 'auto';
+
     constructor(bind: ClimateTraitBoardBind) {
         super(bind);
     }
 
     /**
-     * Maps off onto mode rather than a separate toggle.
+     * Off is control.mode=0 and replaces last.mode. Turning on restores the
+     * previous working mode so an auto range is not rewritten as heat.
      */
     async setOn(on: boolean): Promise<{ on: boolean }> {
+        let mode: ClimateMode;
+        if (!on) {
+            mode = 'off';
+        } else if (this.last.mode !== undefined && this.last.mode !== 'off') {
+            mode = this.last.mode;
+        } else {
+            mode = this.lastOnMode;
+        }
         await this.request({
             namespace: THERMOSTAT_MODEC_NAMESPACE,
             method: 'SET',
-            payload: encodeThermostatModeCSet({
-                channel: this.channel,
-                mode: on
-                    ? (this.last.mode === 'off' || this.last.mode === undefined ? 'heat' : this.last.mode)
-                    : 'off'
-            })
+            payload: encodeThermostatModeCSet({ channel: this.channel, mode })
         });
-        this.applyChange(on ? { on } : { on, mode: 'off' });
+        this.applyChange({ on, mode });
         return { on };
     }
 
@@ -48,17 +60,32 @@ export class ClimateModeCTrait extends ClimateBoardBase {
         return { mode };
     }
 
+    /**
+     * Writes the active heat or cold slot. Auto is a range; use
+     * {@link setHeatTemperature} / {@link setCoolTemperature}.
+     */
     async setTargetTemperature(celsius: number): Promise<{ targetTemperature: number }> {
+        const mode = this.last.mode;
+        if (mode !== 'heat' && mode !== 'cool') {
+            throw new MerossError(
+                'climate.setTargetTemperature() requires heat or cool; in auto use setHeatTemperature/setCoolTemperature',
+                'UNSUPPORTED'
+            );
+        }
         await this.request({
             namespace: THERMOSTAT_MODEC_NAMESPACE,
             method: 'SET',
             payload: encodeThermostatModeCSet({
                 channel: this.channel,
                 targetTemperature: celsius,
-                mode: this.last.mode
+                mode
             })
         });
-        this.applyChange({ targetTemperature: celsius });
+        if (mode === 'heat') {
+            this.applyChange({ targetTemperature: celsius, heatTemperature: celsius });
+        } else {
+            this.applyChange({ targetTemperature: celsius, coolTemperature: celsius });
+        }
         return { targetTemperature: celsius };
     }
 
@@ -92,9 +119,12 @@ export class ClimateModeCTrait extends ClimateBoardBase {
         return { workMode };
     }
 
+    /**
+     * `fanHoldMinutes: null` sends firmware disable (hTime=99999). Omit to leave hold.
+     */
     async setFanSpeed(
         fanSpeed: ClimateFanSpeed,
-        fanHoldMinutes?: number
+        fanHoldMinutes?: number | null
     ): Promise<{ fanSpeed: ClimateFanSpeed }> {
         await this.request({
             namespace: THERMOSTAT_MODEC_NAMESPACE,
@@ -110,5 +140,13 @@ export class ClimateModeCTrait extends ClimateBoardBase {
             ...(fanHoldMinutes !== undefined ? { fanHoldMinutes } : {})
         });
         return { fanSpeed };
+    }
+
+    protected override applyChange(patch: ClimateValues): void {
+        super.applyChange(patch);
+        const mode = this.last.mode;
+        if (mode === 'heat' || mode === 'cool' || mode === 'auto') {
+            this.lastOnMode = mode;
+        }
     }
 }

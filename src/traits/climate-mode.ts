@@ -17,20 +17,16 @@ export class ClimateModeTrait extends ClimateBoardBase {
     }
 
     /**
-     * Maps off onto mode rather than a separate toggle.
+     * Writes onoff only. Mode.mode stays so auto/eco/manual survive a toggle;
+     * `setMode('off')` is the SET that writes mode=0.
      */
     async setOn(on: boolean): Promise<{ on: boolean }> {
         await this.request({
             namespace: THERMOSTAT_MODE_NAMESPACE,
             method: 'SET',
-            payload: encodeThermostatModeSet({
-                channel: this.channel,
-                mode: on
-                    ? (this.last.mode === 'off' || this.last.mode === undefined ? 'heat' : this.last.mode)
-                    : 'off'
-            })
+            payload: encodeThermostatModeSet({ channel: this.channel, on })
         });
-        this.applyChange(on ? { on } : { on, mode: 'off' });
+        this.applyChange({ on });
         return { on };
     }
 
