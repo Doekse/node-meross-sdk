@@ -36,7 +36,7 @@ import {
     TOGGLEX_NAMESPACE,
     TRIGGERX_NAMESPACE
 } from '../protocol/namespaces';
-import type { GraphEndpoint } from './index';
+import type { EnrolledEndpoint } from './index';
 import type { EnrollBoardContext, EnrollBoardExtraInput } from './enroll-context';
 import {
     enrollBoardExtra,
@@ -196,7 +196,7 @@ export function enrollHubUntypedOnoff(input: {
     readonly model?: string;
     readonly online: boolean;
     readonly on?: boolean;
-}): GraphEndpoint | undefined {
+}): EnrolledEndpoint | undefined {
     if (input.on === undefined) {
         return undefined;
     }
