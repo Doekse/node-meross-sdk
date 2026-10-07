@@ -28,13 +28,25 @@ describe('CJS public surface', () => {
         assert.ok(new sdk.CommandError('x') instanceof sdk.MerossError);
     });
 
-    it('strips trait handlePush and Endpoint constructor from published types', () => {
-        const { readFileSync } = require('node:fs');
+    it('strips trait handlePush, bind types, enroll helpers, and Endpoint constructor from published types', () => {
+        const { readdirSync, readFileSync } = require('node:fs');
         const { join } = require('node:path');
         const switchDts = readFileSync(join(__dirname, '../dist/traits/switch.d.ts'), 'utf8');
         assert.equal(switchDts.includes('handlePush'), false);
         const endpointDts = readFileSync(join(__dirname, '../dist/endpoint.d.ts'), 'utf8');
         assert.equal(/\bconstructor\s*\(/.test(endpointDts), false);
+        const leaked = [];
+        const dir = join(__dirname, '../dist/traits');
+        for (const name of readdirSync(dir)) {
+            if (!name.endsWith('.d.ts') || name.endsWith('.d.ts.map')) {
+                continue;
+            }
+            const text = readFileSync(join(dir, name), 'utf8');
+            if (/\bTraitBind\b/.test(text) || /declare function enroll/.test(text)) {
+                leaked.push(name);
+            }
+        }
+        assert.deepEqual(leaked, []);
     });
 
     it('does not export protocol or transport internals', () => {

@@ -1,5 +1,5 @@
-import type { EnrollBoardContext, TraitAttachContext } from '../device/enroll-context';
-import { enrollDigest } from '../device/enroll-helpers';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { FanTraitBind } from '../device/bindings';
 import {
     FAN_BTN_CONFIG_NAMESPACE,
     FAN_CONFIG_NAMESPACE,
@@ -21,7 +21,6 @@ import {
 } from '../protocol/codecs/togglex';
 import type { MerossMessage } from '../protocol/message';
 import { TOGGLE_NAMESPACE, TOGGLEX_NAMESPACE } from '../protocol/namespaces';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 import { FanCatalog } from './fan.catalog';
@@ -38,21 +37,6 @@ export interface FanValues {
 export type { FanButtonConfig, FanButtonConfigSetOptions };
 
 /**
- * Transport + channel bind for one Control.Fan endpoint. Session supplies this;
- * trait tests inject a fake request/emit pair.
- */
-export interface FanTraitBind {
-    channel: number;
-    /** Ability keys; extras no-op when the namespace is absent. */
-    namespaces?: ReadonlySet<string>;
-    /** ToggleX when advertised; classic Toggle only when ToggleX is absent. */
-    hasToggleX: boolean;
-    hasToggle: boolean;
-    request: DeviceRequest;
-    emitChange: (values: FanValues) => void;
-}
-
-/**
  * Fan speed and power for one enrolled channel. Power routes through
  * ToggleX/Toggle when the device has it; Control.Fan handles the rest. Speed is
  * host 0..1; wire is 0..maxSpeed from the last GETACK. Optional Fan.Config,
@@ -61,6 +45,7 @@ export interface FanTraitBind {
  * issues that PUSH on the cloud MQTT period; this trait only applies the ACK.
  */
 export class FanTrait {
+    /** @internal */
     private readonly bind: FanTraitBind;
     private readonly namespaces: ReadonlySet<string>;
     private last: FanValues = {};
@@ -272,14 +257,6 @@ export class FanTrait {
 
 function clamp01(value: number): number {
     return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-}
-
-/**
- * Digest lists the fan channels; Ability without a digest row still claims
- * channel 0 so leftover ToggleX does not enroll the fan as a socket.
- */
-export function enrollFan(ctx: EnrollBoardContext): void {
-    enrollDigest(ctx, ctx.all.digest.fan, FAN_NAMESPACE, 'fan', 'fan');
 }
 
 export const descriptor: TraitDescriptor<'fan', FanTrait> = {

@@ -1,5 +1,5 @@
-import type { EnrollBoardContext, TraitAttachContext } from '../device/enroll-context';
-import { enrollDigest } from '../device/enroll-helpers';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { SprayTraitBind } from '../device/bindings';
 import {
     SPRAY_NAMESPACE,
     decodeSprayPush,
@@ -7,7 +7,6 @@ import {
     type SprayMode
 } from '../protocol/codecs/spray';
 import type { MerossMessage } from '../protocol/message';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 import { SprayCatalog } from './spray.catalog';
@@ -19,20 +18,11 @@ export interface SprayValues {
 }
 
 /**
- * Transport + channel bind for one Control.Spray endpoint. Session supplies this;
- * trait tests inject a fake request/emit pair.
- */
-export interface SprayTraitBind {
-    channel: number;
-    request: DeviceRequest;
-    emitChange: (values: SprayValues) => void;
-}
-
-/**
  * Humidifier spray mode for one enrolled channel. Firmware mode is 0/1/2
  * (off / continuous / intermittent).
  */
 export class SprayTrait {
+    /** @internal */
     private readonly bind: SprayTraitBind;
     private last: SprayValues = {};
 
@@ -84,14 +74,6 @@ export class SprayTrait {
     private applyChange(patch: SprayValues): void {
         applyPatch(this.last, patch, this.bind.emitChange);
     }
-}
-
-/**
- * Digest lists the spray channels; Ability without a digest row still claims
- * channel 0 so leftover ToggleX does not enroll the humidifier as a socket.
- */
-export function enrollSpray(ctx: EnrollBoardContext): void {
-    enrollDigest(ctx, ctx.all.digest.spray, SPRAY_NAMESPACE, 'humidifier', 'spray');
 }
 
 export const descriptor: TraitDescriptor<'spray', SprayTrait> = {

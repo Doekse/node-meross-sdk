@@ -10,8 +10,8 @@ import {
     encodeStandbyKillerSet,
     type MerossMessage
 } from '../../src/protocol';
-import { StandbyKillerTrait } from '../../src/traits/standbykiller';
-import type { StandbyKillerTraitBind, StandbyKillerValues } from '../../src/traits/standbykiller';
+import type { StandbyKillerTraitBind } from '../../src/device/bindings';
+import { StandbyKillerTrait, type StandbyKillerValues } from '../../src/traits/standbykiller';
 import {
     createRequestRecorder,
     recordedCalls,

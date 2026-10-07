@@ -1,7 +1,7 @@
 /**
- * Shared board-enroll loops. Trait files keep named enroll* exports so
- * device/index call sites stay readable; this file is not a catalog and
- * must not be walked from TRAIT_CATALOGS.
+ * Shared board-enroll loops. Named decisions live in enroll.ts so device/index
+ * call sites stay readable; this file is not a catalog and must not be walked
+ * from TRAIT_CATALOGS.
  */
 import type { TraitName } from '../endpoint';
 import type { ClassHint } from '../inventory';

@@ -7,8 +7,8 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
+import type { MediaTraitBind } from '../../src/device/bindings';
 import { MediaTrait } from '../../src/traits/media';
-import type { MediaTraitBind } from '../../src/traits/media';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';

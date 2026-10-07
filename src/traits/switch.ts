@@ -1,5 +1,5 @@
-import type { EnrollBoardContext, TraitAttachContext } from '../device/enroll-context';
-import type { GraphEndpoint } from '../device/index';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { SwitchTraitBind } from '../device/bindings';
 import {
     decodeHubExceptionPush,
     decodeHubSubDeviceVersionPush,
@@ -18,7 +18,6 @@ import {
     TOGGLE_NAMESPACE,
     TOGGLEX_NAMESPACE
 } from '../protocol/namespaces';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 import { SwitchCatalog } from './switch.catalog';
@@ -33,39 +32,11 @@ export interface SwitchValues {
 }
 
 /**
- * Board bind: one Toggle/ToggleX channel on the physical device.
- */
-export interface SwitchTraitBoardBind {
-    kind: 'board';
-    channel: number;
-    namespace: typeof TOGGLEX_NAMESPACE | typeof TOGGLE_NAMESPACE;
-    request: DeviceRequest;
-    emitChange: (values: SwitchValues) => void;
-    /** System.All digest `onoff` so hosts can read on/off before the first PUSH. */
-    initialOn?: boolean;
-}
-
-/**
- * Hub bind: one subdevice row driven by Hub.ToggleX (digest `onoff` without a known model).
- */
-export interface SwitchTraitHubBind {
-    kind: 'hub';
-    subDeviceId: string;
-    /** Ability keys; Exception / Version no-op when the namespace is absent. */
-    namespaces?: ReadonlySet<string>;
-    request: DeviceRequest;
-    emitChange: (values: SwitchValues) => void;
-    /** Hub digest `onoff` so hosts can read on/off before the first PUSH. */
-    initialOn?: boolean;
-}
-
-export type SwitchTraitBind = SwitchTraitBoardBind | SwitchTraitHubBind;
-
-/**
  * On/off control for one enrolled endpoint. Channel or subdevice id is bound at
  * enrollment so callers never pass it; Toggle vs ToggleX vs Hub.ToggleX stays in codecs.
  */
 export class SwitchTrait {
+    /** @internal */
     private readonly bind: SwitchTraitBind;
     private last: SwitchValues = {};
 
@@ -173,70 +144,6 @@ export class SwitchTrait {
     private has(namespace: string): boolean {
         return this.bind.kind === 'hub' && (this.bind.namespaces?.has(namespace) ?? false);
     }
-}
-
-/**
- * Leftover Toggle / ToggleX after light / cover / fan / … claimed theirs.
- * Cloud fallback is by array index (not channel fields); MSG200 drops
- * channel 0 when any garage door is non-zero; strip parentId is applied after
- * that filter. Taken-set skips already-claimed channels — do not subtract
- * light/fan/garage here or filter doorEnable (cover already claimed).
- */
-export function enrollSwitchLeftover(ctx: EnrollBoardContext): void {
-    let toggles = ctx.all.digest.togglex;
-    if (toggles.length === 0 && ctx.cloud?.channels?.length) {
-        toggles = ctx.cloud.channels.map((_, channel) => ({ channel }));
-    }
-    if (
-        toggles.length === 0
-        && (TOGGLEX_NAMESPACE in ctx.ability || TOGGLE_NAMESPACE in ctx.ability)
-    ) {
-        toggles = [{ channel: 0 }];
-    }
-    if (ctx.all.digest.garageDoor.some((door) => door.channel !== 0)) {
-        toggles = toggles.filter((entry) => entry.channel !== 0);
-    }
-    const masterId = `${ctx.uuid}:0`;
-    const isStrip = toggles.length >= 3 && toggles.some((entry) => entry.channel === 0);
-    ctx.strip = isStrip;
-    for (const entry of toggles) {
-        ctx.add(
-            entry.channel,
-            'socket',
-            ['switch'],
-            entry.on,
-            isStrip && entry.channel !== 0 ? masterId : undefined
-        );
-    }
-}
-
-/**
- * Unknown hub digest type with onoff — enroll as a switch. Builds the child
- * endpoint when classifyHubChild has no model; omit when onoff is absent.
- */
-export function enrollHubUntypedOnoff(input: {
-    readonly uuid: string;
-    readonly subDeviceId: string;
-    readonly name?: string;
-    readonly model?: string;
-    readonly online: boolean;
-    readonly on?: boolean;
-}): GraphEndpoint | undefined {
-    if (input.on === undefined) {
-        return undefined;
-    }
-    return {
-        id: `${input.uuid}#${input.subDeviceId}`,
-        uuid: input.uuid,
-        subDeviceId: input.subDeviceId,
-        parentId: input.uuid,
-        name: input.name || input.subDeviceId,
-        model: input.model || input.subDeviceId,
-        classHint: 'socket',
-        traits: ['switch'],
-        online: input.online,
-        on: input.on
-    };
 }
 
 export const descriptor: TraitDescriptor<'switch', SwitchTrait> = {

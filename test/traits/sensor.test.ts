@@ -21,15 +21,17 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
+import type { SensorTraitBind } from '../../src/device/bindings';
 import {
     SENSOR_FAMILY_MAP,
     SensorContactTrait,
     SensorLeakTrait,
     SensorMotionTrait,
     SensorSmokeTrait,
-    SensorTempHumTrait
+    SensorTempHumTrait,
+    type SensorKind,
+    type SensorTrait
 } from '../../src/traits/sensor';
-import type { SensorKind, SensorTrait, SensorTraitBind } from '../../src/traits/sensor';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';

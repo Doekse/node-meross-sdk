@@ -1,11 +1,11 @@
 import type { TraitAttachContext } from '../device/enroll-context';
+import type { SensorTraitBind } from '../device/bindings';
 import type { TraitDescriptor } from './descriptor';
 import { SensorCatalog } from './sensor.catalog';
 import {
     SensorContactTrait,
     SensorLeakTrait,
-    SensorMotionTrait,
-    type SensorTraitBind
+    SensorMotionTrait
 } from './sensor-core';
 import { SENSOR_FAMILY_MAP, type SensorKind } from './sensor-family';
 import { SensorSmokeTrait } from './sensor-smoke';
@@ -15,7 +15,6 @@ export { SENSOR_FAMILY_MAP, type SensorKind } from './sensor-family';
 export type {
     SensorAlertBand,
     SensorSmokeStatus,
-    SensorTraitBind,
     SensorValues
 } from './sensor-core';
 export { SensorContactTrait, SensorLeakTrait, SensorMotionTrait } from './sensor-core';

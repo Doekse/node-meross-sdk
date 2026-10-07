@@ -1,9 +1,10 @@
+import type { ClimateTraitBoardBind } from '../device/bindings';
 import {
     THERMOSTAT_MODE_NAMESPACE,
     encodeThermostatModeSet
 } from '../protocol/codecs/climate';
 import { ClimateBoardBase } from './climate-board';
-import type { ClimateModeMode, ClimateTraitBoardBind } from './climate-core';
+import type { ClimateModeMode } from './climate-core';
 
 /**
  * Thermostat.Mode (MTS200-class). Eco/manual slots exist here; workMode and

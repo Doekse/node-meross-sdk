@@ -1,6 +1,5 @@
-import type { EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
-import { enrollBoardTimerTriggerExtra } from '../device/enroll-helpers';
-import type { TraitName } from '../endpoint';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { TriggerTraitBind } from '../device/bindings';
 import { CommandError, MerossError } from '../errors';
 import {
     CONTROL_TRIGGER_NAMESPACE,
@@ -20,7 +19,6 @@ import {
     type TriggerXRule
 } from '../protocol/codecs/triggerx';
 import type { MerossMessage } from '../protocol/message';
-import type { DeviceRequest } from '../request';
 import type { TraitDescriptor } from './descriptor';
 import { TriggerCatalog } from './trigger.catalog';
 
@@ -44,28 +42,13 @@ export type TriggerSetInput = Partial<TriggerEntry> & {
 };
 
 /**
- * Transport + channel bind for one TriggerX / Control.Trigger endpoint. Session
- * supplies this; trait tests inject a fake request/emit pair.
- */
-export interface TriggerTraitBind {
-    channel: number;
-    /** Chosen at enrollment from Ability: TriggerX preferred over Control.Trigger. */
-    generation: TriggerGeneration;
-    /**
-     * Ability keys advertised by the device. Digest.TriggerX listing no-ops when absent.
-     */
-    namespaces?: ReadonlySet<string>;
-    request: DeviceRequest;
-    emitChange: (values: TriggerValues) => void;
-}
-
-/**
  * Per-channel countdowns via Appliance.Control.TriggerX (or legacy Trigger).
  * Digest.TriggerX is only an id index; poller GETACK triggers Control.TriggerX
  * GET-by-id in {@link handlePush} (ids are dynamic, not static jobs). Legacy
  * Control.Trigger has no Digest — GETACK/PUSH carry the full list.
  */
 export class TriggerTrait {
+    /** @internal */
     private readonly bind: TriggerTraitBind;
     /**
      * Unset until a GETACK, PUSH, or write-path GET. `[]` is a real empty
@@ -315,17 +298,6 @@ function sameEntries(left: TriggerEntry[], right: TriggerEntry[]): boolean {
 
 function sortedEntries(entries: TriggerEntry[]): TriggerEntry[] {
     return [...entries].map(cloneEntry).sort((a, b) => a.id.localeCompare(b.id));
-}
-
-function hasTrigger(ability: EnrollBoardExtraInput['ability']): boolean {
-    return TRIGGERX_NAMESPACE in ability || CONTROL_TRIGGER_NAMESPACE in ability;
-}
-
-/**
- * Same board endpoints as timer (socket/light/fan); skip media speakers.
- */
-export function enrollBoardTriggerExtra(input: EnrollBoardExtraInput): TraitName[] {
-    return enrollBoardTimerTriggerExtra(input, hasTrigger(input.ability), 'trigger');
 }
 
 export const descriptor: TraitDescriptor<'trigger', TriggerTrait> = {

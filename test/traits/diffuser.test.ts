@@ -9,8 +9,8 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
+import type { DiffuserTraitBind } from '../../src/device/bindings';
 import { DiffuserTrait } from '../../src/traits/diffuser';
-import type { DiffuserTraitBind } from '../../src/traits/diffuser';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';

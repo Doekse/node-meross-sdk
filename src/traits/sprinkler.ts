@@ -1,4 +1,5 @@
 import type { TraitAttachContext } from '../device/enroll-context';
+import type { SprinklerTraitBind } from '../device/bindings';
 import { CommandError } from '../errors';
 import {
     decodeHubExceptionPush,
@@ -30,7 +31,6 @@ import {
     HUB_EXCEPTION_NAMESPACE,
     HUB_SUBDEVICE_VERSION_NAMESPACE
 } from '../protocol/namespaces';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 import { SprinklerCatalog } from './sprinkler.catalog';
@@ -60,24 +60,13 @@ export interface SprinklerValues {
 export type SprinklerScheduleEntry = WaterPlanEntry;
 
 /**
- * Transport + sub-device bind for a hub sprinkler child. Session supplies this;
- * trait tests inject a fake request/emit pair.
- */
-export interface SprinklerTraitBind {
-    subDeviceId: string;
-    /** Ability keys; DeviceCfg, Battery, WaterPlan, and WaterEvent no-op when absent. */
-    namespaces?: ReadonlySet<string>;
-    request: DeviceRequest;
-    emitChange: (values: SprinklerValues) => void;
-}
-
-/**
  * Hub child sprinkler (MST100). On/off uses Control.Water onoff 1/2; default
  * duration lives in DeviceCfg mstCfg.dura. Schedules use Config.WaterPlan when
  * the hub actually answers (many reply error 5000). Completed cycles arrive as
  * Control.WaterEvent PUSH.
  */
 export class SprinklerTrait {
+    /** @internal */
     private readonly bind: SprinklerTraitBind;
     private readonly namespaces: ReadonlySet<string>;
     private last: SprinklerValues = {};

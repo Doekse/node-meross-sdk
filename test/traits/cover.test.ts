@@ -18,7 +18,8 @@ import {
     encodeShutterPositionSet,
     type MerossMessage
 } from '../../src/protocol';
-import { CoverGarageTrait, CoverShutterTrait, type CoverTraitBind } from '../../src/traits/cover';
+import type { CoverTraitBind } from '../../src/device/bindings';
+import { CoverGarageTrait, CoverShutterTrait } from '../../src/traits/cover';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';

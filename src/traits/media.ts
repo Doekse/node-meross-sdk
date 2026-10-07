@@ -1,6 +1,5 @@
-import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
-import { enrollBoardExtra, enrollStandalone } from '../device/enroll-helpers';
-import type { TraitName } from '../endpoint';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { MediaTraitBind } from '../device/bindings';
 import {
     MP3_NAMESPACE,
     MP3_VOLUME_MAX,
@@ -9,7 +8,6 @@ import {
     type Mp3State
 } from '../protocol/codecs/mp3';
 import type { MerossMessage } from '../protocol/message';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 import { MediaCatalog } from './media.catalog';
@@ -22,20 +20,11 @@ export interface MediaValues {
 }
 
 /**
- * Transport + channel bind for one Control.Mp3 endpoint. Session supplies this;
- * trait tests inject a fake request/emit pair.
- */
-export interface MediaTraitBind {
-    channel: number;
-    request: DeviceRequest;
-    emitChange: (values: MediaValues) => void;
-}
-
-/**
  * White-noise player for one enrolled channel. Mute, volume, and song are
  * separate Control.Mp3 SETs.
  */
 export class MediaTrait {
+    /** @internal */
     private readonly bind: MediaTraitBind;
     private last: MediaValues = {};
 
@@ -143,22 +132,6 @@ function mediaPatch(entry: Mp3State): MediaValues {
 
 function clamp01(value: number): number {
     return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-}
-
-function hasMedia(ability: EnrollBoardExtraInput['ability']): boolean {
-    return MP3_NAMESPACE in ability;
-}
-
-/**
- * Mp3 rides channel 0 when some other trait already claimed it.
- */
-export function enrollBoardMediaExtra(input: EnrollBoardExtraInput): TraitName[] {
-    return enrollBoardExtra(input, hasMedia(input.ability), 'media');
-}
-
-/** Standalone speaker when nothing else claimed channel 0. */
-export function enrollMediaStandalone(ctx: EnrollBoardContext): void {
-    enrollStandalone(ctx, hasMedia(ctx.ability), 'speaker', 'media');
 }
 
 export const descriptor: TraitDescriptor<'media', MediaTrait> = {

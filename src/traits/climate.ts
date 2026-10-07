@@ -1,8 +1,7 @@
-import type { EnrollBoardContext, TraitAttachContext } from '../device/enroll-context';
+import type { TraitAttachContext } from '../device/enroll-context';
 import {
     THERMOSTAT_MODEB_NAMESPACE,
-    THERMOSTAT_MODEC_NAMESPACE,
-    THERMOSTAT_MODE_NAMESPACE
+    THERMOSTAT_MODEC_NAMESPACE
 } from '../protocol/namespaces';
 import type { TraitDescriptor } from './descriptor';
 import { ClimateCatalog } from './climate.catalog';
@@ -29,9 +28,6 @@ export type {
     ClimateSystemWire,
     ClimateTempUnit,
     ClimateTimer,
-    ClimateTraitBind,
-    ClimateTraitBoardBind,
-    ClimateTraitHubBind,
     ClimateValues,
     ClimateWorkMode
 } from './climate-core';
@@ -51,21 +47,6 @@ export type ClimateTrait =
     | ClimateHubTrait;
 
 export type ClimateBoardTrait = ClimateModeTrait | ClimateModeBTrait | ClimateModeCTrait;
-
-/**
- * Board thermostats claim channel 0 from Ability Mode/ModeB/ModeC or digest
- * so leftover ToggleX does not enroll them as sockets.
- */
-export function enrollClimate(ctx: EnrollBoardContext): void {
-    if (
-        THERMOSTAT_MODE_NAMESPACE in ctx.ability
-        || THERMOSTAT_MODEB_NAMESPACE in ctx.ability
-        || THERMOSTAT_MODEC_NAMESPACE in ctx.ability
-        || ctx.all.digest.thermostat
-    ) {
-        ctx.add(0, 'climate', ['climate']);
-    }
-}
 
 export const descriptor: TraitDescriptor<'climate', ClimateTrait> = {
     ...ClimateCatalog,

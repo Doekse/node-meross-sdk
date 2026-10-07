@@ -1,11 +1,5 @@
-import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
-import {
-    enrollBoardExtra,
-    enrollHubExtra,
-    enrollStandalone
-} from '../device/enroll-helpers';
-import type { TraitName } from '../endpoint';
-import type { AbilityMap } from '../protocol/codecs/ability';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { AlarmTraitBind } from '../device/bindings';
 import {
     CONTROL_ALARM_NAMESPACE,
     CONTROL_BEEP_NAMESPACE,
@@ -18,7 +12,6 @@ import {
     type BeepChannelState
 } from '../protocol/codecs/alarm';
 import type { MerossMessage } from '../protocol/message';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 import { AlarmCatalog } from './alarm.catalog';
@@ -31,23 +24,11 @@ export interface AlarmValues {
 }
 
 /**
- * Transport + channel bind for one Control.Alarm / Control.Beep endpoint.
- * Session supplies this; trait tests inject a fake request/emit pair. Hub
- * parent uses channel 0.
- */
-export interface AlarmTraitBind {
-    channel: number;
-    /** Ability keys; setters and PUSH apply only for advertised namespaces. */
-    namespaces?: ReadonlySet<string>;
-    request: DeviceRequest;
-    emitChange: (values: AlarmValues) => void;
-}
-
-/**
  * Hub siren via Appliance.Control.Alarm and optional Control.Beep chime.
  * Distinct from Thermostat.Alarm on ClimateTrait.
  */
 export class AlarmTrait {
+    /** @internal */
     private readonly bind: AlarmTraitBind;
     private readonly namespaces: ReadonlySet<string>;
     private last: AlarmValues = {};
@@ -191,27 +172,6 @@ function alarmPatch(entry: AlarmChannelState): AlarmValues {
         patch.linked = entry.linked;
     }
     return patch;
-}
-
-function hasAlarm(ability: AbilityMap): boolean {
-    return CONTROL_ALARM_NAMESPACE in ability || CONTROL_BEEP_NAMESPACE in ability;
-}
-
-/**
- * Hub / board siren rides channel 0 when some other trait already claimed it.
- */
-export function enrollBoardAlarmExtra(input: EnrollBoardExtraInput): TraitName[] {
-    return enrollBoardExtra(input, hasAlarm(input.ability), 'alarm');
-}
-
-/** Standalone alarm when nothing else claimed channel 0. */
-export function enrollAlarmStandalone(ctx: EnrollBoardContext): void {
-    enrollStandalone(ctx, hasAlarm(ctx.ability), 'socket', 'alarm');
-}
-
-/** Hub parent carries alarm beside system when Ability advertises it. */
-export function enrollHubAlarmExtra(ability: AbilityMap): TraitName[] {
-    return enrollHubExtra(hasAlarm(ability), 'alarm');
 }
 
 export const descriptor: TraitDescriptor<'alarm', AlarmTrait> = {

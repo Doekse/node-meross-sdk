@@ -11,8 +11,8 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
-import { AlertTrait } from '../../src/traits/alert';
-import type { AlertTraitBind, AlertValues } from '../../src/traits/alert';
+import type { AlertTraitBind } from '../../src/device/bindings';
+import { AlertTrait, type AlertValues } from '../../src/traits/alert';
 import {
     createRequestRecorder,
     recordedCalls,

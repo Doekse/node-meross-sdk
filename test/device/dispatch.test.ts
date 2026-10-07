@@ -15,10 +15,11 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
+import type { SensorTraitBind } from '../../src/device/bindings';
 import type { DeviceRequest } from '../../src/request';
 import { ClimateHubTrait } from '../../src/traits/climate';
 import { LightTrait } from '../../src/traits/light';
-import { SensorContactTrait, SensorTempHumTrait, type SensorTrait, type SensorTraitBind } from '../../src/traits/sensor';
+import { SensorContactTrait, SensorTempHumTrait, type SensorTrait } from '../../src/traits/sensor';
 import { SwitchTrait } from '../../src/traits/switch';
 import { SystemTrait } from '../../src/traits/system';
 import { createRequestRecorder } from '../helpers/request';

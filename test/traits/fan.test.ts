@@ -11,8 +11,8 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
+import type { FanTraitBind } from '../../src/device/bindings';
 import { FanTrait } from '../../src/traits/fan';
-import type { FanTraitBind } from '../../src/traits/fan';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';

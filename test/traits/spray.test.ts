@@ -7,8 +7,8 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
+import type { SprayTraitBind } from '../../src/device/bindings';
 import { SprayTrait } from '../../src/traits/spray';
-import type { SprayTraitBind } from '../../src/traits/spray';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';

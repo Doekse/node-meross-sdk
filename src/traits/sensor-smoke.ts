@@ -1,3 +1,4 @@
+import type { SensorTraitBind } from '../device/bindings';
 import { MerossError } from '../errors';
 import {
     HUB_SENSOR_SMOKE_NAMESPACE,
@@ -9,7 +10,6 @@ import {
     SensorTraitBase,
     smokeConfigPatch,
     smokePatch,
-    type SensorTraitBind,
     type SensorValues
 } from './sensor-core';
 

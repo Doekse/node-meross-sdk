@@ -11,8 +11,8 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
-import { OverTempTrait } from '../../src/traits/overtemp';
-import type { OverTempTraitBind, OverTempValues } from '../../src/traits/overtemp';
+import type { OverTempTraitBind } from '../../src/device/bindings';
+import { OverTempTrait, type OverTempValues } from '../../src/traits/overtemp';
 import {
     createRequestRecorder,
     recordedCalls,

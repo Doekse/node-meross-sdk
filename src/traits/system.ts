@@ -1,5 +1,5 @@
-import type { EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
-import type { TraitName } from '../endpoint';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { SystemTraitBind } from '../device/bindings';
 import { decodeSystemAllGetAck } from '../protocol/codecs/system-all';
 import {
     SYSTEM_CLOCK_NAMESPACE,
@@ -27,7 +27,6 @@ import {
 } from '../protocol/codecs/system';
 import type { MerossMessage } from '../protocol/message';
 import { SYSTEM_ALL_NAMESPACE } from '../protocol/namespaces';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 import { SystemCatalog } from './system.catalog';
@@ -56,32 +55,11 @@ export interface SystemValues {
 }
 
 /**
- * Transport bind for one device's System.* surface. Session supplies this;
- * trait tests inject a fake request/emit pair.
- */
-export interface SystemTraitBind {
-    /** System.All firmware so hosts can read version before the first poll. */
-    initialFirmware?: SystemFirmwareState;
-    /** System.All hardware identity before the first poll. */
-    initialHardware?: SystemHardwareState;
-    /** System.All time when the digest carried it. */
-    initialTime?: SystemTimeState;
-    request: DeviceRequest;
-    emitChange: (values: SystemValues) => void;
-    /**
-     * Ability listed Appliance.System.Runtime. The trait is still attached
-     * without it; hosts use this so an empty signal sensor is not created.
-     */
-    hasRuntime?: boolean;
-    /** Injectable for clock-skew tests. */
-    now?: () => number;
-}
-
-/**
  * Device firmware, hardware, time, and diagnostics. Channel-agnostic; Session
  * attaches one instance on channel 0 / hub root.
  */
 export class SystemTrait {
+    /** @internal */
     private readonly bind: SystemTraitBind;
     private readonly now: () => number;
     private last: SystemValues = {};
@@ -261,17 +239,6 @@ export class SystemTrait {
     private applyChange(patch: SystemValues): void {
         applyPatch(this.last, patch, this.bind.emitChange);
     }
-}
-
-/**
- * Channel-0 / hub-root diagnostics. Enroll only as an extra — hubs seed
- * `'system'` on the parent row directly.
- */
-export function enrollBoardSystemExtra(input: EnrollBoardExtraInput): TraitName[] {
-    if (input.channel === 0 && !input.traits.includes('system')) {
-        return ['system'];
-    }
-    return [];
 }
 
 export const descriptor: TraitDescriptor<'system', SystemTrait> = {

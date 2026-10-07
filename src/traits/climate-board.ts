@@ -1,3 +1,4 @@
+import type { ClimateTraitBoardBind } from '../device/bindings';
 import { MerossError } from '../errors';
 import {
     ALARM_CONFIG_NAMESPACE,
@@ -87,8 +88,7 @@ import {
     type ClimateSensorMode,
     type ClimateSystem,
     type ClimateTempUnit,
-    type ClimateTimer,
-    type ClimateTraitBoardBind
+    type ClimateTimer
 } from './climate-core';
 
 /**

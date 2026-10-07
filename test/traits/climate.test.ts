@@ -26,13 +26,13 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
+import type { ClimateTraitBoardBind, ClimateTraitHubBind } from '../../src/device/bindings';
 import {
     ClimateHubTrait,
     ClimateModeBTrait,
     ClimateModeCTrait,
     ClimateModeTrait
 } from '../../src/traits/climate';
-import type { ClimateTraitBoardBind, ClimateTraitHubBind } from '../../src/traits/climate';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';

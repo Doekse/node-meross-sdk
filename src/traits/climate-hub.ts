@@ -1,3 +1,4 @@
+import type { ClimateTraitHubBind } from '../device/bindings';
 import { MerossError } from '../errors';
 import {
     HUB_MTS100_ADJUST_NAMESPACE,
@@ -44,8 +45,7 @@ import {
     ClimateTraitBase,
     type ClimateHubMode,
     type ClimatePid,
-    type ClimateSchedule,
-    type ClimateTraitHubBind
+    type ClimateSchedule
 } from './climate-core';
 
 /**

@@ -1,4 +1,5 @@
-import type { EnrollBoardContext, TraitAttachContext } from '../device/enroll-context';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { DiffuserTraitBind } from '../device/bindings';
 import {
     DIFFUSER_LIGHT_NAMESPACE,
     DIFFUSER_SENSOR_NAMESPACE,
@@ -13,7 +14,6 @@ import {
     type DiffuserSprayMode
 } from '../protocol/codecs/diffuser';
 import type { MerossMessage } from '../protocol/message';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { LightRgb } from './light';
 import type { TraitDescriptor } from './descriptor';
@@ -32,22 +32,11 @@ export interface DiffuserValues {
 }
 
 /**
- * Transport + channel bind for one Diffuser device. Session supplies this;
- * trait tests inject a fake request/emit pair.
- */
-export interface DiffuserTraitBind {
-    channel: number;
-    /** Ability keys; extra methods no-op when the namespace is absent. */
-    namespaces?: ReadonlySet<string>;
-    request: DeviceRequest;
-    emitChange: (values: DiffuserValues) => void;
-}
-
-/**
  * MOD100/MOD150 light, spray, and optional humidity/temperature on one endpoint.
  * Namespaces differ from Control.Light / Control.Spray.
  */
 export class DiffuserTrait {
+    /** @internal */
     private readonly bind: DiffuserTraitBind;
     private readonly namespaces: ReadonlySet<string>;
     private last: DiffuserValues = {};
@@ -231,27 +220,6 @@ function clampInt(value: number, min: number, max: number): number {
 
 function clamp01(value: number): number {
     return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
-}
-
-/**
- * Light and spray digest arrays may name different channels on one board.
- * Ability without digest rows still claims channel 0 so leftover ToggleX
- * does not enroll the diffuser as a socket.
- */
-export function enrollDiffuser(ctx: EnrollBoardContext): void {
-    const digest = ctx.all.digest.diffuser;
-    const channels = new Set<number>([
-        ...(digest?.light ?? []),
-        ...(digest?.spray ?? [])
-    ]);
-    const advertised = DIFFUSER_LIGHT_NAMESPACE in ctx.ability
-        || DIFFUSER_SPRAY_NAMESPACE in ctx.ability;
-    if (channels.size === 0 && advertised) {
-        channels.add(0);
-    }
-    for (const channel of channels) {
-        ctx.add(channel, 'humidifier', ['diffuser']);
-    }
 }
 
 export const descriptor: TraitDescriptor<'diffuser', DiffuserTrait> = {

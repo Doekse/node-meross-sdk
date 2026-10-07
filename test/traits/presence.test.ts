@@ -9,8 +9,8 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
+import type { PresenceTraitBind } from '../../src/device/bindings';
 import { PresenceTrait } from '../../src/traits/presence';
-import type { PresenceTraitBind } from '../../src/traits/presence';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';

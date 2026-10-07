@@ -1,3 +1,4 @@
+import type { CoverTraitBind } from '../device/bindings';
 import {
     GARAGE_CONFIG_NAMESPACE,
     GARAGE_MULTIPLE_CONFIG_NAMESPACE,
@@ -13,7 +14,7 @@ import {
     type GarageMultipleConfigEntry
 } from '../protocol/codecs/cover';
 import type { MerossMessage } from '../protocol/message';
-import { CoverTraitBase, type CoverTraitBind } from './cover-core';
+import { CoverTraitBase } from './cover-core';
 
 /**
  * GarageDoor.State. Firmware has no stop or position.

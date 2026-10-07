@@ -1,6 +1,5 @@
-import type { EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
-import { enrollBoardTimerTriggerExtra } from '../device/enroll-helpers';
-import type { TraitName } from '../endpoint';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { TimerTraitBind } from '../device/bindings';
 import { CommandError, MerossError } from '../errors';
 import {
     CONTROL_TIMER_NAMESPACE,
@@ -20,7 +19,6 @@ import {
     type TimerXEntry
 } from '../protocol/codecs/timerx';
 import type { MerossMessage } from '../protocol/message';
-import type { DeviceRequest } from '../request';
 import type { TraitDescriptor } from './descriptor';
 import { TimerCatalog } from './timer.catalog';
 
@@ -45,28 +43,13 @@ export type TimerSetInput = Partial<TimerEntry> & {
 };
 
 /**
- * Transport + channel bind for one TimerX / Control.Timer endpoint. Session
- * supplies this; trait tests inject a fake request/emit pair.
- */
-export interface TimerTraitBind {
-    channel: number;
-    /** Chosen at enrollment from Ability: TimerX preferred over Control.Timer. */
-    generation: TimerGeneration;
-    /**
-     * Ability keys advertised by the device. Digest.TimerX listing no-ops when absent.
-     */
-    namespaces?: ReadonlySet<string>;
-    request: DeviceRequest;
-    emitChange: (values: TimerValues) => void;
-}
-
-/**
  * Per-channel clock schedules via Appliance.Control.TimerX (or legacy Timer).
  * Digest.TimerX is only an id index; poller GETACK triggers Control.TimerX
  * GET-by-id in {@link handlePush} (ids are dynamic, not static jobs). Legacy
  * Control.Timer has no Digest — GETACK carries the full list.
  */
 export class TimerTrait {
+    /** @internal */
     private readonly bind: TimerTraitBind;
     /**
      * Unset until a GETACK, PUSH, or write-path GET. `[]` is a real empty
@@ -340,18 +323,6 @@ function sameEntries(left: TimerEntry[], right: TimerEntry[]): boolean {
 
 function sortedEntries(entries: TimerEntry[]): TimerEntry[] {
     return [...entries].map(cloneEntry).sort((a, b) => a.id.localeCompare(b.id));
-}
-
-function hasTimer(ability: EnrollBoardExtraInput['ability']): boolean {
-    return TIMERX_NAMESPACE in ability || CONTROL_TIMER_NAMESPACE in ability;
-}
-
-/**
- * Toggle-shaped Timer/TimerX only; cover/climate/humidifier/speaker use other
- * extend objects. Skip when media already claimed the endpoint.
- */
-export function enrollBoardTimerExtra(input: EnrollBoardExtraInput): TraitName[] {
-    return enrollBoardTimerTriggerExtra(input, hasTimer(input.ability), 'timer');
 }
 
 export const descriptor: TraitDescriptor<'timer', TimerTrait> = {

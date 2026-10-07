@@ -11,8 +11,8 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
-import { SystemTrait } from '../../src/traits/system';
-import type { SystemTraitBind, SystemValues } from '../../src/traits/system';
+import type { SystemTraitBind } from '../../src/device/bindings';
+import { SystemTrait, type SystemValues } from '../../src/traits/system';
 import { createRequestRecorder } from '../helpers/request';
 
 const KEY = 'stub-key';

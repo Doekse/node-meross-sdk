@@ -1,7 +1,6 @@
-import type { EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
-import type { TraitName } from '../endpoint';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { StandbyKillerTraitBind } from '../device/bindings';
 import { MerossError } from '../errors';
-import type { AbilityMap } from '../protocol/codecs/ability';
 import {
     CONFIG_STANDBY_KILLER_NAMESPACE,
     decodeStandbyKillerGetAck,
@@ -10,7 +9,6 @@ import {
     encodeStandbyKillerSet
 } from '../protocol/codecs/standbykiller';
 import type { MerossMessage } from '../protocol/message';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 import { StandbyKillerCatalog } from './standbykiller.catalog';
@@ -23,21 +21,10 @@ export interface StandbyKillerValues {
 }
 
 /**
- * Transport + channel bind for one StandbyKiller endpoint.
- * Session supplies this; trait tests inject a fake request/emit pair.
- */
-export interface StandbyKillerTraitBind {
-    channel: number;
-    /** Ability keys; SET and PUSH apply only when advertised. */
-    namespaces?: ReadonlySet<string>;
-    request: DeviceRequest;
-    emitChange: (values: StandbyKillerValues) => void;
-}
-
-/**
  * Per-channel standby cut-off. Enroll rides socket channels only.
  */
 export class StandbyKillerTrait {
+    /** @internal */
     private readonly bind: StandbyKillerTraitBind;
     private readonly namespaces: ReadonlySet<string>;
     private last: StandbyKillerValues = {};
@@ -165,30 +152,6 @@ export class StandbyKillerTrait {
     private applyChange(patch: StandbyKillerValues): void {
         applyPatch(this.last, patch, this.bind.emitChange);
     }
-}
-
-function hasStandbyKiller(ability: AbilityMap): boolean {
-    return CONFIG_STANDBY_KILLER_NAMESPACE in ability;
-}
-
-/**
- * Per-channel StandbyKiller on socket endpoints (not hub, not climate).
- * A strip's channel 0 switches every outlet, so the cutoff stays on each outlet.
- */
-export function enrollBoardStandbyKillerExtra(input: EnrollBoardExtraInput): TraitName[] {
-    if (
-        hasStandbyKiller(input.ability)
-        && input.classHint === 'socket'
-    ) {
-        if (input.strip && input.channel === 0) {
-            return [];
-        }
-        if (input.traits.includes('standbykiller')) {
-            return [];
-        }
-        return ['standbykiller'];
-    }
-    return [];
 }
 
 export const descriptor: TraitDescriptor<'standbykiller', StandbyKillerTrait> = {

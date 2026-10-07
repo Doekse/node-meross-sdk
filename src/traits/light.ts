@@ -1,5 +1,5 @@
-import type { EnrollBoardContext, TraitAttachContext } from '../device/enroll-context';
-import { enrollDigest } from '../device/enroll-helpers';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { LightTraitBind } from '../device/bindings';
 import {
     LIGHT_CAPACITY_EFFECT,
     LIGHT_CAPACITY_LUMINANCE,
@@ -21,7 +21,6 @@ import {
 } from '../protocol/codecs/togglex';
 import type { MerossMessage } from '../protocol/message';
 import { TOGGLE_NAMESPACE, TOGGLEX_NAMESPACE } from '../protocol/namespaces';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 import { LightCatalog } from './light.catalog';
@@ -43,27 +42,11 @@ export interface LightValues {
 }
 
 /**
- * Transport + channel bind for one Control.Light endpoint.
- * Session supplies the request transport and ToggleX preference.
- */
-export interface LightTraitBind {
-    channel: number;
-    /** ToggleX when advertised; classic Toggle only when ToggleX is absent. */
-    hasToggleX: boolean;
-    hasToggle: boolean;
-    /** Light.Effect catalog SET needs this namespace. */
-    hasLightEffect: boolean;
-    /** Capacity bitmask from Ability; the trait updates it after the first GETACK. */
-    lightCapacity: number;
-    request: DeviceRequest;
-    emitChange: (values: LightValues) => void;
-}
-
-/**
  * Brightness, color, and power for one enrolled light endpoint. Power routes
  * through ToggleX/Toggle when the device has it; Control.Light handles the rest.
  */
 export class LightTrait {
+    /** @internal */
     private readonly bind: LightTraitBind;
     private lightCapacity: number;
     private last: LightValues = {};
@@ -318,14 +301,6 @@ function wireToHost01(value: number): number {
 
 function clampInt(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, Math.trunc(value)));
-}
-
-/**
- * Digest lists the bulbs; Ability without a digest row still claims channel 0
- * so leftover ToggleX does not enroll the bulb as a socket.
- */
-export function enrollLight(ctx: EnrollBoardContext): void {
-    enrollDigest(ctx, ctx.all.digest.light, LIGHT_NAMESPACE, 'light', 'light');
 }
 
 export const descriptor: TraitDescriptor<'light', LightTrait> = {

@@ -10,8 +10,8 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
-import { TimerTrait } from '../../src/traits/timer';
-import type { TimerGeneration, TimerTraitBind } from '../../src/traits/timer';
+import type { TimerTraitBind } from '../../src/device/bindings';
+import { TimerTrait, type TimerGeneration } from '../../src/traits/timer';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';

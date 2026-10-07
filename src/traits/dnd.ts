@@ -1,11 +1,5 @@
-import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
-import {
-    enrollBoardExtra,
-    enrollHubExtra,
-    enrollStandalone
-} from '../device/enroll-helpers';
-import type { TraitName } from '../endpoint';
-import type { AbilityMap } from '../protocol/codecs/ability';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { DndTraitBind } from '../device/bindings';
 import {
     DND_MODE_NAMESPACE,
     decodeDndGetAck,
@@ -14,7 +8,6 @@ import {
     encodeDndSet
 } from '../protocol/codecs/dnd';
 import type { MerossMessage } from '../protocol/message';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 import { DndCatalog } from './dnd.catalog';
@@ -25,18 +18,10 @@ export interface DndValues {
 }
 
 /**
- * Transport bind for one device's System.DNDMode surface. Session supplies this;
- * trait tests inject a fake request/emit pair.
- */
-export interface DndTraitBind {
-    request: DeviceRequest;
-    emitChange: (values: DndValues) => void;
-}
-
-/**
  * Device-wide status LED. Firmware DNDMode is inverted in the codec. Not per channel.
  */
 export class DndTrait {
+    /** @internal */
     private readonly bind: DndTraitBind;
     private last: DndValues = {};
 
@@ -98,27 +83,6 @@ export class DndTrait {
     private applyChange(patch: DndValues): void {
         applyPatch(this.last, patch, this.bind.emitChange);
     }
-}
-
-function hasDnd(ability: AbilityMap): boolean {
-    return DND_MODE_NAMESPACE in ability;
-}
-
-/**
- * Device-wide DND rides channel 0 when some other trait already claimed it.
- */
-export function enrollBoardDndExtra(input: EnrollBoardExtraInput): TraitName[] {
-    return enrollBoardExtra(input, hasDnd(input.ability), 'dnd');
-}
-
-/** Standalone DND when nothing else claimed channel 0. */
-export function enrollDndStandalone(ctx: EnrollBoardContext): void {
-    enrollStandalone(ctx, hasDnd(ctx.ability), 'socket', 'dnd');
-}
-
-/** Hub parent carries DND beside system when Ability advertises it. */
-export function enrollHubDndExtra(ability: AbilityMap): TraitName[] {
-    return enrollHubExtra(hasDnd(ability), 'dnd');
 }
 
 export const descriptor: TraitDescriptor<'dnd', DndTrait> = {

@@ -1,3 +1,4 @@
+import type { SensorTraitBind } from '../device/bindings';
 import { MerossError } from '../errors';
 import {
     decodeHubExceptionPush,
@@ -84,18 +85,6 @@ export interface SensorValues {
     humidityAlerts?: SensorAlertBand[];
     /** Config.Sensor.Association `temp.association` when present on hub children. */
     tempAssociation?: number;
-}
-
-/**
- * Transport + sub-device bind. Kind is the concrete class, not a field
- * here, so a contact sensor cannot call smoke setters.
- */
-export interface SensorTraitBind {
-    subDeviceId: string;
-    /** Ability keys; extra methods throw when the namespace is absent. */
-    namespaces?: ReadonlySet<string>;
-    request: DeviceRequest;
-    emitChange: (values: SensorValues) => void;
 }
 
 const SMOKE_FROM_WIRE: Record<number, SensorValues> = {

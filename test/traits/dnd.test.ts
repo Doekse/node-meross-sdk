@@ -9,8 +9,8 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
-import { DndTrait } from '../../src/traits/dnd';
-import type { DndTraitBind, DndValues } from '../../src/traits/dnd';
+import type { DndTraitBind } from '../../src/device/bindings';
+import { DndTrait, type DndValues } from '../../src/traits/dnd';
 import {
     createRequestRecorder,
     recordedCalls,

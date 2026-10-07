@@ -1,12 +1,6 @@
-import type { EnrollBoardContext, EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
-import {
-    enrollBoardExtra,
-    enrollHubExtra,
-    enrollStandalone
-} from '../device/enroll-helpers';
-import type { TraitName } from '../endpoint';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { OverTempTraitBind } from '../device/bindings';
 import { MerossError } from '../errors';
-import type { AbilityMap } from '../protocol/codecs/ability';
 import {
     CONFIG_OVERTEMP_NAMESPACE,
     CONTROL_OVERTEMP_NAMESPACE,
@@ -17,7 +11,6 @@ import {
     encodeConfigOverTempSet
 } from '../protocol/codecs/overtemp';
 import type { MerossMessage } from '../protocol/message';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 import { OverTempCatalog } from './overtemp.catalog';
@@ -30,21 +23,11 @@ export interface OverTempValues {
 }
 
 /**
- * Transport bind for one device's Config.OverTemp / Control.OverTemp surface.
- * Session supplies this; trait tests inject a fake request/emit pair.
- */
-export interface OverTempTraitBind {
-    /** Ability keys; Config SET and Control PUSH apply only when advertised. */
-    namespaces?: ReadonlySet<string>;
-    request: DeviceRequest;
-    emitChange: (values: OverTempValues) => void;
-}
-
-/**
  * Device-wide over-temperature protection. Config is polled and set; Control
  * is inbound only. Enroll rides channel 0 or the hub parent.
  */
 export class OverTempTrait {
+    /** @internal */
     private readonly bind: OverTempTraitBind;
     private readonly namespaces: ReadonlySet<string>;
     private last: OverTempValues = {};
@@ -160,28 +143,6 @@ export class OverTempTrait {
     private applyChange(patch: OverTempValues): void {
         applyPatch(this.last, patch, this.bind.emitChange);
     }
-}
-
-/** Enroll only when Config is advertised; Control is push-only. */
-function hasOverTemp(ability: AbilityMap): boolean {
-    return CONFIG_OVERTEMP_NAMESPACE in ability;
-}
-
-/**
- * Device-wide OverTemp rides channel 0 when some other trait already claimed it.
- */
-export function enrollBoardOverTempExtra(input: EnrollBoardExtraInput): TraitName[] {
-    return enrollBoardExtra(input, hasOverTemp(input.ability), 'overtemp');
-}
-
-/** Standalone OverTemp when nothing else claimed channel 0. */
-export function enrollOverTempStandalone(ctx: EnrollBoardContext): void {
-    enrollStandalone(ctx, hasOverTemp(ctx.ability), 'socket', 'overtemp');
-}
-
-/** Hub parent carries OverTemp beside system when Ability advertises Config. */
-export function enrollHubOverTempExtra(ability: AbilityMap): TraitName[] {
-    return enrollHubExtra(hasOverTemp(ability), 'overtemp');
 }
 
 export const descriptor: TraitDescriptor<'overtemp', OverTempTrait> = {

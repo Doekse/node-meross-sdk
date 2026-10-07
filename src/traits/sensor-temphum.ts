@@ -1,3 +1,4 @@
+import type { SensorTraitBind } from '../device/bindings';
 import {
     HUB_SENSOR_ADJUST_NAMESPACE,
     HUB_SENSOR_ALERT_NAMESPACE,
@@ -7,7 +8,6 @@ import {
 } from '../protocol/codecs/sensor';
 import {
     SensorTraitBase,
-    type SensorTraitBind,
     type SensorValues
 } from './sensor-core';
 

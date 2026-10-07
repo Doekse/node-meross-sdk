@@ -1,7 +1,6 @@
-import type { EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
-import type { TraitName } from '../endpoint';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { AlertTraitBind } from '../device/bindings';
 import { MerossError } from '../errors';
-import type { AbilityMap } from '../protocol/codecs/ability';
 import {
     CONTROL_ALERT_CONFIG_NAMESPACE,
     CONTROL_ALERT_REPORT_NAMESPACE,
@@ -12,7 +11,6 @@ import {
     encodeAlertConfigSet
 } from '../protocol/codecs/alertconfig';
 import type { MerossMessage } from '../protocol/message';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 import { AlertCatalog } from './alert.catalog';
@@ -24,22 +22,11 @@ export interface AlertValues {
 }
 
 /**
- * Transport + channel bind for one AlertConfig / AlertReport endpoint.
- * Session supplies this; trait tests inject a fake request/emit pair.
- */
-export interface AlertTraitBind {
-    channel: number;
-    /** Ability keys; Config SET and Report PUSH apply only when advertised. */
-    namespaces?: ReadonlySet<string>;
-    request: DeviceRequest;
-    emitChange: (values: AlertValues) => void;
-}
-
-/**
  * Per-channel alert thresholds (EM06 / MTS300). Config is polled and set;
  * Report is inbound only. Enroll rides socket and climate channels.
  */
 export class AlertTrait {
+    /** @internal */
     private readonly bind: AlertTraitBind;
     private readonly namespaces: ReadonlySet<string>;
     private last: AlertValues = {};
@@ -167,28 +154,6 @@ export class AlertTrait {
     private applyChange(patch: AlertValues): void {
         applyPatch(this.last, patch, this.bind.emitChange);
     }
-}
-
-/** Enroll only when Config is advertised; AlertReport is push-only. */
-function hasAlert(ability: AbilityMap): boolean {
-    return CONTROL_ALERT_CONFIG_NAMESPACE in ability;
-}
-
-/**
- * Per-channel AlertConfig on socket and climate endpoints (not hub children,
- * not channel-0-only).
- */
-export function enrollBoardAlertExtra(input: EnrollBoardExtraInput): TraitName[] {
-    if (!hasAlert(input.ability)) {
-        return [];
-    }
-    if (input.classHint !== 'socket' && input.classHint !== 'climate') {
-        return [];
-    }
-    if (input.traits.includes('alert')) {
-        return [];
-    }
-    return ['alert'];
 }
 
 export const descriptor: TraitDescriptor<'alert', AlertTrait> = {

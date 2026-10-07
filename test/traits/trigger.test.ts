@@ -10,8 +10,8 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
-import { TriggerTrait } from '../../src/traits/trigger';
-import type { TriggerGeneration, TriggerTraitBind } from '../../src/traits/trigger';
+import type { TriggerTraitBind } from '../../src/device/bindings';
+import { TriggerTrait, type TriggerGeneration } from '../../src/traits/trigger';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';

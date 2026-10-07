@@ -1,5 +1,5 @@
-import type { EnrollBoardExtraInput, TraitAttachContext } from '../device/enroll-context';
-import type { TraitName } from '../endpoint';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { EnergyTraitBind } from '../device/bindings';
 import {
     CONSUMPTION_CONFIG_NAMESPACE,
     decodeConsumptionConfigGetAck,
@@ -30,7 +30,6 @@ import {
     type ElectricitySample
 } from '../protocol/codecs/electricity';
 import type { MerossMessage } from '../protocol/message';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 import { EnergyCatalog } from './energy.catalog';
@@ -50,22 +49,6 @@ export interface EnergyValues {
     consumptionTotal?: number;
 }
 
-/**
- * Transport + channel bind for one energy endpoint. Session supplies this;
- * trait tests inject a fake request/emit pair.
- */
-export interface EnergyTraitBind {
-    channel: number;
-    hasElectricity: boolean;
-    hasElectricityX: boolean;
-    hasConsumptionX: boolean;
-    hasConsumptionH: boolean;
-    /** Ability keys; ConsumptionConfig no-ops when absent. */
-    namespaces?: ReadonlySet<string>;
-    request: DeviceRequest;
-    emitChange: (values: EnergyValues) => void;
-}
-
 export type { ElectricityConfig };
 
 /**
@@ -73,6 +56,7 @@ export type { ElectricityConfig };
  * the schedule; this trait applies GETACK/PUSH and exposes on-demand `poll()`.
  */
 export class EnergyTrait {
+    /** @internal */
     private readonly bind: EnergyTraitBind;
     private readonly namespaces: ReadonlySet<string>;
     private last: EnergyValues = {};
@@ -278,32 +262,6 @@ export class EnergyTrait {
     private applyChange(patch: EnergyValues): void {
         applyPatch(this.last, patch, this.bind.emitChange);
     }
-}
-
-/**
- * A strip's channel 0 switches every outlet, so a per-outlet ElectricityX
- * meter does not belong there. Returning before the board-meter check keeps
- * ConsumptionH from enrolling that channel, which has no electricity sample.
- * Firmware also copies a classic board meter onto every channel, so that
- * reading stays on the master or each outlet would count it again.
- */
-export function enrollBoardEnergyExtra(input: EnrollBoardExtraInput): TraitName[] {
-    if (
-        ELECTRICITYX_NAMESPACE in input.ability
-        && input.classHint === 'socket'
-    ) {
-        if (input.strip && input.channel === 0) {
-            return [];
-        }
-        return ['energy'];
-    }
-    const hasBoardMeter = ELECTRICITY_NAMESPACE in input.ability
-        || CONSUMPTIONX_NAMESPACE in input.ability
-        || CONSUMPTIONH_NAMESPACE in input.ability;
-    if (hasBoardMeter && input.classHint !== 'cover' && input.parentId === undefined) {
-        return ['energy'];
-    }
-    return [];
 }
 
 export const descriptor: TraitDescriptor<'energy', EnergyTrait> = {

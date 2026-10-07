@@ -5,8 +5,7 @@ import type { TraitDescriptor } from './descriptor';
 
 /**
  * Per-trait module shapes. `typeof import(...)` is type-only and does not
- * emit a require — trait files must not import this module. Enroll calls
- * the named exports, which are not the same function on every file.
+ * emit a require — trait files must not import this module.
  */
 type TraitModuleExports = {
     switch: typeof import('./switch');
@@ -32,8 +31,7 @@ type TraitModuleExports = {
 };
 
 /**
- * Mapped so `descriptor.attach` returns {@link TraitInstances}[K]. Enroll
- * still sees the named exports from {@link TraitModuleExports}.
+ * Mapped so `descriptor.attach` returns {@link TraitInstances}[K].
  */
 type TraitModule = {
     [K in TraitName]: Omit<TraitModuleExports[K], 'descriptor'> & {
@@ -44,10 +42,11 @@ type TraitModule = {
 const requireHere = createRequire(__filename);
 
 /**
- * Sync-loads one trait class module. First attach/enroll hit pays the
- * require; later calls reuse Node's module cache. File names match
- * {@link TraitName}. Node's `require` is untyped, so the assertion names
- * the module that convention returns. Poll/PUSH data lives in `*.catalog.ts`.
+ * Sync-loads one trait class module. First attach pays the require; later
+ * calls reuse Node's module cache. File names match {@link TraitName}.
+ * Node's `require` is untyped, so the assertion names the module that
+ * convention returns. Poll/PUSH data lives in `*.catalog.ts`. Enroll lives
+ * in device/enroll.ts so this require is not how a board is classified.
  */
 export function loadTrait<K extends TraitName>(name: K): TraitModule[K] {
     return requireHere(`./${name}.js`) as TraitModule[K];

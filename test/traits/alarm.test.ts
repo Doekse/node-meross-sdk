@@ -8,8 +8,8 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
+import type { AlarmTraitBind } from '../../src/device/bindings';
 import { AlarmTrait } from '../../src/traits/alarm';
-import type { AlarmTraitBind } from '../../src/traits/alarm';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';

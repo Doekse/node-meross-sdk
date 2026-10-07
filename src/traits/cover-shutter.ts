@@ -1,3 +1,4 @@
+import type { CoverTraitBind } from '../device/bindings';
 import {
     SHUTTER_ADJUST_NAMESPACE,
     SHUTTER_CONFIG_NAMESPACE,
@@ -14,7 +15,7 @@ import {
     type ShutterConfigSetOptions
 } from '../protocol/codecs/cover';
 import type { MerossMessage } from '../protocol/message';
-import { CoverTraitBase, type CoverTraitBind } from './cover-core';
+import { CoverTraitBase } from './cover-core';
 
 /**
  * RollerShutter position. `0` is closed and `1` is open on the host scale.

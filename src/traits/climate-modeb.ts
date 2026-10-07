@@ -1,3 +1,4 @@
+import type { ClimateTraitBoardBind } from '../device/bindings';
 import {
     THERMOSTAT_MODEB_NAMESPACE,
     encodeThermostatModeBSet
@@ -5,7 +6,6 @@ import {
 import { ClimateBoardBase } from './climate-board';
 import type {
     ClimateModeBMode,
-    ClimateTraitBoardBind,
     ClimateWorkMode
 } from './climate-core';
 

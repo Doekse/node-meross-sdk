@@ -1,3 +1,4 @@
+import type { CoverTraitBind } from '../device/bindings';
 import { MerossError } from '../errors';
 import type { MerossMessage } from '../protocol/message';
 import type { DeviceRequest } from '../request';
@@ -11,20 +12,6 @@ export interface CoverValues {
 
 /** Bound at enroll. Hosts narrow the cover instance on this field. */
 export type CoverKind = 'garage' | 'shutter';
-
-/**
- * Transport + channel bind. Kind is the concrete class, not a field here,
- * so a garage construct cannot call shutter setters.
- */
-export interface CoverTraitBind {
-    channel: number;
-    /** Ability keys; extra methods throw when the namespace is absent. */
-    namespaces?: ReadonlySet<string>;
-    /** System.All digest `open` so hosts can read open/closed before the first PUSH. */
-    initialOpen?: boolean;
-    request: DeviceRequest;
-    emitChange: (values: CoverValues) => void;
-}
 
 /**
  * Shared cache. Garage and shutter commands live on the concrete classes

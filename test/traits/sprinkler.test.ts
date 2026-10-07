@@ -14,8 +14,8 @@ import {
     encodeMessage,
     type MerossMessage
 } from '../../src/protocol';
+import type { SprinklerTraitBind } from '../../src/device/bindings';
 import { SprinklerTrait } from '../../src/traits/sprinkler';
-import type { SprinklerTraitBind } from '../../src/traits/sprinkler';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
 const KEY = 'stub-key';

@@ -125,34 +125,6 @@ export interface ClimateValues {
 export type ClimatePatch = ClimateValues & { channel?: number; id?: string };
 
 /**
- * Transport + channel bind for a board thermostat. Mode / ModeB / ModeC
- * is the class, not a field here, so a ModeC construct cannot call
- * Mode-only setters.
- */
-export interface ClimateTraitBoardBind {
-    kind: 'board';
-    channel: number;
-    /** Ability keys; extra methods throw when the namespace is absent. */
-    namespaces?: ReadonlySet<string>;
-    request: DeviceRequest;
-    emitChange: (values: ClimateValues) => void;
-}
-
-/**
- * Transport + sub-device bind for a hub MTS100/MTS150 valve child.
- */
-export interface ClimateTraitHubBind {
-    kind: 'hub';
-    subDeviceId: string;
-    /** Ability keys; extra methods throw when the namespace is absent. */
-    namespaces?: ReadonlySet<string>;
-    request: DeviceRequest;
-    emitChange: (values: ClimateValues) => void;
-}
-
-export type ClimateTraitBind = ClimateTraitBoardBind | ClimateTraitHubBind;
-
-/**
  * Shared cache and Ability checks. Kind-specific SET/PUSH live on
  * the concrete classes so unsupported commands are not on the type.
  */

@@ -1,3 +1,4 @@
+import type { ClimateTraitBoardBind } from '../device/bindings';
 import { MerossError } from '../errors';
 import {
     THERMOSTAT_MODEC_NAMESPACE,
@@ -8,7 +9,6 @@ import type {
     ClimateFanSpeed,
     ClimateMode,
     ClimateModeCMode,
-    ClimateTraitBoardBind,
     ClimateValues
 } from './climate-core';
 

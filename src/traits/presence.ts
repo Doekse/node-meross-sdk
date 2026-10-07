@@ -1,4 +1,5 @@
-import type { EnrollBoardContext, TraitAttachContext } from '../device/enroll-context';
+import type { TraitAttachContext } from '../device/enroll-context';
+import type { PresenceTraitBind } from '../device/bindings';
 import {
     PRESENCE_CONFIG_NAMESPACE,
     PRESENCE_STUDY_NAMESPACE,
@@ -15,7 +16,6 @@ import {
     decodeLatestXPush
 } from '../protocol/codecs/sensor';
 import type { MerossMessage } from '../protocol/message';
-import type { DeviceRequest } from '../request';
 import { applyPatch } from './patch';
 import type { TraitDescriptor } from './descriptor';
 import { PresenceCatalog } from './presence.catalog';
@@ -41,22 +41,11 @@ export interface PresenceValues {
 }
 
 /**
- * Transport + channel bind for a WiFi presence device (MS600). Session supplies
- * this; trait tests inject a fake request/emit pair.
- */
-export interface PresenceTraitBind {
-    channel: number;
-    /** Ability keys; extra methods no-op when the namespace is absent. */
-    namespaces?: ReadonlySet<string>;
-    request: DeviceRequest;
-    emitChange: (values: PresenceValues) => void;
-}
-
-/**
  * Presence and lux for a standalone radar sensor. Hub temp/hum lux stays on
  * SensorTrait; this trait is board LatestX with presence keys.
  */
 export class PresenceTrait {
+    /** @internal */
     private readonly bind: PresenceTraitBind;
     private last: PresenceValues = {};
 
@@ -187,16 +176,6 @@ function configPatch(entry: PresenceConfig): PresenceValues {
         workMode: entry.mode.workMode,
         testMode: entry.mode.testMode
     };
-}
-
-/**
- * MS600 has no digest channel list for presence; Ability Config/Study is the
- * claim so leftover ToggleX does not enroll it as a socket.
- */
-export function enrollPresence(ctx: EnrollBoardContext): void {
-    if (PRESENCE_CONFIG_NAMESPACE in ctx.ability || PRESENCE_STUDY_NAMESPACE in ctx.ability) {
-        ctx.add(0, 'sensor', ['presence']);
-    }
 }
 
 export const descriptor: TraitDescriptor<'presence', PresenceTrait> = {

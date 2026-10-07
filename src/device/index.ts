@@ -42,8 +42,35 @@ import {
     TOGGLEX_NAMESPACE,
     TRIGGERX_NAMESPACE
 } from '../protocol/namespaces';
-import { loadTrait } from '../traits/load';
 import type { EnrollBoardContext, EnrollBoardExtraInput } from './enroll-context';
+import {
+    enrollAlarmStandalone,
+    enrollBoardAlarmExtra,
+    enrollBoardAlertExtra,
+    enrollBoardDndExtra,
+    enrollBoardEnergyExtra,
+    enrollBoardMediaExtra,
+    enrollBoardOverTempExtra,
+    enrollBoardStandbyKillerExtra,
+    enrollBoardSystemExtra,
+    enrollBoardTimerExtra,
+    enrollBoardTriggerExtra,
+    enrollClimate,
+    enrollCover,
+    enrollDiffuser,
+    enrollDndStandalone,
+    enrollFan,
+    enrollHubAlarmExtra,
+    enrollHubDndExtra,
+    enrollHubOverTempExtra,
+    enrollHubUntypedOnoff,
+    enrollLight,
+    enrollMediaStandalone,
+    enrollOverTempStandalone,
+    enrollPresence,
+    enrollSpray,
+    enrollSwitchLeftover
+} from './enroll';
 import { HUB_CHILD_RULES } from './hub-child';
 
 export { ABILITY_NAMESPACE, abilityMaxCmdNum, decodeAbilityGetAck } from '../protocol/codecs/ability';
@@ -361,34 +388,34 @@ function enrollBoard(
             strip: board.strip
         };
         if (channel === 0) {
-            extra.push(...loadTrait('system').enrollBoardSystemExtra(input));
+            extra.push(...enrollBoardSystemExtra(input));
         }
         if (hasEnergy) {
-            extra.push(...loadTrait('energy').enrollBoardEnergyExtra(input));
+            extra.push(...enrollBoardEnergyExtra(input));
         }
         if (hasMedia) {
-            extra.push(...loadTrait('media').enrollBoardMediaExtra(input));
+            extra.push(...enrollBoardMediaExtra(input));
         }
         if (hasDnd) {
-            extra.push(...loadTrait('dnd').enrollBoardDndExtra(input));
+            extra.push(...enrollBoardDndExtra(input));
         }
         if (hasOverTemp) {
-            extra.push(...loadTrait('overtemp').enrollBoardOverTempExtra(input));
+            extra.push(...enrollBoardOverTempExtra(input));
         }
         if (hasAlert) {
-            extra.push(...loadTrait('alert').enrollBoardAlertExtra(input));
+            extra.push(...enrollBoardAlertExtra(input));
         }
         if (hasStandbyKiller) {
-            extra.push(...loadTrait('standbykiller').enrollBoardStandbyKillerExtra(input));
+            extra.push(...enrollBoardStandbyKillerExtra(input));
         }
         if (hasAlarm) {
-            extra.push(...loadTrait('alarm').enrollBoardAlarmExtra(input));
+            extra.push(...enrollBoardAlarmExtra(input));
         }
         if (hasTimer) {
-            extra.push(...loadTrait('timer').enrollBoardTimerExtra(input));
+            extra.push(...enrollBoardTimerExtra(input));
         }
         if (hasTrigger) {
-            extra.push(...loadTrait('trigger').enrollBoardTriggerExtra(input));
+            extra.push(...enrollBoardTriggerExtra(input));
         }
         endpoints.push({
             id: `${uuid}:${channel}`,
@@ -425,7 +452,7 @@ function enrollBoard(
     };
 
     if (all.digest.light.length > 0 || LIGHT_NAMESPACE in ability) {
-        loadTrait('light').enrollLight(ctx);
+        enrollLight(ctx);
     }
     if (
         all.digest.garageDoor.length > 0
@@ -433,7 +460,7 @@ function enrollBoard(
         || GARAGE_STATE_NAMESPACE in ability
         || SHUTTER_STATE_NAMESPACE in ability
     ) {
-        loadTrait('cover').enrollCover(ctx);
+        enrollCover(ctx);
     }
     if (
         THERMOSTAT_MODE_NAMESPACE in ability
@@ -441,27 +468,27 @@ function enrollBoard(
         || THERMOSTAT_MODEC_NAMESPACE in ability
         || all.digest.thermostat
     ) {
-        loadTrait('climate').enrollClimate(ctx);
+        enrollClimate(ctx);
     }
     if (PRESENCE_CONFIG_NAMESPACE in ability || PRESENCE_STUDY_NAMESPACE in ability) {
-        loadTrait('presence').enrollPresence(ctx);
+        enrollPresence(ctx);
     }
     if (
         all.digest.diffuser
         || DIFFUSER_LIGHT_NAMESPACE in ability
         || DIFFUSER_SPRAY_NAMESPACE in ability
     ) {
-        loadTrait('diffuser').enrollDiffuser(ctx);
+        enrollDiffuser(ctx);
     }
     if (all.digest.spray.length > 0 || SPRAY_NAMESPACE in ability) {
-        loadTrait('spray').enrollSpray(ctx);
+        enrollSpray(ctx);
     }
     if (all.digest.fan.length > 0 || FAN_NAMESPACE in ability) {
-        loadTrait('fan').enrollFan(ctx);
+        enrollFan(ctx);
     }
 
     if (hasMedia) {
-        loadTrait('media').enrollMediaStandalone(ctx);
+        enrollMediaStandalone(ctx);
     }
 
     if (
@@ -471,17 +498,17 @@ function enrollBoard(
         || TOGGLE_NAMESPACE in ability
         || all.digest.garageDoor.some((door) => door.channel !== 0)
     ) {
-        loadTrait('switch').enrollSwitchLeftover(ctx);
+        enrollSwitchLeftover(ctx);
     }
 
     if (hasDnd) {
-        loadTrait('dnd').enrollDndStandalone(ctx);
+        enrollDndStandalone(ctx);
     }
     if (hasOverTemp) {
-        loadTrait('overtemp').enrollOverTempStandalone(ctx);
+        enrollOverTempStandalone(ctx);
     }
     if (hasAlarm) {
-        loadTrait('alarm').enrollAlarmStandalone(ctx);
+        enrollAlarmStandalone(ctx);
     }
 
     return endpoints;
@@ -502,13 +529,13 @@ function enrollHub(
 ): GraphEndpoint[] {
     const hubTraits: TraitName[] = ['system'];
     if (CONTROL_ALARM_NAMESPACE in ability || CONTROL_BEEP_NAMESPACE in ability) {
-        hubTraits.push(...loadTrait('alarm').enrollHubAlarmExtra(ability));
+        hubTraits.push(...enrollHubAlarmExtra(ability));
     }
     if (DND_MODE_NAMESPACE in ability) {
-        hubTraits.push(...loadTrait('dnd').enrollHubDndExtra(ability));
+        hubTraits.push(...enrollHubDndExtra(ability));
     }
     if (CONFIG_OVERTEMP_NAMESPACE in ability) {
-        hubTraits.push(...loadTrait('overtemp').enrollHubOverTempExtra(ability));
+        hubTraits.push(...enrollHubOverTempExtra(ability));
     }
     const endpoints: GraphEndpoint[] = [{
         id: uuid,
@@ -554,9 +581,9 @@ function enrollHub(
             });
             continue;
         }
-        // Unknown SKUs without digest onoff stay trait-less; skip loadTrait.
+        // Unknown SKUs without digest onoff stay trait-less.
         if (sub.on !== undefined) {
-            const untyped = loadTrait('switch').enrollHubUntypedOnoff({
+            const untyped = enrollHubUntypedOnoff({
                 uuid,
                 subDeviceId,
                 name: sub.name,
