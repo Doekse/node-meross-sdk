@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `disconnect` during an in-flight enroll no longer starts pollers after transports close.
 - A board that enrolled successfully is treated as already sampled by heartbeat, so a failed first silence probe can mark it offline.
 - TriggerX digest GET-by-id failures no longer replace the cached list with empty (same 5050-only omit as TimerX).
+- A cached `Endpoint` rejects commands with `ENDPOINT_NOT_FOUND` after `unenroll`.
 
 ## [0.5.0-alpha] - 2026-10-01
 

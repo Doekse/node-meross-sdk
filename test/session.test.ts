@@ -1129,6 +1129,23 @@ describe('Session.enroll and unenroll', () => {
         await session.disconnect();
     });
 
+    it('a cached endpoint cannot send after unenroll', async () => {
+        const { session, client } = await loginConnected({
+            devices: [DEVICE_ROW, LAMP_ROW]
+        });
+        const lamp = session.endpoint(`${LAMP_UUID}:0`);
+
+        await session.unenroll(LAMP_UUID);
+
+        const publishedBefore = client.published.length;
+        await assert.rejects(
+            lamp.switch!.setOn(true),
+            (err: unknown) => err instanceof MerossError && err.code === 'ENDPOINT_NOT_FOUND'
+        );
+        assert.equal(client.published.length, publishedBefore);
+        await session.disconnect();
+    });
+
     it('a device enrolled again after unenroll does not inherit its MQTT publish window', async () => {
         const { session, client } = await loginConnected({
             devices: [DEVICE_ROW, LAMP_ROW]

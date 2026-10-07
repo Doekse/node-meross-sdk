@@ -442,7 +442,8 @@ export class Session extends EventEmitter<SessionEvents> {
     /**
      * Stops a device's runtime and drops its graph / inventory rows. Awaits an
      * in-flight enroll for that uuid first so a poller cannot start afterward.
-     * Safe when the session is not connected.
+     * An Endpoint already returned for it rejects commands until that uuid is
+     * enrolled again. Safe when the session is not connected.
      */
     async unenroll(uuid: string): Promise<void> {
         await this.listingBarrier?.catch(() => undefined);
@@ -894,13 +895,21 @@ export class Session extends EventEmitter<SessionEvents> {
     }
 
     private deviceRequest(physical: PhysicalDevice): DeviceRequest {
-        return (options) =>
-            this.connectedRouter.request({
+        return (options) => {
+            const router = this.connectedRouter;
+            if (!this.devices.has(physical.uuid)) {
+                throw new MerossError(
+                    `Unknown endpoint: ${physical.uuid}`,
+                    'ENDPOINT_NOT_FOUND'
+                );
+            }
+            return router.request({
                 uuid: physical.uuid,
                 ...this.lanBind(physical),
                 ...options
             }).finally(() => {
                 this.devices.get(physical.uuid)?.publishProtocol();
             });
+        };
     }
 }

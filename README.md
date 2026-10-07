@@ -177,7 +177,7 @@ await session.disconnect();
 
 The promise fulfills with `{ enrolled, skipped, failed }`. Offline rows (`onlineStatus !== 1`) and uuids absent from the account are `skipped` (`offline` / `unknown`) with no event. A reachable device that fails is in `failed` and on `warning` (error plus uuid); the rest continue. Already-enrolled uuids are in `enrolled`. `session.endpoint(id)` still throws `ENDPOINT_NOT_FOUND` for anything that did not enroll.
 
-Hosts that pair devices one at a time (for example Homey `onInit` per outlet) call `enroll([uuid])` from each device and `unenroll(uuid)` when the last sibling for that physical plug is deleted. There is no need to resubmit the whole paired set.
+Hosts that pair devices one at a time (for example Homey `onInit` per outlet) call `enroll([uuid])` from each device and `unenroll(uuid)` when the last sibling for that physical plug is deleted. There is no need to resubmit the whole paired set. An `Endpoint` already returned for that uuid rejects commands with `ENDPOINT_NOT_FOUND` until the uuid is enrolled again.
 
 `connect()` only opens transports. A second call while already connected joins an in-flight handshake, then returns. `disconnect()` closes transports and clears inventory; the stored token remains valid for `restore`.
 
