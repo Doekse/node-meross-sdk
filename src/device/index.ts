@@ -147,6 +147,22 @@ export interface PhysicalDevice {
 }
 
 /**
+ * MSL430 firmware 4.2.6 and MSG100 firmware 4.2.20 reboot on SET
+ * `Appliance.Control.Multiple`, including a pack of DNDMode and two digest
+ * GETs, even though Ability advertises `maxCmdNum`.
+ * ponytail: exact model match. Add a model after it is measured; remove one
+ * when a firmware build answers `Appliance.Control.Multiple` without rebooting.
+ */
+const MULTIPLE_REBOOT_MODELS = new Set(['msl430', 'msg100']);
+
+/**
+ * Enroll prefers cloud `deviceType`, so `hardware.type` is tested on its own.
+ */
+function isMultipleRebootModel(model: string): boolean {
+    return MULTIPLE_REBOOT_MODELS.has(model.toLowerCase());
+}
+
+/**
  * Turns Ability + System.All into stable endpoint ids. Cloud rows only fill
  * names; digest/ability win on payload shape.
  */
@@ -164,7 +180,9 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
         model,
         name,
         ability,
-        maxCmdNum: abilityMaxCmdNum(ability),
+        maxCmdNum: isMultipleRebootModel(model) || isMultipleRebootModel(all.hardware.type)
+            ? 1
+            : abilityMaxCmdNum(ability),
         innerIp: all.firmware.innerIp,
         macAddress: all.hardware.macAddress,
         online,

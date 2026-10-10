@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- MSL430 and MSG100 no longer receive `Appliance.Control.Multiple`. Those boards reboot on the packed SET (fw 4.2.6 and 4.2.20) even when Ability advertises `maxCmdNum`. Their GETs go out one at a time.
+
 ## [0.6.0-alpha] - 2026-10-07
 
 ### Breaking (alpha)

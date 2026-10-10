@@ -42,6 +42,21 @@ function socketAbility(extra: Record<string, Record<string, unknown>> = {}): Mer
     };
 }
 
+function systemAllWithType(type: string): MerossPayload {
+    const body = payload('system-all-getack.json').all as {
+        system: { hardware: Record<string, unknown> };
+    };
+    return {
+        all: {
+            ...body,
+            system: {
+                ...body.system,
+                hardware: { ...body.system.hardware, type }
+            }
+        }
+    };
+}
+
 function systemAllWithDigest(digest: Record<string, unknown>): MerossPayload {
     const all = payload('system-all-getack.json');
     const body = all.all as Record<string, unknown>;
@@ -212,6 +227,27 @@ describe('enrollPhysicalDevice', () => {
         assert.equal(endpoint?.online, true);
         assert.equal(endpoint?.on, true);
         assert.equal(endpoint?.parentId, undefined);
+    });
+
+    it('sends GETs one at a time on MSL430 and MSG100 even when Ability advertises Multiple', () => {
+        const fromHardware = enrollPhysicalDevice({
+            abilityPayload: socketAbility(),
+            allPayload: systemAllWithType('msl430')
+        });
+        assert.equal(fromHardware.maxCmdNum, 1);
+
+        const fromCloud = enrollPhysicalDevice({
+            abilityPayload: socketAbility(),
+            allPayload: payload('system-all-getack.json'),
+            cloud: {
+                uuid: UUID,
+                devName: 'Garage',
+                deviceType: 'MSG100',
+                onlineStatus: 1,
+                channels: []
+            }
+        });
+        assert.equal(fromCloud.maxCmdNum, 1);
     });
 
     it('records digest namespaces from System.All', () => {
