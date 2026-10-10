@@ -29,6 +29,7 @@ export class SprayTrait {
     /** @internal */
     constructor(bind: SprayTraitBind) {
         this.bind = bind;
+        Object.assign(this.last, bind.initial);
     }
 
     /**
@@ -76,11 +77,35 @@ export class SprayTrait {
     }
 }
 
+/**
+ * Control.Spray wire 0/1/2 is off/continuous/intermittent. Unknown values
+ * are omitted so a digest row cannot fail attach.
+ */
+function sprayModeFromDigest(mode: number | undefined): SprayMode | undefined {
+    switch (mode) {
+        case 0:
+            return 'off';
+        case 1:
+            return 'continuous';
+        case 2:
+            return 'intermittent';
+        default:
+            return undefined;
+    }
+}
+
 export const descriptor: TraitDescriptor<'spray', SprayTrait> = {
     ...SprayCatalog,
     attach(args: TraitAttachContext<'spray'>): SprayTrait {
+        const row = args.physical.digest?.spray.find((entry) => entry.channel === args.channel);
+        const mode = sprayModeFromDigest(row?.mode);
+        const initial: SprayValues = {};
+        if (mode !== undefined) {
+            initial.mode = mode;
+        }
         return new SprayTrait({
             channel: args.channel,
+            initial,
             request: args.request,
             emitChange: args.emitChange
         });

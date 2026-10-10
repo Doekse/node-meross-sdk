@@ -169,6 +169,7 @@ export const descriptor: TraitDescriptor<'switch', SwitchTrait> = {
             request: args.request,
             emitChange: args.emitChange,
             initialOn: args.graphEndpoint.on
+                ?? args.physical.digest?.togglex.find((entry) => entry.channel === args.channel)?.on
         });
     }
 };

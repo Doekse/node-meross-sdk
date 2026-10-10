@@ -59,6 +59,20 @@ export class FanTrait {
     constructor(bind: FanTraitBind) {
         this.bind = bind;
         this.namespaces = bind.namespaces ?? new Set();
+        const initial = bind.initial;
+        if (initial === undefined) {
+            return;
+        }
+        if (typeof initial.maxSpeed === 'number' && initial.maxSpeed > 0) {
+            this.maxSpeed = initial.maxSpeed;
+        }
+        if (typeof initial.speed === 'number') {
+            this.lastWireSpeed = Math.round(initial.speed * this.maxSpeed);
+            if (this.lastWireSpeed > 0) {
+                this.savedSpeed = this.lastWireSpeed;
+            }
+        }
+        Object.assign(this.last, initial);
     }
 
     private has(namespace: string): boolean {
@@ -264,11 +278,29 @@ export const descriptor: TraitDescriptor<'fan', FanTrait> = {
     attach(args: TraitAttachContext<'fan'>): FanTrait {
         // ToggleX wins when both Toggle and ToggleX are advertised.
         const hasToggleX = TOGGLEX_NAMESPACE in args.physical.ability;
+        const hasToggle = !hasToggleX && TOGGLE_NAMESPACE in args.physical.ability;
+        const row = args.physical.digest?.fan.find((entry) => entry.channel === args.channel);
+        const on = args.physical.digest?.togglex.find((entry) => entry.channel === args.channel)?.on;
+        const initial: FanValues = {};
+        if (row?.speed !== undefined && Number.isFinite(row.speed)) {
+            const maxSpeed = row.maxSpeed !== undefined && row.maxSpeed > 0 && Number.isFinite(row.maxSpeed)
+                ? Math.max(row.maxSpeed, row.speed, 1)
+                : Math.max(row.speed, 1);
+            initial.speed = row.speed / maxSpeed;
+            initial.maxSpeed = maxSpeed;
+            if (!hasToggleX && !hasToggle) {
+                initial.on = row.speed > 0;
+            }
+        }
+        if (on !== undefined) {
+            initial.on = on;
+        }
         return new FanTrait({
             channel: args.channel,
             namespaces: args.namespaces,
             hasToggleX,
-            hasToggle: !hasToggleX && TOGGLE_NAMESPACE in args.physical.ability,
+            hasToggle,
+            initial,
             request: args.request,
             emitChange: args.emitChange
         });

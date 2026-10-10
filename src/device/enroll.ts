@@ -51,7 +51,7 @@ import {
  * so leftover ToggleX does not enroll the bulb as a socket.
  */
 export function enrollLight(ctx: EnrollBoardContext): void {
-    enrollDigest(ctx, ctx.all.digest.light, LIGHT_NAMESPACE, 'light', 'light');
+    enrollDigest(ctx, channels(ctx.all.digest.light), LIGHT_NAMESPACE, 'light', 'light');
 }
 
 /**
@@ -120,16 +120,16 @@ export function enrollPresence(ctx: EnrollBoardContext): void {
  */
 export function enrollDiffuser(ctx: EnrollBoardContext): void {
     const digest = ctx.all.digest.diffuser;
-    const channels = new Set<number>([
-        ...(digest?.light ?? []),
-        ...(digest?.spray ?? [])
+    const claimed = new Set<number>([
+        ...channels(digest?.light ?? []),
+        ...channels(digest?.spray ?? [])
     ]);
     const advertised = DIFFUSER_LIGHT_NAMESPACE in ctx.ability
         || DIFFUSER_SPRAY_NAMESPACE in ctx.ability;
-    if (channels.size === 0 && advertised) {
-        channels.add(0);
+    if (claimed.size === 0 && advertised) {
+        claimed.add(0);
     }
-    for (const channel of channels) {
+    for (const channel of claimed) {
         ctx.add(channel, 'humidifier', ['diffuser']);
     }
 }
@@ -139,7 +139,7 @@ export function enrollDiffuser(ctx: EnrollBoardContext): void {
  * channel 0 so leftover ToggleX does not enroll the humidifier as a socket.
  */
 export function enrollSpray(ctx: EnrollBoardContext): void {
-    enrollDigest(ctx, ctx.all.digest.spray, SPRAY_NAMESPACE, 'humidifier', 'spray');
+    enrollDigest(ctx, channels(ctx.all.digest.spray), SPRAY_NAMESPACE, 'humidifier', 'spray');
 }
 
 /**
@@ -147,7 +147,7 @@ export function enrollSpray(ctx: EnrollBoardContext): void {
  * channel 0 so leftover ToggleX does not enroll the fan as a socket.
  */
 export function enrollFan(ctx: EnrollBoardContext): void {
-    enrollDigest(ctx, ctx.all.digest.fan, FAN_NAMESPACE, 'fan', 'fan');
+    enrollDigest(ctx, channels(ctx.all.digest.fan), FAN_NAMESPACE, 'fan', 'fan');
 }
 
 /**
@@ -386,4 +386,12 @@ export function enrollBoardTriggerExtra(input: EnrollBoardExtraInput): TraitName
     const advertised = TRIGGERX_NAMESPACE in input.ability
         || CONTROL_TRIGGER_NAMESPACE in input.ability;
     return enrollBoardTimerTriggerExtra(input, advertised, 'trigger');
+}
+
+/**
+ * Enrollment claims channels. Digest rows now carry the rest of the state,
+ * which enroll itself does not read.
+ */
+function channels(rows: readonly { channel: number }[]): number[] {
+    return rows.map((row) => row.channel);
 }

@@ -145,13 +145,12 @@ describe('System.All GETACK', () => {
         );
     });
 
-    it('rejects a non-array garageDoor digest', () => {
-        const allPayload = systemAllWithDigest({ garageDoor: { channel: 1 } });
+    it('wraps a single garageDoor digest object as one row', () => {
+        const all = decodeSystemAllGetAck(systemAllWithDigest({
+            garageDoor: { channel: 1, open: 1, doorEnable: 1 }
+        }));
 
-        assert.throws(
-            () => decodeSystemAllGetAck(allPayload),
-            (err: unknown) => err instanceof ProtocolError
-        );
+        assert.deepEqual(all.digest.garageDoor, [{ channel: 1, open: true, doorEnable: true }]);
     });
 
     it('rejects a garageDoor digest row without a numeric channel', () => {
@@ -173,9 +172,12 @@ describe('System.All GETACK', () => {
                 spray: [{ channel: 0, mode: 2 }]
             }
         }));
-        assert.deepEqual(all.digest.spray, [0]);
-        assert.deepEqual(all.digest.fan, [2]);
-        assert.deepEqual(all.digest.diffuser, { light: [0], spray: [0] });
+        assert.deepEqual(all.digest.spray, [{ channel: 0, mode: 0 }]);
+        assert.deepEqual(all.digest.fan, [{ channel: 2, speed: 3 }]);
+        assert.deepEqual(all.digest.diffuser, {
+            light: [{ channel: 0, onoff: false }],
+            spray: [{ channel: 0, mode: 2 }]
+        });
     });
 });
 
@@ -1074,6 +1076,43 @@ describe('enrollPhysicalDevice', () => {
             { channel: 1, classHint: 'cover' },
             { channel: 2, classHint: 'cover' }
         ]);
+    });
+
+    it('enrolls digest.light object as a light and seeds ToggleX onoff (MSL430)', () => {
+        const device = enrollPhysicalDevice({
+            abilityPayload: {
+                ability: {
+                    'Appliance.Control.Light': { capacity: 7 },
+                    'Appliance.Control.ToggleX': {},
+                    'Appliance.Control.Multiple': { maxCmdNum: 5 }
+                }
+            },
+            allPayload: systemAllWithDigest({
+                togglex: [{ channel: 0, onoff: 0, lmTime: 1791380301 }],
+                triggerx: [],
+                timerx: [],
+                light: {
+                    capacity: 6,
+                    channel: 0,
+                    rgb: 16711808,
+                    temperature: 100,
+                    luminance: 85,
+                    transform: -1
+                }
+            })
+        });
+
+        assert.equal(device.endpoints.length, 1);
+        assert.equal(device.endpoints[0]?.classHint, 'light');
+        assert.deepEqual(device.endpoints[0]?.traits, ['light', 'system']);
+        assert.deepEqual(device.digest?.light, [{
+            channel: 0,
+            capacity: 6,
+            rgb: 16711808,
+            temperature: 100,
+            luminance: 85
+        }]);
+        assert.equal(device.digestNamespaces.has('Appliance.Control.Light'), true);
     });
 
     it('sets classHint light when Control.Light is in Ability', () => {

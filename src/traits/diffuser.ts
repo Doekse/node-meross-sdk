@@ -45,6 +45,7 @@ export class DiffuserTrait {
     constructor(bind: DiffuserTraitBind) {
         this.bind = bind;
         this.namespaces = bind.namespaces ?? new Set();
+        Object.assign(this.last, bind.initial);
     }
 
     /**
@@ -222,12 +223,62 @@ function clamp01(value: number): number {
     return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
 }
 
+/**
+ * Diffuser.Light wire 0/1/2 is rotating-colors/fixed-rgb/fixed-luminance.
+ * Unknown values are omitted so a digest row cannot fail attach.
+ */
+function lightModeFromDigest(mode: number | undefined): DiffuserLightMode | undefined {
+    switch (mode) {
+        case 0:
+            return 'rotating-colors';
+        case 1:
+            return 'fixed-rgb';
+        case 2:
+            return 'fixed-luminance';
+        default:
+            return undefined;
+    }
+}
+
+/**
+ * Diffuser.Spray wire 0/1/2 is light/strong/off, not Control.Spray's
+ * off/continuous/intermittent. Unknown values are omitted so attach does
+ * not throw the way PUSH decode does.
+ */
+function sprayModeFromDigest(mode: number | undefined): DiffuserSprayMode | undefined {
+    switch (mode) {
+        case 0:
+            return 'light';
+        case 1:
+            return 'strong';
+        case 2:
+            return 'off';
+        default:
+            return undefined;
+    }
+}
+
 export const descriptor: TraitDescriptor<'diffuser', DiffuserTrait> = {
     ...DiffuserCatalog,
     attach(args: TraitAttachContext<'diffuser'>): DiffuserTrait {
+        const digest = args.physical.digest?.diffuser;
+        const light = digest?.light.find((entry) => entry.channel === args.channel);
+        const spray = digest?.spray.find((entry) => entry.channel === args.channel);
+        const initial = lightPatch({
+            channel: args.channel,
+            on: light?.onoff,
+            mode: lightModeFromDigest(light?.mode),
+            luminance: light?.luminance,
+            rgb: light?.rgb
+        });
+        const sprayMode = sprayModeFromDigest(spray?.mode);
+        if (sprayMode !== undefined) {
+            initial.sprayMode = sprayMode;
+        }
         return new DiffuserTrait({
             channel: args.channel,
             namespaces: args.namespaces,
+            initial,
             request: args.request,
             emitChange: args.emitChange
         });

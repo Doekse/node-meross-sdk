@@ -42,6 +42,55 @@ export interface DigestGarageDoor {
     doorEnable?: boolean;
 }
 
+/**
+ * One `digest.light` row. Control.Light is not GETted beside All, so rgb /
+ * luminance / temperature have to come from here or hosts wait for a PUSH.
+ */
+export interface DigestLight {
+    channel: number;
+    capacity?: number;
+    rgb?: number;
+    temperature?: number;
+    luminance?: number;
+    effect?: number;
+    onoff?: boolean;
+}
+
+/** Wire `speed` / `maxSpeed`; FanTrait converts speed to host 0..1. */
+export interface DigestFan {
+    channel: number;
+    speed?: number;
+    maxSpeed?: number;
+}
+
+/** Wire `mode` 0/1/2; SprayTrait maps to off/continuous/intermittent. */
+export interface DigestSpray {
+    channel: number;
+    mode?: number;
+}
+
+export interface DigestDiffuserLight {
+    channel: number;
+    onoff?: boolean;
+    mode?: number;
+    luminance?: number;
+    rgb?: number;
+}
+
+export interface DigestDiffuserSpray {
+    channel: number;
+    mode?: number;
+}
+
+/**
+ * One thermostat digest row. Field maps differ by Mode / ModeB / SummerMode /
+ * WindowOpened; attach runs the matching climate decoder on the raw row.
+ */
+export interface DigestThermostatRow {
+    channel: number;
+    [key: string]: unknown;
+}
+
 export interface SystemAll {
     hardware: SystemHardwareState;
     firmware: SystemFirmwareState;
@@ -51,18 +100,18 @@ export interface SystemAll {
     };
     digest: {
         togglex: DigestToggle[];
-        light: number[];
+        light: DigestLight[];
         garageDoor: DigestGarageDoor[];
         rollerShutter: number[];
-        spray: number[];
-        fan: number[];
-        diffuser?: { light: number[]; spray: number[] };
+        spray: DigestSpray[];
+        fan: DigestFan[];
+        diffuser?: { light: DigestDiffuserLight[]; spray: DigestDiffuserSpray[] };
         hub?: { subdevice: Array<{ id: string; status?: number; model?: string; on?: boolean }> };
         thermostat?: {
-            mode?: number[];
-            modeB?: number[];
-            summerMode?: number[];
-            windowOpened?: number[];
+            mode?: DigestThermostatRow[];
+            modeB?: DigestThermostatRow[];
+            summerMode?: DigestThermostatRow[];
+            windowOpened?: DigestThermostatRow[];
         };
     };
 }
@@ -71,14 +120,10 @@ export interface SystemAll {
  * Namespaces whose state is already in the System.All digest, so they GET
  * only when All is skipped, not beside it.
  *
- * meross_lan analog: `digest_pollers`, without constructing `NamespaceHandler`s.
- * Keys meross_lan does not treat as All-fallback (do not add here): `timer` /
- * `timerx` / `trigger` / `triggerx` (`digest_init_empty`), `hub` (returns
- * `()`), `light.effect` (often `()`), `rollerShutter` (goes through
- * `NAMESPACE_INIT` for `RollerShutter.State`, not digest_init). Thermostat
- * uses key presence including empty lists (`DIGEST_KEY_TO_NAMESPACE`); other
- * keys use `.length > 0`. meross_lan would still register a poller for
- * `togglex: []`; this does not.
+ * Timer, trigger, hub, light.effect, and rollerShutter stay out: those digest
+ * keys are empty, unused, or updated through RollerShutter.State instead.
+ * Thermostat uses key presence, including empty lists. Other keys need at
+ * least one row — an empty togglex list is not a poller.
  */
 export function getDigestNamespaces(digest: SystemAll['digest']): Set<string> {
     const namespaces = new Set<string>();
@@ -178,11 +223,11 @@ function projectSystemAll(payload: MerossPayload): SystemAll {
         online: { status },
         digest: {
             togglex: digestTogglex(d.togglex),
-            light: channelList(d.light, 'light'),
+            light: digestLight(d.light),
             garageDoor: digestGarageDoor(d.garageDoor),
             rollerShutter: channelList(d.rollerShutter, 'rollerShutter'),
-            spray: channelList(d.spray, 'spray'),
-            fan: channelList(d.fan, 'fan'),
+            spray: digestSpray(d.spray),
+            fan: digestFan(d.fan),
             diffuser: d.diffuser !== undefined ? decodeDiffuser(d.diffuser) : undefined,
             hub: d.hub !== undefined ? decodeHub(d.hub) : undefined,
             thermostat: d.thermostat !== undefined ? decodeThermostat(d.thermostat) : undefined
@@ -190,73 +235,153 @@ function projectSystemAll(payload: MerossPayload): SystemAll {
     };
 }
 
-function digestTogglex(raw: unknown): DigestToggle[] {
+type ChannelRecord = Record<string, unknown> & { channel: number };
+
+/**
+ * Firmware digest channel lists are one object (MSL430 light) or an array.
+ * Channel is required on every row so enroll can claim it.
+ */
+function channelRows(raw: unknown, field: string): ChannelRecord[] {
     if (raw === undefined) {
         return [];
     }
-    if (!Array.isArray(raw)) {
-        throw new ProtocolError('System.All digest.togglex must be an array');
+    let items: unknown[];
+    if (Array.isArray(raw)) {
+        items = raw;
+    } else if (typeof raw === 'object' && raw !== null) {
+        items = [raw];
+    } else {
+        throw new ProtocolError(`System.All digest.${field} must be an object or array`);
     }
-    return raw.map((item) => {
-        const { channel, onoff } = item as Record<string, unknown>;
-        if (typeof channel !== 'number') {
-            throw new ProtocolError('System.All digest.togglex channel is required');
-        }
-        const entry: DigestToggle = { channel };
-        if (typeof onoff === 'number') {
-            entry.on = onoff === 1;
+    return items.map((item) => channelRecord(item, field));
+}
+
+/**
+ * Same error for a non-object and a missing channel: enroll cannot claim the row.
+ */
+function channelRecord(item: unknown, field: string): ChannelRecord {
+    if (typeof item !== 'object' || item === null) {
+        throw new ProtocolError(`System.All digest.${field} channel is required`);
+    }
+    const record = item as Record<string, unknown>;
+    if (typeof record.channel !== 'number') {
+        throw new ProtocolError(`System.All digest.${field} channel is required`);
+    }
+    return record as ChannelRecord;
+}
+
+function channelList(raw: unknown, field: string): number[] {
+    return channelRows(raw, field).map((item) => item.channel);
+}
+
+function digestTogglex(raw: unknown): DigestToggle[] {
+    return channelRows(raw, 'togglex').map((item) => {
+        const entry: DigestToggle = { channel: item.channel };
+        if (typeof item.onoff === 'number') {
+            entry.on = item.onoff === 1;
         }
         return entry;
     });
 }
 
-function channelList(raw: unknown, field: string): number[] {
-    if (raw === undefined) {
-        return [];
-    }
-    if (!Array.isArray(raw)) {
-        throw new ProtocolError(`System.All digest.${field} must be an array`);
-    }
-    return raw.map((item) => {
-        const channel = (item as { channel?: unknown })?.channel;
-        if (typeof channel !== 'number') {
-            throw new ProtocolError(`System.All digest.${field} channel is required`);
+function digestLight(raw: unknown): DigestLight[] {
+    return channelRows(raw, 'light').map((item) => {
+        const row: DigestLight = { channel: item.channel };
+        if (typeof item.capacity === 'number') {
+            row.capacity = item.capacity;
         }
-        return channel;
-    });
-}
-
-function digestGarageDoor(raw: unknown): DigestGarageDoor[] {
-    if (raw === undefined) {
-        return [];
-    }
-    if (!Array.isArray(raw)) {
-        throw new ProtocolError('System.All digest.garageDoor must be an array');
-    }
-    return raw.map((item) => {
-        const { channel, open, doorEnable } = (item ?? {}) as Record<string, unknown>;
-        if (typeof channel !== 'number') {
-            throw new ProtocolError('System.All digest.garageDoor channel is required');
+        if (typeof item.rgb === 'number' && item.rgb !== -1) {
+            row.rgb = item.rgb;
         }
-        const row: DigestGarageDoor = { channel };
-        if (typeof open === 'number') {
-            row.open = open === 1;
+        if (typeof item.temperature === 'number' && item.temperature !== -1) {
+            row.temperature = item.temperature;
         }
-        if (typeof doorEnable === 'number') {
-            row.doorEnable = doorEnable === 1;
+        if (typeof item.luminance === 'number' && item.luminance !== -1) {
+            row.luminance = item.luminance;
+        }
+        if (typeof item.effect === 'number' && item.effect !== -1) {
+            row.effect = item.effect;
+        }
+        if (typeof item.onoff === 'number' && item.onoff !== -1) {
+            row.onoff = item.onoff === 1;
         }
         return row;
     });
 }
 
-function decodeDiffuser(raw: unknown): { light: number[]; spray: number[] } {
+function digestGarageDoor(raw: unknown): DigestGarageDoor[] {
+    return channelRows(raw, 'garageDoor').map((item) => {
+        const row: DigestGarageDoor = { channel: item.channel };
+        if (typeof item.open === 'number') {
+            row.open = item.open === 1;
+        }
+        if (typeof item.doorEnable === 'number') {
+            row.doorEnable = item.doorEnable === 1;
+        }
+        return row;
+    });
+}
+
+function digestFan(raw: unknown): DigestFan[] {
+    return channelRows(raw, 'fan').map((item) => {
+        const row: DigestFan = { channel: item.channel };
+        if (typeof item.speed === 'number') {
+            row.speed = item.speed;
+        }
+        if (typeof item.maxSpeed === 'number') {
+            row.maxSpeed = item.maxSpeed;
+        }
+        return row;
+    });
+}
+
+function digestSpray(raw: unknown): DigestSpray[] {
+    return channelRows(raw, 'spray').map((item) => {
+        const row: DigestSpray = { channel: item.channel };
+        if (typeof item.mode === 'number') {
+            row.mode = item.mode;
+        }
+        return row;
+    });
+}
+
+function digestDiffuserLight(raw: unknown): DigestDiffuserLight[] {
+    return channelRows(raw, 'diffuser.light').map((item) => {
+        const row: DigestDiffuserLight = { channel: item.channel };
+        if (typeof item.onoff === 'number') {
+            row.onoff = item.onoff === 1;
+        }
+        if (typeof item.mode === 'number') {
+            row.mode = item.mode;
+        }
+        if (typeof item.luminance === 'number') {
+            row.luminance = item.luminance;
+        }
+        if (typeof item.rgb === 'number') {
+            row.rgb = item.rgb;
+        }
+        return row;
+    });
+}
+
+function digestDiffuserSpray(raw: unknown): DigestDiffuserSpray[] {
+    return channelRows(raw, 'diffuser.spray').map((item) => {
+        const row: DigestDiffuserSpray = { channel: item.channel };
+        if (typeof item.mode === 'number') {
+            row.mode = item.mode;
+        }
+        return row;
+    });
+}
+
+function decodeDiffuser(raw: unknown): { light: DigestDiffuserLight[]; spray: DigestDiffuserSpray[] } {
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
         throw new ProtocolError('System.All digest.diffuser must be an object');
     }
     const entry = raw as Record<string, unknown>;
     return {
-        light: channelList(entry.light, 'diffuser.light'),
-        spray: channelList(entry.spray, 'diffuser.spray')
+        light: digestDiffuserLight(entry.light),
+        spray: digestDiffuserSpray(entry.spray)
     };
 }
 
@@ -271,16 +396,16 @@ function decodeThermostat(raw: unknown): NonNullable<SystemAll['digest']['thermo
     const entry = raw as Record<string, unknown>;
     const thermostat: NonNullable<SystemAll['digest']['thermostat']> = {};
     if (entry.mode !== undefined) {
-        thermostat.mode = channelList(entry.mode, 'thermostat.mode');
+        thermostat.mode = channelRows(entry.mode, 'thermostat.mode');
     }
     if (entry.modeB !== undefined) {
-        thermostat.modeB = channelList(entry.modeB, 'thermostat.modeB');
+        thermostat.modeB = channelRows(entry.modeB, 'thermostat.modeB');
     }
     if (entry.summerMode !== undefined) {
-        thermostat.summerMode = channelList(entry.summerMode, 'thermostat.summerMode');
+        thermostat.summerMode = channelRows(entry.summerMode, 'thermostat.summerMode');
     }
     if (entry.windowOpened !== undefined) {
-        thermostat.windowOpened = channelList(entry.windowOpened, 'thermostat.windowOpened');
+        thermostat.windowOpened = channelRows(entry.windowOpened, 'thermostat.windowOpened');
     }
     return thermostat;
 }

@@ -56,6 +56,7 @@ export class LightTrait {
     constructor(bind: LightTraitBind) {
         this.bind = bind;
         this.lightCapacity = bind.lightCapacity;
+        Object.assign(this.last, bind.initial);
     }
 
     /**
@@ -233,28 +234,41 @@ export class LightTrait {
         if (decoded.capacity !== 0) {
             this.lightCapacity = decoded.capacity;
         }
-        const patch: LightValues = {};
-        if (decoded.luminance !== undefined) {
-            patch.brightness = wireToHost01(decoded.luminance);
-        }
-        if (decoded.temperature !== undefined) {
-            patch.temperature = wireToHost01(decoded.temperature);
-        }
-        if (decoded.rgb !== undefined) {
-            patch.rgb = wireToRgb(decoded.rgb);
-        }
-        if (decoded.effect !== undefined) {
-            patch.effect = decoded.effect;
-        }
-        if (applyOnoff && typeof decoded.onoff === 'boolean') {
-            patch.on = decoded.onoff;
-        }
-        this.applyChange(patch);
+        this.applyChange(valuesFromWire(decoded, applyOnoff));
     }
 
     private applyChange(patch: LightValues): void {
         applyPatch(this.last, patch, this.bind.emitChange);
     }
+}
+
+/**
+ * Digest and GETACK/PUSH share this map so enroll seed and live updates
+ * cannot drift. Takes the value fields only — digest rows omit capacity,
+ * and forging `capacity: 0` would look like a Control.Light GETACK.
+ * `applyOnoff` is false when ToggleX/Toggle owns power.
+ */
+function valuesFromWire(
+    decoded: Pick<LightChannelWireState, 'rgb' | 'temperature' | 'luminance' | 'effect' | 'onoff'>,
+    applyOnoff: boolean
+): LightValues {
+    const patch: LightValues = {};
+    if (decoded.luminance !== undefined) {
+        patch.brightness = wireToHost01(decoded.luminance);
+    }
+    if (decoded.temperature !== undefined) {
+        patch.temperature = wireToHost01(decoded.temperature);
+    }
+    if (decoded.rgb !== undefined) {
+        patch.rgb = wireToRgb(decoded.rgb);
+    }
+    if (decoded.effect !== undefined) {
+        patch.effect = decoded.effect;
+    }
+    if (applyOnoff && typeof decoded.onoff === 'boolean') {
+        patch.on = decoded.onoff;
+    }
+    return patch;
 }
 
 /**
@@ -309,12 +323,21 @@ export const descriptor: TraitDescriptor<'light', LightTrait> = {
         const capacity = args.physical.ability[LIGHT_NAMESPACE]?.capacity;
         // ToggleX wins when both Toggle and ToggleX are advertised.
         const hasToggleX = TOGGLEX_NAMESPACE in args.physical.ability;
+        const hasToggle = !hasToggleX && TOGGLE_NAMESPACE in args.physical.ability;
+        const digest = args.physical.digest;
+        const row = digest?.light.find((entry) => entry.channel === args.channel);
+        const on = digest?.togglex.find((entry) => entry.channel === args.channel)?.on;
+        const initial = row ? valuesFromWire(row, !hasToggleX && !hasToggle) : {};
+        if (on !== undefined) {
+            initial.on = on;
+        }
         return new LightTrait({
             channel: args.channel,
             hasToggleX,
-            hasToggle: !hasToggleX && TOGGLE_NAMESPACE in args.physical.ability,
+            hasToggle,
             hasLightEffect: LIGHT_EFFECT_NAMESPACE in args.physical.ability,
             lightCapacity: typeof capacity === 'number' ? capacity : 0,
+            initial,
             request: args.request,
             emitChange: args.emitChange
         });

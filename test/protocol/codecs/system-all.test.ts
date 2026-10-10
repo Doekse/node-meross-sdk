@@ -34,11 +34,11 @@ describe('getDigestNamespaces', () => {
     it('maps populated digest lists to their namespaces', () => {
         const namespaces = getDigestNamespaces({
             togglex: [{ channel: 0, on: true }],
-            light: [0],
+            light: [{ channel: 0 }],
             garageDoor: [],
             rollerShutter: [],
             spray: [],
-            fan: [0]
+            fan: [{ channel: 0 }]
         });
         assert.deepEqual([...namespaces], [
             TOGGLEX_NAMESPACE,
@@ -63,11 +63,11 @@ describe('getDigestNamespaces', () => {
         })], []);
         assert.deepEqual([...getDigestNamespaces({
             ...digest,
-            diffuser: { light: [0], spray: [] }
+            diffuser: { light: [{ channel: 0 }], spray: [] }
         })], [DIFFUSER_LIGHT_NAMESPACE]);
         assert.deepEqual([...getDigestNamespaces({
             ...digest,
-            diffuser: { light: [], spray: [0] }
+            diffuser: { light: [], spray: [{ channel: 0 }] }
         })], [DIFFUSER_SPRAY_NAMESPACE]);
     });
 
@@ -128,5 +128,66 @@ describe('decodeSystemAllGetAck', () => {
         const payload = {};
         assert.throws(() => decodeSystemAllGetAck(payload), ProtocolError);
         assert.throws(() => decodeSystemAllGetAck(payload), ProtocolError);
+    });
+
+    it('wraps a single digest channel object as a one-row list', () => {
+        const payload = loadFixture('system-all-getack.json');
+        const body = payload.all as { digest: Record<string, unknown> };
+        body.digest = {
+            togglex: { channel: 0, onoff: 0 },
+            light: {
+                capacity: 6,
+                channel: 0,
+                rgb: 16711808,
+                temperature: 100,
+                luminance: 85,
+                transform: -1
+            },
+            fan: { channel: 2, speed: 3 },
+            spray: { channel: 0, mode: 0 },
+            garageDoor: { channel: 1, open: 1, doorEnable: 1 }
+        };
+
+        const decoded = decodeSystemAllGetAck(payload);
+
+        assert.deepEqual(decoded.digest.togglex, [{ channel: 0, on: false }]);
+        assert.deepEqual(decoded.digest.light, [{
+            channel: 0,
+            capacity: 6,
+            rgb: 16711808,
+            temperature: 100,
+            luminance: 85
+        }]);
+        assert.deepEqual(decoded.digest.fan, [{ channel: 2, speed: 3 }]);
+        assert.deepEqual(decoded.digest.spray, [{ channel: 0, mode: 0 }]);
+        assert.deepEqual(decoded.digest.garageDoor, [{
+            channel: 1,
+            open: true,
+            doorEnable: true
+        }]);
+    });
+
+    it('keeps an array digest.light and drops -1 unsupported fields', () => {
+        const payload = loadFixture('system-all-getack.json');
+        const body = payload.all as { digest: Record<string, unknown> };
+        body.digest = {
+            light: [{
+                channel: 0,
+                capacity: 7,
+                rgb: -1,
+                temperature: 50,
+                luminance: -1,
+                onoff: 1
+            }]
+        };
+
+        const decoded = decodeSystemAllGetAck(payload);
+
+        assert.deepEqual(decoded.digest.light, [{
+            channel: 0,
+            capacity: 7,
+            temperature: 50,
+            onoff: true
+        }]);
     });
 });

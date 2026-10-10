@@ -15,7 +15,7 @@ import {
     encodeLightSet,
     encodeToggleXSet
 } from '../../src/protocol';
-import { LightTrait } from '../../src/traits/light';
+import { LightTrait, type LightValues } from '../../src/traits/light';
 import type { MerossMessage } from '../../src/protocol';
 import { createRequestRecorder, traitAck } from '../helpers/request';
 
@@ -85,6 +85,7 @@ function createLightHarness(options: {
     lightCapacity?: number;
     hasLightEffect?: boolean;
     lightEffectCatalog?: Array<{ Id: string; effectName: string; enable?: number }>;
+    initial?: LightValues;
 } = {}): {
     endpoint: Endpoint;
     trait: LightTrait;
@@ -148,6 +149,7 @@ function createLightHarness(options: {
         hasToggle: options.hasToggle ?? false,
         lightCapacity: options.lightCapacity ?? 0,
         hasLightEffect: options.hasLightEffect ?? false,
+        ...(options.initial ? { initial: options.initial } : {}),
         request,
         emitChange: (values) => endpoint.emit('change', {
             trait: 'light',
@@ -157,6 +159,29 @@ function createLightHarness(options: {
 
     return { endpoint, trait, requests };
 }
+
+describe('LightTrait digest seed', () => {
+    it('exposes System.All digest values before any PUSH', () => {
+        const { trait } = createLightHarness({
+            hasToggleX: true,
+            initial: {
+                on: false,
+                brightness: (85 - 1) / 99,
+                temperature: 1,
+                rgb: { r: 255, g: 0, b: 128 }
+            }
+        });
+
+        assert.deepEqual(trait.values(), {
+            on: false,
+            brightness: (85 - 1) / 99,
+            temperature: 1,
+            rgb: { r: 255, g: 0, b: 128 }
+        });
+        assert.equal(trait.isOn(), false);
+        assert.deepEqual(trait.getRgb(), { r: 255, g: 0, b: 128 });
+    });
+});
 
 describe('LightTrait.setOn', () => {
     it('routes device-level on/off through ToggleX SET when available', async () => {

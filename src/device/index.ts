@@ -137,6 +137,12 @@ export interface PhysicalDevice {
      * only as the All fallback, not beside it.
      */
     digestNamespaces: ReadonlySet<string>;
+    /**
+     * System.All digest so traits can seed before the first PUSH. Control.Light
+     * (and other digest pollers) are not GETted beside All. Wire-scale; attach
+     * converts. Optional on hand-built test devices that have no All snapshot.
+     */
+    readonly digest?: SystemAll['digest'];
     endpoints: readonly EnrolledEndpoint[];
 }
 
@@ -168,6 +174,7 @@ export function enrollPhysicalDevice(input: EnrollInput): PhysicalDevice {
             ...(all.time ? { time: all.time } : {})
         },
         digestNamespaces: getDigestNamespaces(all.digest),
+        digest: all.digest,
         endpoints: isHub
             ? enrollHub(uuid, name, model, online, ability, all, input.subDevices ?? [])
             : enrollBoard(uuid, name, model, online, ability, all, input.cloud)

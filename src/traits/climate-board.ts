@@ -105,6 +105,7 @@ export abstract class ClimateBoardBase extends ClimateTraitBase {
     protected constructor(bind: ClimateTraitBoardBind) {
         super(bind.namespaces, bind.request, bind.emitChange);
         this.channel = bind.channel;
+        Object.assign(this.last, bind.initial);
     }
 
     /**

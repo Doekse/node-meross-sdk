@@ -14,12 +14,10 @@ import type { EnrolledEndpoint, PhysicalDevice } from './index';
 /**
  * Constructs trait instances for one enrolled endpoint.
  *
- * meross_lan analog is `Device.async_init`, not a handler registry. Ability
- * extras (Toggle vs ToggleX, climate Mode/ModeB/ModeC, timer/trigger
+ * Ability extras (Toggle vs ToggleX, climate Mode/ModeB/ModeC, timer/trigger
  * generation) read `physical.ability`. Channel stealing for light/fan/garage
- * is enroll, not attach — do not "fix" attach to meross_lan's digest-key
- * Toggle test. Trait class modules load only when `graphEndpoint.traits`
- * lists them.
+ * is enroll, not attach. Trait class modules load only when
+ * `graphEndpoint.traits` lists them.
  *
  * Callers own `namespaces` (typically ability keys). Attach does not derive
  * the Set from `physical.ability`, so a caller can reuse one Set across

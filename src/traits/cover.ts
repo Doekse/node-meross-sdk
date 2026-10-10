@@ -22,7 +22,8 @@ export const descriptor: TraitDescriptor<'cover', CoverTrait> = {
         const bind: CoverTraitBind = {
             channel: args.channel,
             namespaces: args.namespaces,
-            initialOpen: args.graphEndpoint.on,
+            initialOpen: args.graphEndpoint.on
+                ?? args.physical.digest?.garageDoor.find((entry) => entry.channel === args.channel)?.open,
             request: args.request,
             emitChange: args.emitChange
         };

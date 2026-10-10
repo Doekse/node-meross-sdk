@@ -11,6 +11,8 @@ import {
     CONTROL_ALERT_CONFIG_NAMESPACE,
     CONFIG_OVERTEMP_NAMESPACE,
     CONFIG_STANDBY_KILLER_NAMESPACE,
+    DIFFUSER_LIGHT_NAMESPACE,
+    DIFFUSER_SPRAY_NAMESPACE,
     DND_MODE_NAMESPACE,
     ELECTRICITY_NAMESPACE,
     FAN_NAMESPACE,
@@ -18,6 +20,7 @@ import {
     HUB_SENSOR_ALL_NAMESPACE,
     HUB_TOGGLEX_NAMESPACE,
     LIGHT_NAMESPACE,
+    SPRAY_NAMESPACE,
     SHUTTER_POSITION_NAMESPACE,
     SHUTTER_STATE_NAMESPACE,
     SYSTEM_RUNTIME_NAMESPACE,
@@ -76,6 +79,20 @@ function physical(ability: AbilityMap, model: string): PhysicalDevice {
     };
 }
 
+function digest(
+    patch: Partial<NonNullable<PhysicalDevice['digest']>>
+): NonNullable<PhysicalDevice['digest']> {
+    return {
+        togglex: [],
+        light: [],
+        garageDoor: [],
+        rollerShutter: [],
+        spray: [],
+        fan: [],
+        ...patch
+    };
+}
+
 /**
  * Hub children are identified by `subDeviceId`; attach does not read classHint.
  */
@@ -83,12 +100,14 @@ function enrolledEndpoint({
     traits,
     channel = CHANNEL,
     subDeviceId,
-    model = 'mss110'
+    model = 'mss110',
+    on
 }: {
     traits: readonly TraitName[];
     channel?: number;
     subDeviceId?: string;
     model?: string;
+    on?: boolean;
 }): EnrolledEndpoint {
     const isHubChild = subDeviceId !== undefined;
     return {
@@ -100,7 +119,8 @@ function enrolledEndpoint({
         model,
         classHint: 'socket',
         traits,
-        online: true
+        online: true,
+        ...(on !== undefined ? { on } : {})
     };
 }
 
@@ -109,6 +129,8 @@ function createHarness(options: {
     ability: AbilityMap;
     subDeviceId?: string;
     model?: string;
+    on?: boolean;
+    digest?: Partial<NonNullable<PhysicalDevice['digest']>>;
     ack?: Parameters<typeof createRequestRecorder>[0]['ack'];
 }): {
     endpoint: Endpoint;
@@ -117,17 +139,22 @@ function createHarness(options: {
     const graph = enrolledEndpoint({
         traits: options.traits,
         subDeviceId: options.subDeviceId,
-        model: options.model
+        model: options.model,
+        on: options.on
     });
     const { requests, request } = createRequestRecorder({
         uuid: UUID,
         key: KEY,
         ack: options.ack
     });
+    const physicalDevice: PhysicalDevice = {
+        ...physical(options.ability, graph.model),
+        ...(options.digest !== undefined ? { digest: digest(options.digest) } : {})
+    };
     const endpoint = attachEndpoint(
         graph,
         request,
-        physical(options.ability, graph.model),
+        physicalDevice,
         new Set(Object.keys(options.ability))
     );
     return { endpoint, requests };
@@ -287,6 +314,16 @@ describe('attachEndpoint switch', () => {
 
         assert.equal(requests[0]?.header.namespace, HUB_TOGGLEX_NAMESPACE);
     });
+
+    it('seeds from digest.togglex when enroll did not pass on', () => {
+        const { endpoint } = createHarness({
+            traits: ['switch'],
+            ability: { [TOGGLEX_NAMESPACE]: {} },
+            digest: { togglex: [{ channel: 0, on: true }] }
+        });
+
+        assert.deepEqual(endpoint.switch!.values(), { on: true });
+    });
 });
 
 describe('attachEndpoint sensor', () => {
@@ -408,6 +445,34 @@ describe('attachEndpoint standbykiller', () => {
 });
 
 describe('attachEndpoint light', () => {
+    it('seeds LightTrait from digest.light and ToggleX onoff (MSL430)', () => {
+        const { endpoint } = createHarness({
+            traits: ['light'],
+            model: 'msl430',
+            ability: {
+                [LIGHT_NAMESPACE]: { capacity: 7 },
+                [TOGGLEX_NAMESPACE]: {}
+            },
+            digest: {
+                togglex: [{ channel: 0, on: false }],
+                light: [{
+                    channel: 0,
+                    capacity: 6,
+                    rgb: 16711808,
+                    temperature: 100,
+                    luminance: 85
+                }]
+            }
+        });
+
+        assert.deepEqual(endpoint.light!.values(), {
+            on: false,
+            brightness: (85 - 1) / 99,
+            temperature: 1,
+            rgb: { r: 255, g: 0, b: 128 }
+        });
+    });
+
     it('uses ability capacity when Light is present without Toggle/ToggleX', async () => {
         const { endpoint, requests } = createHarness({
             traits: ['light'],
@@ -482,6 +547,16 @@ describe('attachEndpoint cover', () => {
 
         assert.equal(requests[0]?.header.namespace, SHUTTER_POSITION_NAMESPACE);
     });
+
+    it('seeds from digest.garageDoor when enroll did not pass open', () => {
+        const { endpoint } = createHarness({
+            traits: ['cover'],
+            ability: { [GARAGE_STATE_NAMESPACE]: {} },
+            digest: { garageDoor: [{ channel: 0, open: true }] }
+        });
+
+        assert.deepEqual(endpoint.cover!.values(), { open: true });
+    });
 });
 
 describe('attachEndpoint fan', () => {
@@ -509,6 +584,97 @@ describe('attachEndpoint fan', () => {
         await endpoint.fan!.setOn(true);
 
         assert.equal(requests[0]?.header.namespace, TOGGLE_NAMESPACE);
+    });
+
+    it('seeds from digest.fan and ToggleX onoff', () => {
+        const { endpoint } = createHarness({
+            traits: ['fan'],
+            ability: { [FAN_NAMESPACE]: {}, [TOGGLEX_NAMESPACE]: {} },
+            digest: {
+                togglex: [{ channel: 0, on: true }],
+                fan: [{ channel: 0, speed: 3, maxSpeed: 4 }]
+            }
+        });
+
+        assert.deepEqual(endpoint.fan!.values(), {
+            on: true,
+            speed: 3 / 4,
+            maxSpeed: 4
+        });
+    });
+
+    it('seeds host speed 0 when digest speed is 0', () => {
+        const { endpoint } = createHarness({
+            traits: ['fan'],
+            ability: { [FAN_NAMESPACE]: {} },
+            digest: { fan: [{ channel: 0, speed: 0 }] }
+        });
+
+        assert.deepEqual(endpoint.fan!.values(), {
+            on: false,
+            speed: 0,
+            maxSpeed: 1
+        });
+    });
+
+    it('omits fan speed when digest speed is missing or not finite', () => {
+        const missing = createHarness({
+            traits: ['fan'],
+            ability: { [FAN_NAMESPACE]: {}, [TOGGLEX_NAMESPACE]: {} },
+            digest: {
+                togglex: [{ channel: 0, on: true }],
+                fan: [{ channel: 0 }]
+            }
+        });
+        assert.deepEqual(missing.endpoint.fan!.values(), { on: true });
+
+        const poisoned = createHarness({
+            traits: ['fan'],
+            ability: { [FAN_NAMESPACE]: {} },
+            digest: { fan: [{ channel: 0, speed: Number.NaN }] }
+        });
+        assert.deepEqual(poisoned.endpoint.fan!.values(), {});
+    });
+});
+
+describe('attachEndpoint spray', () => {
+    it('seeds from digest.spray', () => {
+        const { endpoint } = createHarness({
+            traits: ['spray'],
+            ability: { [SPRAY_NAMESPACE]: {} },
+            digest: { spray: [{ channel: 0, mode: 1 }] }
+        });
+
+        assert.deepEqual(endpoint.spray!.values(), { mode: 'continuous' });
+    });
+});
+
+describe('attachEndpoint diffuser', () => {
+    it('seeds from digest.diffuser light and spray', () => {
+        const { endpoint } = createHarness({
+            traits: ['diffuser'],
+            ability: { [DIFFUSER_LIGHT_NAMESPACE]: {}, [DIFFUSER_SPRAY_NAMESPACE]: {} },
+            digest: {
+                diffuser: {
+                    light: [{
+                        channel: 0,
+                        onoff: true,
+                        mode: 1,
+                        luminance: 50,
+                        rgb: 0x112233
+                    }],
+                    spray: [{ channel: 0, mode: 2 }]
+                }
+            }
+        });
+
+        assert.deepEqual(endpoint.diffuser!.values(), {
+            on: true,
+            lightMode: 'fixed-rgb',
+            brightness: 0.5,
+            rgb: { r: 0x11, g: 0x22, b: 0x33 },
+            sprayMode: 'off'
+        });
     });
 });
 
@@ -590,6 +756,31 @@ describe('attachEndpoint climate', () => {
         await endpoint.climate!.setOn(true);
 
         assert.equal(requests[0]?.header.namespace, HUB_TOGGLEX_NAMESPACE);
+    });
+
+    it('seeds Mode from digest.thermostat.mode', () => {
+        const { endpoint } = createHarness({
+            traits: ['climate'],
+            ability: { [THERMOSTAT_MODE_NAMESPACE]: {} },
+            digest: {
+                thermostat: {
+                    mode: [{
+                        channel: 0,
+                        onoff: 1,
+                        mode: 0,
+                        targetTemp: 220,
+                        currentTemp: 180
+                    }]
+                }
+            }
+        });
+
+        assert.deepEqual(endpoint.climate!.values(), {
+            on: true,
+            mode: 'heat',
+            targetTemperature: 22,
+            currentTemperature: 18
+        });
     });
 });
 

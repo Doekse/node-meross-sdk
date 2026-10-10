@@ -89,6 +89,8 @@ export interface LightTraitBind {
     hasLightEffect: boolean;
     /** Capacity bitmask from Ability; the trait updates it after the first GETACK. */
     lightCapacity: number;
+    /** System.All digest seed so hosts can read state before the first PUSH. */
+    initial?: LightValues;
     request: DeviceRequest;
     emitChange: (values: LightValues) => void;
 }
@@ -117,6 +119,8 @@ export interface ClimateTraitBoardBind {
     channel: number;
     /** Ability keys; extra methods throw when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
+    /** System.All digest seed so hosts can read mode/temps before the first PUSH. */
+    initial?: ClimateValues;
     request: DeviceRequest;
     emitChange: (values: ClimateValues) => void;
 }
@@ -175,6 +179,8 @@ export interface SprinklerTraitBind {
  */
 export interface SprayTraitBind {
     channel: number;
+    /** System.All digest seed so hosts can read mode before the first PUSH. */
+    initial?: SprayValues;
     request: DeviceRequest;
     emitChange: (values: SprayValues) => void;
 }
@@ -190,6 +196,8 @@ export interface FanTraitBind {
     /** ToggleX when advertised; classic Toggle only when ToggleX is absent. */
     hasToggleX: boolean;
     hasToggle: boolean;
+    /** System.All digest seed so hosts can read speed before the first PUSH. */
+    initial?: FanValues;
     request: DeviceRequest;
     emitChange: (values: FanValues) => void;
 }
@@ -202,6 +210,8 @@ export interface DiffuserTraitBind {
     channel: number;
     /** Ability keys; extra methods no-op when the namespace is absent. */
     namespaces?: ReadonlySet<string>;
+    /** System.All digest seed so hosts can read light/spray before the first PUSH. */
+    initial?: DiffuserValues;
     request: DeviceRequest;
     emitChange: (values: DiffuserValues) => void;
 }
