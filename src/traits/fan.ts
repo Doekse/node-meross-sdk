@@ -240,6 +240,9 @@ export class FanTrait {
     }
 
     private applyFanEntry(entry: { speed: number; maxSpeed?: number }): void {
+        if (!Number.isFinite(entry.speed)) {
+            return;
+        }
         this.lastWireSpeed = entry.speed;
         if (entry.maxSpeed !== undefined && entry.maxSpeed > 0) {
             this.fanReportedMaxSpeed = true;
@@ -254,11 +257,12 @@ export class FanTrait {
         if (speed > 0) {
             this.savedSpeed = speed;
         }
-        const patch: FanValues = {
-            speed: this.maxSpeed > 0 ? speed / this.maxSpeed : 0,
-            maxSpeed: this.maxSpeed
-        };
-        if (!this.bind.hasToggleX && !this.bind.hasToggle) {
+        const patch: FanValues = {};
+        if (Number.isFinite(speed) && this.maxSpeed > 0) {
+            patch.speed = speed / this.maxSpeed;
+            patch.maxSpeed = this.maxSpeed;
+        }
+        if (!this.bind.hasToggleX && !this.bind.hasToggle && Number.isFinite(speed)) {
             patch.on = speed > 0;
         }
         this.applyChange(patch);

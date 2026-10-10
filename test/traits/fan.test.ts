@@ -174,6 +174,20 @@ describe('FanTrait', () => {
         assert.deepEqual(changes[0], { speed: 0.25, maxSpeed: 4 });
     });
 
+    it('handlePush speed 0 is host 0, non-finite speed is omitted', () => {
+        const zero = createHarness({ hasToggleX: false, hasToggle: false });
+        zero.trait.handlePush(pushMessage(FAN_NAMESPACE, {
+            fan: [{ channel: CHANNEL, speed: 0, maxSpeed: 4 }]
+        }));
+        assert.deepEqual(zero.trait.values(), { speed: 0, maxSpeed: 4, on: false });
+
+        const poisoned = createHarness({ hasToggleX: false, hasToggle: false });
+        poisoned.trait.handlePush(pushMessage(FAN_NAMESPACE, {
+            fan: [{ channel: CHANNEL, speed: Number.NaN, maxSpeed: 4 }]
+        }));
+        assert.deepEqual(poisoned.trait.values(), {});
+    });
+
     it('applies ToggleX PUSH to on/off', () => {
         const { trait, changes } = createHarness();
         trait.handlePush(pushMessage(TOGGLEX_NAMESPACE, {
