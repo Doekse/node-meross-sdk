@@ -473,6 +473,22 @@ describe('attachEndpoint light', () => {
         });
     });
 
+    it('seeds brightness 0 from wire luminance 0 and omits non-finite luminance', () => {
+        const off = createHarness({
+            traits: ['light'],
+            ability: { [LIGHT_NAMESPACE]: { capacity: 4 } },
+            digest: { light: [{ channel: 0, luminance: 0 }] }
+        });
+        assert.deepEqual(off.endpoint.light!.values(), { brightness: 0 });
+
+        const poisoned = createHarness({
+            traits: ['light'],
+            ability: { [LIGHT_NAMESPACE]: { capacity: 4 } },
+            digest: { light: [{ channel: 0, luminance: Number.NaN }] }
+        });
+        assert.deepEqual(poisoned.endpoint.light!.values(), {});
+    });
+
     it('uses ability capacity when Light is present without Toggle/ToggleX', async () => {
         const { endpoint, requests } = createHarness({
             traits: ['light'],

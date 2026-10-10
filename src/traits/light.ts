@@ -151,7 +151,7 @@ export class LightTrait {
      * Capacity 0x4 treats luminance 0 as off; the usual scale is 1–100.
      */
     async setBrightness(brightness: number): Promise<{ brightness: number }> {
-        const luminance = brightness === 0 ? 0 : hostToWire01(brightness);
+        const luminance = brightness === 0 ? 0 : hostToWire(brightness);
         const reply = await this.bind.request({
             namespace: LIGHT_NAMESPACE,
             method: 'SET',
@@ -165,7 +165,7 @@ export class LightTrait {
     }
 
     async setTemperature(temperature: number): Promise<{ temperature: number }> {
-        const wire = hostToWire01(temperature);
+        const wire = hostToWire(temperature);
         const reply = await this.bind.request({
             namespace: LIGHT_NAMESPACE,
             method: 'SET',
@@ -253,11 +253,13 @@ function valuesFromWire(
     applyOnoff: boolean
 ): LightValues {
     const patch: LightValues = {};
-    if (decoded.luminance !== undefined) {
-        patch.brightness = wireToHost01(decoded.luminance);
+    const brightness = wireToHost(decoded.luminance);
+    if (brightness !== undefined) {
+        patch.brightness = brightness;
     }
-    if (decoded.temperature !== undefined) {
-        patch.temperature = wireToHost01(decoded.temperature);
+    const temperature = wireToHost(decoded.temperature);
+    if (temperature !== undefined) {
+        patch.temperature = temperature;
     }
     if (decoded.rgb !== undefined) {
         patch.rgb = wireToRgb(decoded.rgb);
@@ -295,17 +297,18 @@ function rgbToWire(rgb: LightRgb): number {
  * Firmware luminance/temperature is 1–100; host APIs use 0..1. Zero stays zero
  * so capacity 0x4 can still mean off.
  */
-function hostToWire01(value: number): number {
+function hostToWire(value: number): number {
     const clamped = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
     return Math.round(clamped * 99) + 1;
 }
 
 /**
- * Inverse of {@link hostToWire01}. Firmware 0 (off) maps to host 0.
+ * Inverse of {@link hostToWire}. Firmware 0 (off) maps to host 0.
+ * Non-finite wire is omitted so digest/PUSH cannot invent a 0% reading.
  */
-function wireToHost01(value: number): number {
-    if (!Number.isFinite(value)) {
-        return 0;
+function wireToHost(value: number | undefined): number | undefined {
+    if (value === undefined || !Number.isFinite(value)) {
+        return undefined;
     }
     if (value <= 0) {
         return 0;
